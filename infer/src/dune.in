@@ -51,7 +51,7 @@ let env_stanza =
     (inline_tests enabled))
   )
 |}
-    strict_flags lenient_flags lenient_flags
+    lenient_flags lenient_flags lenient_flags
 
 
 (** Put this *first* in (libraries) specifications to prevent a clash between extlib's and base64's
