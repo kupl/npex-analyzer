@@ -16,6 +16,7 @@ type t =
   | Debug  (** print information about internal structures *)
   | Explore  (** explore infer reports *)
   | Help  (** documentation about various aspects of infer *)
+  | NPEX  (** NPEX driver *)
   | Report  (** post-process infer results and reports *)
   | ReportDiff  (** compute the difference of two infer reports *)
   | Run  (** orchestrate the capture, analysis, and reporting of a compilation command *)

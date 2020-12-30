@@ -24,6 +24,7 @@ type t =
   ; siof: SiofDomain.Summary.t option
   ; starvation: StarvationDomain.summary option
   ; nullsafe: NullsafeSummary.t option
+  ; spec_checker: SpecCheckerSummary.t option
   ; uninit: UninitDomain.Summary.t option }
 [@@deriving fields]
 
@@ -40,7 +41,7 @@ let fields =
     ~buffer_overrun_analysis:(fun f -> mk f "BufferOverrunAnalysis" BufferOverrunAnalysisSummary.pp)
     ~buffer_overrun_checker:(fun f -> mk f "BufferOverrunChecker" BufferOverrunCheckerSummary.pp)
     ~config_checks_between_markers:(fun f ->
-      mk f "ConfigChecksBetweenMarkers" ConfigChecksBetweenMarkers.Summary.pp )
+      mk f "ConfigChecksBetweenMarkers" ConfigChecksBetweenMarkers.Summary.pp)
     ~cost:(fun f -> mk f "Cost" CostDomain.pp_summary)
     ~litho_required_props:(fun f -> mk f "Litho Required Props" LithoDomain.pp_summary)
     ~pulse:(fun f -> mk f "Pulse" PulseSummary.pp)
@@ -51,12 +52,13 @@ let fields =
     ~siof:(fun f -> mk f "Siof" SiofDomain.Summary.pp)
     ~starvation:(fun f -> mk f "Starvation" StarvationDomain.pp_summary)
     ~nullsafe:(fun f -> mk f "Nullsafe" NullsafeSummary.pp)
+    ~spec_checker:(fun f -> mk f "Speccheck" SpecCheckerSummary.pp)
     ~uninit:(fun f -> mk f "Uninitialised" UninitDomain.Summary.pp)
 
 
 let pp pe f payloads =
   List.iter fields ~f:(fun (F {field; name; pp}) ->
-      Field.get field payloads |> Option.iter ~f:(fun x -> F.fprintf f "%s: %a@\n" name (pp pe) x) )
+      Field.get field payloads |> Option.iter ~f:(fun x -> F.fprintf f "%s: %a@\n" name (pp pe) x))
 
 
 let empty =
@@ -75,4 +77,5 @@ let empty =
   ; siof= None
   ; starvation= None
   ; nullsafe= None
+  ; spec_checker= None
   ; uninit= None }

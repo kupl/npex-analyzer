@@ -170,6 +170,10 @@ let max_widens = 10000
     analysis: 0 = do not use the meet 1 = use the meet to generate new preconditions *)
 let meet_level = 1
 
+let npex_specification_extension = ".spec"
+
+let npex_patch_json_name = "patch.json"
+
 let nsnotification_center_checker_backend = false
 
 let property_attributes = "property_attributes"
@@ -485,7 +489,7 @@ let () =
     match cmd with
     | Report ->
         `Add
-    | Analyze | Capture | Compile | Debug | Explore | Help | ReportDiff | Run ->
+    | Analyze | Capture | Compile | Debug | Explore | Help | NPEX | ReportDiff | Run ->
         `Reject
   in
   (* make sure we generate doc for all the commands we know about *)
@@ -493,7 +497,7 @@ let () =
       let {CommandDoc.name; command_doc} = CommandDoc.data_of_command cmd in
       let on_unknown_arg = on_unknown_arg_from_command cmd in
       let deprecated_long = if InferCommand.(equal ReportDiff) cmd then Some "diff" else None in
-      CLOpt.mk_subcommand cmd ~name ?deprecated_long ~on_unknown_arg (Some command_doc) )
+      CLOpt.mk_subcommand cmd ~name ?deprecated_long ~on_unknown_arg (Some command_doc))
 
 
 let abs_struct =
@@ -551,14 +555,14 @@ and () =
             ~f:(fun b ->
               disable_all_checkers () ;
               var := b ;
-              b )
+              b)
             ( if show_in_help then
               Printf.sprintf "Enable %s and disable all other checkers" config.id
             else "" )
             [] (* do all the work in ~f *) []
           (* do all the work in ~f *)
         in
-        () )
+        ())
   in
   List.iter ~f:mk_only !all_checkers ;
   let _default_checkers : bool ref =
@@ -572,7 +576,7 @@ and () =
               | Some _ when config.enabled_by_default ->
                   Some (Printf.sprintf "$(b,--%s)" config.id)
               | _ ->
-                  None )
+                  None)
             !all_checkers
         |> String.concat ~sep:", " ) )
       ~f:(fun b ->
@@ -580,9 +584,9 @@ and () =
           ~f:(fun (_, config, var) ->
             var :=
               if b then config.enabled_by_default || !var
-              else (not config.enabled_by_default) && !var )
+              else (not config.enabled_by_default) && !var)
           !all_checkers ;
-        b )
+        b)
       [] (* do all the work in ~f *) []
     (* do all the work in ~f *)
   in
@@ -742,7 +746,7 @@ and buck_mode =
     ~in_help:InferCommand.[(Capture, manual_buck)]
     ~f:(fun s ->
       buck_mode := `ClangCompilationDB s ;
-      s )
+      s)
     "Buck integration using the compilation database, with or without dependencies. Only includes \
      clang targets, as per Buck's $(i,#compilation-database) flavor."
     ~symbols:[("no-deps", `NoDeps); ("deps", `DepsTmp)]
@@ -1006,8 +1010,8 @@ and ( bo_debug
         match command with
         | Debug | Explore | Help ->
             None
-        | (Analyze | Capture | Compile | Report | ReportDiff | Run) as command ->
-            Some (command, manual_generic) )
+        | (Analyze | Capture | Compile | NPEX | Report | ReportDiff | Run) as command ->
+            Some (command, manual_generic))
   in
   let bo_debug =
     CLOpt.mk_int ~default:0 ~long:"bo-debug"
@@ -1078,7 +1082,7 @@ and ( bo_debug
       ~f:(fun debug ->
         if debug then set_debug_level 2 else set_debug_level 0 ;
         CommandLineOption.keep_args_file := debug ;
-        debug )
+        debug)
       [ developer_mode
       ; print_buckets
       ; print_types
@@ -1091,7 +1095,7 @@ and ( bo_debug
     CLOpt.mk_int_opt ~long:"debug-level" ~in_help:all_generic_manuals ~meta:"level"
       ~f:(fun level ->
         set_debug_level level ;
-        level )
+        level)
       {|Debug level (sets $(b,--bo-debug) $(i,level), $(b,--debug-level-analysis) $(i,level), $(b,--debug-level-capture) $(i,level), $(b,--debug-level-linters) $(i,level)):
   - 0: only basic debugging enabled
   - 1: verbose debugging enabled
@@ -1131,7 +1135,7 @@ and ( bo_debug
        $(b,--allowed-failures) and $(b,--default-linters)."
       ~f:(fun debug ->
         debug_level_linters := if debug then 2 else 0 ;
-        debug )
+        debug)
       [debug; developer_mode] [default_linters; keep_going]
   in
   ( bo_debug
@@ -1196,7 +1200,7 @@ and () =
                 IssueType.register_dynamic ~id:issue_id Warning ~linters_def_file:None Linters
           in
           IssueType.set_enabled issue b ;
-          issue_id )
+          issue_id)
         ?default ~meta:"issue_type"
         ~default_to_string:(fun _ -> "")
         ~in_help:InferCommand.[(Report, manual_generic)]
@@ -1207,7 +1211,7 @@ and () =
   let all_issues = IssueType.all_issues () in
   let disabled_issues_ids =
     List.filter_map all_issues ~f:(fun issue ->
-        Option.some_if (not issue.IssueType.enabled) issue.IssueType.unique_id )
+        Option.some_if (not issue.IssueType.enabled) issue.IssueType.unique_id)
   in
   let pp_issue fmt issue =
     let pp_enabled fmt enabled =
@@ -1258,6 +1262,12 @@ and eradicate_return_over_annotated =
 
 
 and eradicate_verbose = CLOpt.mk_bool ~long:"eradicate-verbose" "Print initial and final typestates"
+
+and error_report_json =
+  CLOpt.mk_path_list ~long:"error-report" ~default:["npe.json"]
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Read npe error report to repair"
+
 
 and external_java_packages =
   CLOpt.mk_string_list ~long:"external-java-packages"
@@ -1625,7 +1635,8 @@ and nullsafe_optimistic_third_party_params_in_non_strict =
          Historically this is because there was no actionable way to change third party annotations.
          Now that we have such a support, this behavior should be reconsidered, provided
          our tooling and error reporting is friendly enough to be smoothly used by developers.
-      *) ~default:true
+      *)
+    ~default:true
     "Nullsafe: in this mode we treat non annotated third party method params as if they were \
      annotated as nullable."
 
@@ -2035,7 +2046,7 @@ and rest =
     ~in_help:InferCommand.[(Capture, manual_generic); (Run, manual_generic)]
     "Stop argument processing, use remaining arguments as a build command" ~usage:exe_usage
     (fun build_exe ->
-      match Filename.basename build_exe with "java" | "javac" -> CLOpt.Javac | _ -> CLOpt.NoParse )
+      match Filename.basename build_exe with "java" | "javac" -> CLOpt.Javac | _ -> CLOpt.NoParse)
 
 
 and results_dir =
@@ -2250,6 +2261,30 @@ and export_changed_functions =
      the $(b,--modified-lines)."
 
 
+and npex_specifications_directory =
+  CLOpt.mk_path ~long:"specifications-dir" ~default:"specs"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Specify the directory where to load/store specifications"
+
+
+and npex_launch_localizer =
+  CLOpt.mk_bool ~default:false ~long:"launch-localizer"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Launch NPE localizer"
+
+
+and npex_launch_spec_synthesizer =
+  CLOpt.mk_bool ~default:false ~long:"launch-spec-synthesizer"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Launch specification synthesizer"
+
+
+and npex_launch_spec_verifier =
+  CLOpt.mk_bool ~default:false ~long:"launch-spec-verifier"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Launch specification verifier"
+
+
 and scheduler =
   CLOpt.mk_symbol ~long:"scheduler" ~default:File ~eq:equal_scheduler
     ~in_help:InferCommand.[(Analyze, manual_generic)]
@@ -2430,7 +2465,7 @@ let javac_classes_out =
         (* extend env var args to pass args to children that do not receive the rest args *)
         CLOpt.extend_env_args ["--results-dir"; classes_out_infer] ;
         results_dir := classes_out_infer ) ;
-      classes_out )
+      classes_out)
     ""
 
 
@@ -2474,7 +2509,7 @@ let post_parsing_initialization command_opt =
             CLOpt.init_work_dir ^/ filename
           else filename
         in
-        Unix.putenv ~key:CommandDoc.inferconfig_env_var ~data:abs_filename ) ;
+        Unix.putenv ~key:CommandDoc.inferconfig_env_var ~data:abs_filename) ;
   ( match !version with
   | `Full when !buck ->
       (* Buck reads stderr in some versions, stdout in others *)
@@ -2702,7 +2737,7 @@ and censor_report =
           in
           (polarity_regex issue_type_re, polarity_regex filename_re, reason_str)
       | _ ->
-          L.(die UserError) "Ill-formed report filter: %s" str )
+          L.(die UserError) "Ill-formed report filter: %s" str)
 
 
 and changed_files_index = !changed_files_index
@@ -2785,6 +2820,8 @@ and eradicate_return_over_annotated = !eradicate_return_over_annotated
 
 and eradicate_verbose = !eradicate_verbose
 
+and error_report_json = !error_report_json
+
 and external_java_packages = !external_java_packages
 
 and fail_on_bug = !fail_on_bug
@@ -2834,7 +2871,7 @@ and help_checker =
           L.die UserError
             "Wrong argument for --help-checker: '%s' is not a known checker identifier.@\n\
              @\n\
-             See --list-checkers for the list of all checkers." checker_string )
+             See --list-checkers for the list of all checkers." checker_string)
 
 
 and help_issue_type =
@@ -2847,7 +2884,7 @@ and help_issue_type =
             "Wrong argument for --help-issue-type: '%s' is not a known issue type identifier, or \
              is defined in a linters file.@\n\
              @\n\
-             See --list-issue-types for the list of all known issue types." id )
+             See --list-issue-types for the list of all known issue types." id)
 
 
 and html = !html
@@ -3172,6 +3209,14 @@ and test_determinator = !test_determinator
 
 and export_changed_functions = !export_changed_functions
 
+and npex_specifications_directory = !npex_specifications_directory
+
+and npex_launch_localizer = !npex_launch_localizer
+
+and npex_launch_spec_synthesizer = !npex_launch_spec_synthesizer
+
+and npex_launch_spec_verifier = !npex_launch_spec_verifier
+
 and test_filtering = !test_filtering
 
 and profiler_samples = !profiler_samples
@@ -3247,7 +3292,7 @@ let enabled_checkers =
           | [] ->
               (newly_enabled_checkers, enabled_checkers)
           | _ :: _ ->
-              (to_enable @ newly_enabled_checkers, to_enable @ enabled_checkers) )
+              (to_enable @ newly_enabled_checkers, to_enable @ enabled_checkers))
     in
     if List.is_empty newly_enabled_checkers then enabled_checkers
     else fixpoint newly_enabled_checkers enabled_checkers'
@@ -3294,7 +3339,7 @@ let java_package_is_external package =
       false
   | _ ->
       List.exists external_java_packages ~f:(fun (prefix : string) ->
-          String.is_prefix package ~prefix )
+          String.is_prefix package ~prefix)
 
 
 let is_in_custom_symbols list_name symbol =
