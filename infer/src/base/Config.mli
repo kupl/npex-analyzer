@@ -92,6 +92,10 @@ val max_widens : int
 
 val meet_level : int
 
+val npex_specification_extension : string
+
+val npex_patch_json_name : string
+
 val nsnotification_center_checker_backend : bool
 
 val os_type : os_type
@@ -273,6 +277,8 @@ val eradicate_field_over_annotated : bool
 val eradicate_return_over_annotated : bool
 
 val eradicate_verbose : bool
+
+val error_report_json : string list
 
 val fail_on_bug : bool
 
@@ -576,6 +582,14 @@ val symops_per_iteration : int option
 val test_determinator : bool
 
 val export_changed_functions : bool
+
+val npex_specifications_directory : string
+
+val npex_launch_localizer : bool
+
+val npex_launch_spec_synthesizer : bool
+
+val npex_launch_spec_verifier : bool
 
 val test_filtering : bool
 

@@ -180,6 +180,22 @@ let () =
         L.result
           "To see Infer's manual, run `infer --help`.@\n\
            To see help about the \"help\" command itself, run `infer help --help`.@\n"
+  | NPEX ->
+      let get_summary proc_name =
+        match Summary.OnDisk.get proc_name with
+        | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
+            spec_checker_summary
+        | _ ->
+            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+      in
+      ResultsDir.assert_results_dir "have you run capture before?" ;
+      if Config.npex_launch_localizer then (
+        assert (Int.equal (List.length Config.error_report_json) 1) ;
+        Localizer.launch () )
+      else if Config.npex_launch_spec_synthesizer then (
+        L.progress "launch spec synthesizer" ;
+        SpecSynth.launch ~get_summary )
+      else if Config.npex_launch_spec_verifier then SpecVeri.launch ~get_summary
   | Report -> (
       let write_from_json out_path =
         IssuesTest.write_from_json ~json_path:Config.from_json_report ~out_path
@@ -232,7 +248,7 @@ let () =
                 Summary.pp_text fmt summary
           in
           Option.iter (Procedures.select_proc_names_interactive ~filter) ~f:(fun proc_names ->
-              L.result "%a" (fun fmt () -> List.iter proc_names ~f:(pp_summary fmt)) () )
+              L.result "%a" (fun fmt () -> List.iter proc_names ~f:(pp_summary fmt)) ())
         else
           L.result "%a"
             Config.(
@@ -257,9 +273,9 @@ let () =
               let cfgs = Procname.Hash.create (List.length proc_names) in
               List.iter proc_names ~f:(fun proc_name ->
                   Procdesc.load proc_name
-                  |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg) ) ;
+                  |> Option.iter ~f:(fun cfg -> Procname.Hash.add cfgs proc_name cfg)) ;
               (* emit the dot file in captured/... *)
-              DotCfg.emit_frontend_cfg source_file cfgs ) ;
+              DotCfg.emit_frontend_cfg source_file cfgs) ;
           L.result "CFGs written in %s/*/%s@." (ResultsDir.get_path Debug)
             Config.dotty_frontend_output ) )
   | Explore ->

@@ -28,6 +28,7 @@ include sig
     ; siof: SiofDomain.Summary.t option
     ; starvation: StarvationDomain.summary option
     ; nullsafe: NullsafeSummary.t option
+    ; spec_checker: SpecCheckerSummary.t option
     ; uninit: UninitDomain.Summary.t option }
   [@@deriving fields]
 end
