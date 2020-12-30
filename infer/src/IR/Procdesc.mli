@@ -184,6 +184,8 @@ module Node : sig
   val pp_stmt : Format.formatter -> stmt_nodekind -> unit
 
   val compute_key : t -> NodeKey.t
+
+  val replace_instrs_with_given : t -> Instrs.not_reversed_t -> unit
 end
 
 (** Map with node id keys. *)

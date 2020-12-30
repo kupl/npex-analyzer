@@ -433,6 +433,8 @@ module Node = struct
     let succs = get_succs node in
     let preds = get_preds node in
     NodeKey.compute node ~simple_key ~succs ~preds
+
+  let replace_instrs_with_given node instrs = node.instrs <- instrs
 end
 
 (* =============== END of module Node =============== *)
