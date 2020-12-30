@@ -25,7 +25,7 @@ let mk_command_doc ~see_also:see_also_commands ?environment:environment_opt ?fil
       let exe_names =
         List.map see_also_commands ~f:(fun cmd ->
             let exe = InferCommand.to_exe_name cmd in
-            Printf.sprintf "$(b,%s)(%d)" (Cmdliner.Manpage.escape exe) section )
+            Printf.sprintf "$(b,%s)(%d)" (Cmdliner.Manpage.escape exe) section)
       in
       Some [`P (String.concat ~sep:", " exe_names)]
   in
@@ -324,6 +324,12 @@ $(b,infer) $(b,analyze) $(i,[options])|} ]
     ~see_also:InferCommand.[Analyze; Capture; Report]
 
 
+let npex =
+  mk_command_doc ~title:"NPEX" ~short_description:"NPEX repairs null dereference errors"
+    ~synopsis:"%(b,infer) %(b,npex) $(b,--) $(i,[NPEX coomand])" ~description:[`P ""]
+    ~see_also:InferCommand.[NPEX]
+
+
 let command_to_data =
   let mk cmd mk_doc =
     let name = InferCommand.to_string cmd in
@@ -339,7 +345,8 @@ let command_to_data =
   ; mk Help help
   ; mk Report report
   ; mk ReportDiff reportdiff
-  ; mk Run run ]
+  ; mk Run run
+  ; mk NPEX npex ]
 
 
 let data_of_command command =

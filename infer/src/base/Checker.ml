@@ -34,6 +34,7 @@ type t =
   | ResourceLeakLabExercise
   | SIOF
   | SelfInBlock
+  | SpecChecker
   | Starvation
   | ToplOnBiabduction
   | ToplOnPulse
@@ -402,6 +403,14 @@ let config_unsafe checker =
       ; cli_flags= Some {deprecated= []; show_in_help= true}
       ; enabled_by_default= true
       ; activates= [] }
+  | SpecChecker ->
+      { id= "spec-checker"
+      ; kind= UserFacing {title= "NPEX-specification Checker"; markdown_body= ""}
+      ; support= supports_java
+      ; short_documentation= "Verify npex specification"
+      ; cli_flags= Some {deprecated= []; show_in_help= true}
+      ; enabled_by_default= true
+      ; activates= [] }
 
 
 let config c =
@@ -412,7 +421,7 @@ let config c =
          L.die InternalError
            "Illegal character '%c' in id: '%s'. Checker ids must be easy to pass on the command \
             line."
-           c config.id ) ;
+           c config.id) ;
   config
 
 

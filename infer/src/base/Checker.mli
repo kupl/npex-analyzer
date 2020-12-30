@@ -33,6 +33,7 @@ type t =
   | ResourceLeakLabExercise
   | SIOF
   | SelfInBlock
+  | SpecChecker
   | Starvation
   | ToplOnBiabduction
   | ToplOnPulse

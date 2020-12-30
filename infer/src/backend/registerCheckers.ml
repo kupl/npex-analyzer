@@ -32,7 +32,7 @@ let interprocedural2 payload_field1 payload_field2 checker =
        ~f_analyze_dep:(fun proc_desc payloads -> Some (proc_desc, payloads))
        ~f_analyze_pdesc_dep:Option.some
        ~get_payload:(fun payloads ->
-         (Field.get payload_field1 payloads, Field.get payload_field2 payloads) )
+         (Field.get payload_field1 payloads, Field.get payload_field2 payloads))
        ~set_payload:(fun payloads payload1 -> Field.fset payload_field1 payloads payload1)
        checker)
 
@@ -46,7 +46,7 @@ let interprocedural3 payload_field1 payload_field2 payload_field3 ~set_payload c
        ~get_payload:(fun payloads ->
          ( Field.get payload_field1 payloads
          , Field.get payload_field2 payloads
-         , Field.get payload_field3 payloads ) )
+         , Field.get payload_field3 payloads ))
        ~set_payload checker)
 
 
@@ -76,27 +76,27 @@ let all_checkers =
            interprocedural Payloads.Fields.buffer_overrun_analysis
              BufferOverrunAnalysis.analyze_procedure
          in
-         [(bo_analysis, Clang); (bo_analysis, Java)] ) }
+         [(bo_analysis, Clang); (bo_analysis, Java)]) }
   ; { checker= BufferOverrunChecker
     ; callbacks=
         (let bo_checker =
            interprocedural2 Payloads.Fields.buffer_overrun_checker
              Payloads.Fields.buffer_overrun_analysis BufferOverrunChecker.checker
          in
-         [(bo_checker, Clang); (bo_checker, Java)] ) }
+         [(bo_checker, Clang); (bo_checker, Java)]) }
   ; { checker= PurityAnalysis
     ; callbacks=
         (let purity =
            interprocedural2 Payloads.Fields.purity Payloads.Fields.buffer_overrun_analysis
              PurityAnalysis.checker
          in
-         [(purity, Java); (purity, Clang)] ) }
+         [(purity, Java); (purity, Clang)]) }
   ; { checker= PurityChecker
     ; callbacks=
         (let purity =
            intraprocedural_with_field_dependency Payloads.Fields.purity PurityChecker.checker
          in
-         [(purity, Java); (purity, Clang)] ) }
+         [(purity, Java); (purity, Clang)]) }
   ; { checker= Starvation
     ; callbacks=
         (let starvation = interprocedural Payloads.Fields.starvation Starvation.analyze_procedure in
@@ -106,24 +106,24 @@ let all_checkers =
          [ (starvation, Java)
          ; (starvation_file_reporting, Java)
          ; (starvation, Clang)
-         ; (starvation_file_reporting, Clang) ] ) }
+         ; (starvation_file_reporting, Clang) ]) }
   ; { checker= LoopHoisting
     ; callbacks=
         (let hoisting =
            interprocedural3
              ~set_payload:(fun payloads () ->
-               (* this analysis doesn't produce additional payloads *) payloads )
+               (* this analysis doesn't produce additional payloads *) payloads)
              Payloads.Fields.buffer_overrun_analysis Payloads.Fields.purity Payloads.Fields.cost
              Hoisting.checker
          in
-         [(hoisting, Clang); (hoisting, Java)] ) }
+         [(hoisting, Clang); (hoisting, Java)]) }
   ; { checker= Cost
     ; callbacks=
         (let checker =
            interprocedural3 ~set_payload:(Field.fset Payloads.Fields.cost) Payloads.Fields.cost
              Payloads.Fields.buffer_overrun_analysis Payloads.Fields.purity Cost.checker
          in
-         [(checker, Clang); (checker, Java)] ) }
+         [(checker, Clang); (checker, Java)]) }
   ; {checker= Uninit; callbacks= [(interprocedural Payloads.Fields.uninit Uninit.checker, Clang)]}
   ; {checker= SIOF; callbacks= [(interprocedural Payloads.Fields.siof Siof.checker, Clang)]}
   ; { checker= LithoRequiredProps
@@ -140,7 +140,7 @@ let all_checkers =
     ; callbacks=
         (let racerd_proc = interprocedural Payloads.Fields.racerd RacerD.analyze_procedure in
          let racerd_file = file RacerDIssues Payloads.Fields.racerd RacerD.file_analysis in
-         [(racerd_proc, Clang); (racerd_proc, Java); (racerd_file, Clang); (racerd_file, Java)] ) }
+         [(racerd_proc, Clang); (racerd_proc, Java); (racerd_file, Clang); (racerd_file, Java)]) }
   ; { checker= Quandary
     ; callbacks=
         [ (interprocedural Payloads.Fields.quandary JavaTaintAnalysis.checker, Java)
@@ -152,13 +152,13 @@ let all_checkers =
            else Pulse.checker
          in
          let pulse = interprocedural Payloads.Fields.pulse checker in
-         [(pulse, Clang); (pulse, Java)] ) }
+         [(pulse, Clang); (pulse, Java)]) }
   ; { checker= Impurity
     ; callbacks=
         (let impurity =
            intraprocedural_with_field_dependency Payloads.Fields.pulse Impurity.checker
          in
-         [(impurity, Java); (impurity, Clang)] ) }
+         [(impurity, Java); (impurity, Clang)]) }
   ; {checker= PrintfArgs; callbacks= [(intraprocedural PrintfArgs.checker, Java)]}
   ; {checker= Liveness; callbacks= [(intraprocedural Liveness.checker, Clang)]}
   ; { checker= InefficientKeysetIterator
@@ -182,20 +182,27 @@ let all_checkers =
                Topl.analyze_with_biabduction Interproc.analyze_procedure
              else Interproc.analyze_procedure )
          in
-         [(biabduction, Clang); (biabduction, Java)] ) }
+         [(biabduction, Clang); (biabduction, Java)]) }
   ; { checker= AnnotationReachability
     ; callbacks=
         (let annot_reach =
            interprocedural Payloads.Fields.annot_map AnnotationReachability.checker
          in
-         [(annot_reach, Java); (annot_reach, Clang)] ) }
+         [(annot_reach, Java); (annot_reach, Clang)]) }
   ; { checker= ConfigChecksBetweenMarkers
     ; callbacks=
         (let checker =
            interprocedural Payloads.Fields.config_checks_between_markers
              ConfigChecksBetweenMarkers.checker
          in
-         [(checker, Clang); (checker, Java)] ) } ]
+         [(checker, Clang); (checker, Java)]) }
+  ; { checker= SpecChecker
+    ; callbacks=
+        (let checker =
+           interprocedural Payloads.Fields.spec_checker
+             (if Config.npex_launch_spec_synthesizer then SpecSynth.checker else SpecChecker.checker)
+         in
+         [(checker, Java)]) } ]
 
 
 let get_active_checkers () =
@@ -226,7 +233,7 @@ module LanguageSet = Caml.Set.Make (Language)
 let pp_checker fmt {checker; callbacks} =
   let langs_of_callbacks =
     List.fold_left callbacks ~init:LanguageSet.empty ~f:(fun langs (_, lang) ->
-        LanguageSet.add lang langs )
+        LanguageSet.add lang langs)
     |> LanguageSet.elements
   in
   F.fprintf fmt "%s (%a)" (Checker.get_id checker)
