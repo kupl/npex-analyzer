@@ -172,6 +172,8 @@ let meet_level = 1
 
 let npex_specification_extension = ".spec"
 
+let npex_summary_dir = "npex-summaries"
+
 let npex_patch_json_name = "patch.json"
 
 let nsnotification_center_checker_backend = false

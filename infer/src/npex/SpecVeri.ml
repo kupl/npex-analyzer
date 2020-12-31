@@ -21,10 +21,11 @@ module Row = struct
         F.fprintf fmt "%a@." (pp ~is_header:false) row)
 end
 
-let eval_term astate = function
-  | AccessExpr.AccessExpr (pv, accesses) -> (
-      let base = Domain.Loc.of_pvar pv in
-      try
+let eval_term astate aexpr =
+  try
+    match aexpr with
+    | AccessExpr.AccessExpr (pv, accesses) when Pvar.is_global pv ->
+        let base = Domain.Loc.of_pvar pv in
         let loc =
           List.fold accesses ~init:base ~f:(fun acc access ->
               match access with
@@ -34,9 +35,28 @@ let eval_term astate = function
                   raise (TODO "Spec should not contain array or method invocation"))
         in
         Domain.read_loc astate loc
-      with TODO _ -> Domain.Val.top )
-  | AccessExpr.Primitive const ->
-      Domain.Val.of_const const
+    | AccessExpr.AccessExpr (pv, accesses) ->
+        let base = Domain.Loc.of_pvar pv in
+        let loc =
+          List.fold accesses ~init:base ~f:(fun acc access ->
+              let acc_loc = Domain.read_loc astate acc |> Domain.Val.to_loc in
+              match access with
+              | AccessExpr.FieldAccess fn ->
+                  Domain.Loc.append_field acc_loc ~fn
+              | _ ->
+                  raise (TODO "Spec should not contain array or method invocation"))
+        in
+        Domain.read_loc astate loc
+    | AccessExpr.Primitive (Const.Cint intlit) when IntLit.isnull intlit ->
+        Domain.Val.make_null InstrNode.dummy
+    | AccessExpr.Primitive const ->
+        Domain.Val.of_const const
+  with
+  | Unexpected msg ->
+      L.progress "[WARNING]: error occurs during evaluating %a:@. - Msg: %s@." AccessExpr.pp aexpr msg ;
+      Domain.Val.top
+  | TODO _ ->
+      Domain.Val.top
 
 
 let eval_unary astate f term =

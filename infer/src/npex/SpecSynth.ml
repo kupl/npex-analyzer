@@ -3,7 +3,6 @@ open! Vocab
 module L = Logging
 module CFG = SpecChecker.CFG
 module Analyzer = SpecChecker.Analyzer
-module Domain = SpecCheckerDomain
 module Conjunctions = Specification.Conjunctions
 module Formula = Specification.Formula
 
@@ -64,7 +63,9 @@ and collect_terms_from_summary summary =
 
 
 and enumerate_formulas (terms : Terms.t) : Formula.formula list =
-  List.map (enumerate_atoms (Terms.elements terms)) ~f:(fun atom -> Formula.Atom atom)
+  List.concat_map
+    (enumerate_atoms (Terms.elements terms))
+    ~f:(fun atom -> [Formula.Neg (Formula.Atom atom); Formula.Atom atom])
 
 
 and enumerate_atoms terms =

@@ -63,11 +63,13 @@ let setup () =
       ResultsDir.assert_results_dir "please run an infer analysis first"
   | Debug ->
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
+  | NPEX ->
+      ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | Help ->
       () ) ;
   let has_result_dir =
     match Config.command with
-    | Analyze | Capture | Compile | Debug | Explore | Report | ReportDiff | Run ->
+    | Analyze | Capture | Compile | Debug | Explore | Report | ReportDiff | Run | NPEX ->
         true
     | Help ->
         false
@@ -180,22 +182,6 @@ let () =
         L.result
           "To see Infer's manual, run `infer --help`.@\n\
            To see help about the \"help\" command itself, run `infer help --help`.@\n"
-  | NPEX ->
-      let get_summary proc_name =
-        match Summary.OnDisk.get proc_name with
-        | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
-            spec_checker_summary
-        | _ ->
-            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
-      in
-      ResultsDir.assert_results_dir "have you run capture before?" ;
-      if Config.npex_launch_localizer then (
-        assert (Int.equal (List.length Config.error_report_json) 1) ;
-        Localizer.launch () )
-      else if Config.npex_launch_spec_synthesizer then (
-        L.progress "launch spec synthesizer" ;
-        SpecSynth.launch ~get_summary )
-      else if Config.npex_launch_spec_verifier then SpecVeri.launch ~get_summary
   | Report -> (
       let write_from_json out_path =
         IssuesTest.write_from_json ~json_path:Config.from_json_report ~out_path
@@ -287,6 +273,23 @@ let () =
       else
         TraceBugs.explore ~selector_limit:None ~report_json:(ResultsDir.get_path ReportJson)
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
-          ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting ) ;
+          ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
+  | NPEX ->
+      InferAnalyze.main ~changed_files:None ;
+      let get_summary proc_name =
+        match Summary.OnDisk.get proc_name with
+        | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
+            spec_checker_summary
+        | _ ->
+            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+      in
+      ResultsDir.assert_results_dir "have you run capture before?" ;
+      if Config.npex_launch_localizer then (
+        assert (Int.equal (List.length Config.error_report_json) 1) ;
+        Localizer.launch () )
+      else if Config.npex_launch_spec_synthesizer then (
+        L.progress "launch spec synthesizer" ;
+        SpecSynth.launch ~get_summary )
+      else if Config.npex_launch_spec_verifier then SpecVeri.launch ~get_summary ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0

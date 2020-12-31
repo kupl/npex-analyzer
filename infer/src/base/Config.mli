@@ -96,6 +96,8 @@ val npex_specification_extension : string
 
 val npex_patch_json_name : string
 
+val npex_summary_dir : string
+
 val nsnotification_center_checker_backend : bool
 
 val os_type : os_type

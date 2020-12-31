@@ -109,22 +109,33 @@ module DisjReady = struct
     [Domain.store_reg astate_field_stored ret_id value]
 
 
-  [@@@warning "-8"]
-
   let exec_model_proc astate node instr callee (ret_id, ret_typ) arg_typs =
-    let is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
+    let[@warning "-8"] is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
     let instr_node = Node.of_pnode node instr in
     match callee with
+    | _ when String.equal "__cast" (Procname.get_method callee) ->
+        (* ret_typ of__cast is Boolean, but is actually pointer type *)
+        let value = Domain.Val.make_extern instr_node Typ.void_star in
+        [Domain.store_reg astate ret_id value]
+    | _ when String.equal "__instanceof" (Procname.get_method callee) ->
+        (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
+        let (arg_exp, _), (sizeof_exp, _) = (List.nth_exn arg_typs 0, List.nth_exn arg_typs 1) in
+        let arg_value = Domain.eval astate node instr arg_exp in
+        let null_cond =
+          Domain.PathCond.make_physical_equals Binop.Eq arg_value (Domain.Val.make_null instr_node)
+        in
+        let value =
+          if Domain.is_valid_pc astate null_cond then (* instanceof(null) = false *)
+            Domain.Val.zero
+          else Domain.Val.make_extern instr_node Typ.void_star
+        in
+        [Domain.store_reg astate ret_id value]
     | _ when is_virtual && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
         let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" in
         exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
     | Procname.Java mthd ->
         let ret_typ = Procname.Java.get_return_typ mthd in
         let value = Domain.Val.make_extern instr_node ret_typ in
-        [Domain.store_reg astate ret_id value]
-    | _ when String.equal "__cast" (Procname.get_method callee) ->
-        (* ret_typ of__cast is Boolean, but is actually pointer type *)
-        let value = Domain.Val.make_extern instr_node Typ.void_star in
         [Domain.store_reg astate ret_id value]
     | _ ->
         let value = Domain.Val.make_extern instr_node ret_typ in
@@ -134,26 +145,24 @@ module DisjReady = struct
   let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency}; program} node instr
       ret_typ arg_typs callee =
     let ret_id, _ = ret_typ in
-    if Program.is_undef_proc program callee then exec_model_proc astate node instr callee ret_typ arg_typs
-    else
-      match analyze_dependency callee with
-      | Some (callee_pdesc, callee_summary) ->
-          let formals = Procdesc.get_pvar_formals callee_pdesc in
-          let formal_pvars = List.map formals ~f:fst in
-          let ret_var = Procdesc.get_ret_var callee_pdesc in
-          let locals =
-            Procdesc.get_locals callee_pdesc |> List.map ~f:(fun ProcAttributes.{name} -> Pvar.mk name callee)
-          in
-          let actual_values =
-            List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
-          in
-          Summary.resolve_summary astate ~actual_values ~formals callee_summary
-          |> List.map ~f:(fun astate' ->
-                 Domain.read_loc astate' (Domain.Loc.of_pvar ret_var)
-                 |> Domain.store_reg astate' ret_id
-                 |> Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals))
-      | None ->
-          exec_model_proc astate node instr callee ret_typ arg_typs
+    match analyze_dependency callee with
+    | Some (callee_pdesc, callee_summary) ->
+        let formals = Procdesc.get_pvar_formals callee_pdesc in
+        let formal_pvars = List.map formals ~f:fst in
+        let ret_var = Procdesc.get_ret_var callee_pdesc in
+        let locals =
+          Procdesc.get_locals callee_pdesc |> List.map ~f:(fun ProcAttributes.{name} -> Pvar.mk name callee)
+        in
+        let actual_values =
+          List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
+        in
+        Summary.resolve_summary astate ~actual_values ~formals callee_summary
+        |> List.map ~f:(fun astate' ->
+               Domain.read_loc astate' (Domain.Loc.of_pvar ret_var)
+               |> Domain.store_reg astate' ret_id
+               |> Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals))
+    | None ->
+        exec_model_proc astate node instr callee ret_typ arg_typs
 
 
   let exec_instr astate ({program} as analysis_data) cfg_node instr =
@@ -208,10 +217,8 @@ module DisjReady = struct
           | Some class_name ->
               let callee = Procname.replace_class proc class_name in
               exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
-          | None when not (Program.is_undef_proc program proc) ->
-              exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc
           | None ->
-              exec_model_proc astate node instr proc ret_typ arg_typs )
+              exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc )
       | Sil.Call (ret_typ, _, arg_typs, _, _) ->
           (* callback call *)
           exec_unknown_call astate node instr ret_typ arg_typs

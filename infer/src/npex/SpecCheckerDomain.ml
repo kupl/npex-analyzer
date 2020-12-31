@@ -417,6 +417,12 @@ module Val = struct
 
 
   let widen ~prev ~next ~num_iters:_ = join prev next
+
+  let to_loc = function
+    | Vheap h ->
+        Loc.SymHeap h
+    | _ as v ->
+        raise (Unexpected (F.asprintf "Non-locational value %a cannot be converted to location" pp v))
 end
 
 module PathCond = struct
@@ -574,7 +580,7 @@ let pp fmt {symtbl; reg; mem; pc; is_npe_alternative} =
     is_npe_alternative
 
 
-let leq ~lhs ~rhs = false
+let leq ~lhs:_ ~rhs:_ = (* No join *) false
 
 let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; symtbl= SymTbl.empty; is_npe_alternative= false}
 

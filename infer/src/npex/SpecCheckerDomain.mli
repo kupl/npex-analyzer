@@ -8,6 +8,8 @@ module Loc : sig
   val is_null : t -> bool
 
   val append_field : fn:Fieldname.t -> t -> t
+
+  val pp : Format.formatter -> t -> unit
 end
 
 module Val : sig
@@ -34,6 +36,12 @@ module Val : sig
   val get_const : t -> Const.t option
 
   val top : t
+
+  val zero : t
+
+  val pp : Format.formatter -> t -> unit
+
+  val to_loc : t -> Loc.t
 end
 
 module PathCond : sig
