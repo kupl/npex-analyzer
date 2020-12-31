@@ -39,12 +39,14 @@ let eval_term astate aexpr =
         let base = Domain.Loc.of_pvar pv in
         let loc =
           List.fold accesses ~init:base ~f:(fun acc access ->
-              let acc_loc = Domain.read_loc astate acc |> Domain.Val.to_loc in
-              match access with
-              | AccessExpr.FieldAccess fn ->
-                  Domain.Loc.append_field acc_loc ~fn
-              | _ ->
-                  raise (TODO "Spec should not contain array or method invocation"))
+              if Domain.is_unknown_loc astate acc then raise (Unexpected "Bottom")
+              else
+                let acc_loc = Domain.read_loc astate acc |> Domain.Val.to_loc in
+                match access with
+                | AccessExpr.FieldAccess fn ->
+                    Domain.Loc.append_field acc_loc ~fn
+                | _ ->
+                    raise (TODO "Spec should not contain array or method invocation"))
         in
         Domain.read_loc astate loc
     | AccessExpr.Primitive (Const.Cint intlit) when IntLit.isnull intlit ->
@@ -52,6 +54,8 @@ let eval_term astate aexpr =
     | AccessExpr.Primitive const ->
         Domain.Val.of_const const
   with
+  | Unexpected "Bottom" ->
+      Domain.Val.top
   | Unexpected msg ->
       L.progress "[WARNING]: error occurs during evaluating %a:@. - Msg: %s@." AccessExpr.pp aexpr msg ;
       Domain.Val.top
