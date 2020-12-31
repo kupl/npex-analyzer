@@ -35,14 +35,14 @@ let exec_kill st _ = st
 
 let exec_move st reg_exps =
   IArray.fold reg_exps ~init:st ~f:(fun st (_, rhs) ->
-      used_globals ~init:st rhs )
+      used_globals ~init:st rhs)
 
 let exec_inst st inst =
   [%Trace.call fun {pf} -> pf "pre:{%a} %a" pp st Llair.Inst.pp inst]
   ;
   Some
     (Llair.Inst.fold_exps inst ~init:st ~f:(fun acc e ->
-         used_globals ~init:acc e ))
+         used_globals ~init:acc e))
   |>
   [%Trace.retn fun {pf} ->
     Option.iter ~f:(fun uses -> pf "post:{%a}" pp uses)]

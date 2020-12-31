@@ -74,7 +74,7 @@ let spec_rename_vars pname spec =
       BiabductionSummary.Jprop.free_vars spec.BiabductionSummary.pre |> Ident.hashqueue_of_sequence
     in
     List.fold_left spec.BiabductionSummary.posts ~init:fav ~f:(fun fav (p, _) ->
-        Prop.free_vars p |> Ident.hashqueue_of_sequence ~init:fav )
+        Prop.free_vars p |> Ident.hashqueue_of_sequence ~init:fav)
   in
   let ids = Ident.HashQueue.keys fav in
   let ids' = List.map ~f:(fun i -> (i, Ident.create_fresh Ident.kprimed)) ids in
@@ -137,7 +137,7 @@ let process_splitting actual_pre sub1 sub2 frame missing_pi missing_sigma frame_
     (* vars which represent expansions of fields *)
     Predicates.sub_range sub2
     |> List.fold_left ~init:fav_pre ~f:(fun res e ->
-           Exp.free_vars e |> Sequence.filter ~f:filter |> Ident.hashqueue_of_sequence ~init:res )
+           Exp.free_vars e |> Sequence.filter ~f:filter |> Ident.hashqueue_of_sequence ~init:res)
   in
   let fav_missing_primed =
     let filter id = Ident.is_primed id && not (Ident.HashQueue.mem fav_actual_pre id) in
@@ -200,7 +200,7 @@ let process_splitting actual_pre sub1 sub2 frame missing_pi missing_sigma frame_
     in
     let fav_sub_list =
       List.fold_left sub_list ~init:(Ident.HashQueue.create ()) ~f:(fun fav (_, e) ->
-          Exp.free_vars e |> Ident.hashqueue_of_sequence ~init:fav )
+          Exp.free_vars e |> Ident.hashqueue_of_sequence ~init:fav)
       |> Ident.HashQueue.keys
     in
     Predicates.subst_of_list (List.map ~f fav_sub_list)
@@ -349,7 +349,7 @@ let check_dereferences caller_pname tenv callee_pname actual_pre sub spec_pre fo
   let deref_err_list =
     List.fold
       ~f:(fun deref_errs hpred ->
-        match check_hpred hpred with Some reason -> reason :: deref_errs | None -> deref_errs )
+        match check_hpred hpred with Some reason -> reason :: deref_errs | None -> deref_errs)
       ~init:[] spec_pre.Prop.sigma
   in
   match deref_err_list with
@@ -767,14 +767,12 @@ let combine ({InterproceduralAnalysis.proc_desc= caller_pdesc; tenv; _} as analy
       else
         List.map
           ~f:(fun (p, path_post) ->
-            (p, Paths.Path.add_call (include_subtrace callee_pname) path_pre callee_pname path_post)
-            )
+            (p, Paths.Path.add_call (include_subtrace callee_pname) path_pre callee_pname path_post))
           posts
     in
     List.map
       ~f:(fun (p, path) ->
-        post_process_post analysis_data callee_pname loc actual_pre (Prop.prop_sub split.sub p, path)
-        )
+        post_process_post analysis_data callee_pname loc actual_pre (Prop.prop_sub split.sub p, path))
       posts'
   in
   L.d_increase_indent () ;
@@ -937,7 +935,7 @@ let mk_posts tenv prop callee_pname posts =
           | Predicates.Apred (Aretval (pname, _), [exp]) when Procname.equal callee_pname pname ->
               Prover.check_disequal tenv prop exp Exp.zero
           | _ ->
-              false )
+              false)
         (Attribute.get_all prop)
     in
     if last_call_ret_non_null then
@@ -947,7 +945,7 @@ let mk_posts tenv prop callee_pname posts =
             | Predicates.Hpointsto (Exp.Lvar pvar, Eexp (e, _), _) when Pvar.is_return pvar ->
                 Prover.check_equal tenv (Prop.normalize tenv prop) e Exp.zero
             | _ ->
-                false )
+                false)
           prop.Prop.sigma
       in
       List.filter ~f:(fun (prop, _) -> not (returns_null prop)) posts
@@ -997,7 +995,7 @@ let check_uninitialize_dangling_deref caller_pname tenv callee_pname actual_pre 
       | Some (Deref_undef_exp, desc) ->
           raise (Exceptions.Dangling_pointer_dereference (true, desc, __POS__))
       | _ ->
-          () )
+          ())
     props
 
 
@@ -1206,7 +1204,7 @@ let prop_pure_to_footprint tenv (p : 'a Prop.t) : Prop.normal Prop.t =
     (* add pure fact to footprint *)
     let filtered_pi_fp =
       List.filter (p.Prop.pi_fp @ new_footprint_atoms) ~f:(fun a ->
-          not (Predicates.atom_has_local_addr a) )
+          not (Predicates.atom_has_local_addr a))
     in
     Prop.normalize tenv (Prop.set p ~pi_fp:filtered_pi_fp)
 
@@ -1289,7 +1287,7 @@ let exe_call_postprocess tenv ret_id callee_pname callee_attrs loc results =
                         let exn = get_check_exn tenv check callee_pname loc __POS__ in
                         raise exn
                     | _ ->
-                        false )
+                        false)
                   invalid_res
               then call_desc (Some Localise.Pnm_bounds)
               else call_desc None

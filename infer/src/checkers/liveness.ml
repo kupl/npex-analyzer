@@ -32,7 +32,7 @@ let string_list_of_json ~option_name ~init = function
           | `String s ->
               s :: acc
           | _ ->
-              json_error ~option_name ~expected:"string" ~actual:json )
+              json_error ~option_name ~expected:"string" ~actual:json)
         ~init
   | json ->
       json_error ~option_name ~expected:"list of strings" ~actual:json
@@ -104,7 +104,7 @@ module TransferFunctions (LConfig : LivenessConfig) (CFG : ProcCfg.S) = struct
     in
     Exp.program_vars exp
     |> Sequence.fold ~init:astate' ~f:(fun astate_acc pvar ->
-           Domain.add (Var.of_pvar pvar) astate_acc )
+           Domain.add (Var.of_pvar pvar) astate_acc)
 
 
   let add_live_actuals actuals call_exp live_acc =
@@ -196,8 +196,8 @@ module CapturedByRefTransferFunctions (CFG : ProcCfg.S) = struct
                 Domain.add (Var.of_pvar pvar) acc
             | _ ->
                 (* captured by value or init-capture, skip *)
-                acc )
-          acc )
+                acc)
+          acc)
       ~init:astate
 
 
@@ -240,9 +240,9 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
   let locals = Procdesc.get_locals proc_desc in
   let is_constexpr_or_unused pvar =
     List.find locals ~f:(fun local_data ->
-        Mangled.equal (Pvar.get_name pvar) local_data.ProcAttributes.name )
+        Mangled.equal (Pvar.get_name pvar) local_data.ProcAttributes.name)
     |> Option.exists ~f:(fun local ->
-           local.ProcAttributes.is_constexpr || local.ProcAttributes.is_declared_unused )
+           local.ProcAttributes.is_constexpr || local.ProcAttributes.is_declared_unused)
   in
   let should_report pvar typ live_vars captured_by_ref_vars =
     not
@@ -295,6 +295,6 @@ let checker {IntraproceduralAnalysis.proc_desc; err_log} =
         | Some live_vars ->
             report_dead_store live_vars captured_by_ref_vars instr
         | None ->
-            () )
+            ())
   in
   Container.iter cfg ~fold:CFG.fold_nodes ~f:report_on_node

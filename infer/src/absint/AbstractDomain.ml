@@ -457,7 +457,7 @@ module MapOfPPMap (M : PrettyPrintable.PPMap) (ValueDomain : S) = struct
     else
       M.for_all
         (fun k lhs_v ->
-          try ValueDomain.leq ~lhs:lhs_v ~rhs:(M.find k rhs) with Caml.Not_found -> false )
+          try ValueDomain.leq ~lhs:lhs_v ~rhs:(M.find k rhs) with Caml.Not_found -> false)
         lhs
 
 
@@ -482,7 +482,7 @@ module MapOfPPMap (M : PrettyPrintable.PPMap) (ValueDomain : S) = struct
                 equals1 := false ;
                 v2_opt
             | None, None ->
-                None )
+                None)
           astate1 astate2
       in
       if !equals1 then astate1 else if !equals2 then astate2 else res
@@ -543,7 +543,7 @@ module InvertedMap (Key : PrettyPrintable.PrintableOrderedType) (ValueDomain : S
                 equals2 := false ;
                 None
             | None, None ->
-                None )
+                None)
           astate1 astate2
       in
       if !equals1 then astate1 else if !equals2 then astate2 else res
@@ -690,7 +690,7 @@ module SafeInvertedMap (Key : PrettyPrintable.PrintableOrderedType) (ValueDomain
                 equals2 := false ;
                 None
             | None, None ->
-                None )
+                None)
           astate1 astate2
       in
       if !equals1 then astate1 else if !equals2 then astate2 else res
@@ -741,7 +741,7 @@ struct
             None
         | Some s ->
             let s' = S.remove v s in
-            if S.is_empty s' then None else Some s' )
+            if S.is_empty s' then None else Some s')
       m
 end
 

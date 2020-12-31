@@ -256,7 +256,7 @@ module CFrontend_decl_funct (T : CModule_type.CTranslation) : CModule_type.CFron
           | ObjCMethodDecl (_, name_info, mdi) ->
               String.equal name_info.ni_name "dealloc" && mdi.Clang_ast_t.omdi_is_instance_method
           | _ ->
-              false )
+              false)
         decl_list
     in
     if not found_dealloc then
@@ -472,7 +472,7 @@ module CFrontend_decl_funct (T : CModule_type.CTranslation) : CModule_type.CFron
             ~pp_context:(fun fmt () ->
               F.fprintf fmt "Error adding types from decl '%a'"
                 (Pp.of_string ~f:Clang_ast_j.string_of_decl)
-                dec ) ;
+                dec) ;
           List.iter ~f:translate method_decls
       | _ ->
           () ) ;

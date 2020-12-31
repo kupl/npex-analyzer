@@ -13,7 +13,7 @@ module SkippedTrace = struct
 
   let pp fmt =
     PulseTrace.pp fmt ~pp_immediate:(fun fmt ->
-        F.pp_print_string fmt "call to skipped function occurs here" )
+        F.pp_print_string fmt "call to skipped function occurs here")
 
 
   let leq ~lhs ~rhs = phys_equal lhs rhs

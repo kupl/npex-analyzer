@@ -111,7 +111,7 @@ let save_global_state () =
   ; name_generator= Ident.NameGenerator.get_current ()
   ; proc_analysis_time=
       Option.map !current_taskbar_status ~f:(fun (t0, status) ->
-          (Mtime.span t0 (Mtime_clock.now ()), status) )
+          (Mtime.span t0 (Mtime_clock.now ()), status))
   ; pulse_address_generator= PulseAbstractValue.State.get ()
   ; absint_state= AnalysisState.save ()
   ; biabduction_state= State.save_state () }
@@ -134,7 +134,7 @@ let restore_global_state st =
         let new_t0 = Mtime.sub_span (Mtime_clock.now ()) suspended_span in
         let new_t0 = Option.value_exn new_t0 in
         !ProcessPoolState.update_status new_t0 status ;
-        (new_t0, status) ) ;
+        (new_t0, status)) ;
   Timeout.resume_previous_timeout ()
 
 
@@ -236,7 +236,7 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
                 Procname.pp callee_pname Location.pp_file_pos location ;
               logged_error := true ) ;
             restore_global_state old_state ;
-            not Config.keep_going ) ;
+            not Config.keep_going) ;
     L.internal_error "@\nERROR RUNNING BACKEND: %a %s@\n@\nBACK TRACE@\n%s@?" Procname.pp
       callee_pname (Exn.to_string exn) backtrace ;
     match exn with
@@ -256,7 +256,7 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
         let callee_pname = Procdesc.get_proc_name callee_pdesc in
         log_begin_event logger ~name:"ondemand" ~categories:["backend"]
           ~arguments:[("proc", `String (Procname.to_string callee_pname))]
-          () )) ;
+          ())) ;
   let summary = run_proc_analysis ~caller_pdesc callee_pdesc in
   PerfEvent.(log (fun logger -> log_end_event logger ())) ;
   summary
@@ -279,7 +279,7 @@ let dump_duplicate_procs source_file procs =
                SourceFile.equal translation_unit loc.file ->
             Some (pname, translation_unit)
         | _ ->
-            None )
+            None)
   in
   let output_to_file duplicate_procs =
     Out_channel.with_file (ResultsDir.get_path DuplicateFunctions) ~append:true ~perm:0o666
@@ -287,8 +287,8 @@ let dump_duplicate_procs source_file procs =
         let fmt = F.formatter_of_out_channel outc in
         List.iter duplicate_procs ~f:(fun (pname, source_captured) ->
             F.fprintf fmt "DUPLICATE_SYMBOLS source:%a source_captured:%a pname:%a@\n" SourceFile.pp
-              source_file SourceFile.pp source_captured Procname.pp pname ) ;
-        F.pp_print_flush fmt () )
+              source_file SourceFile.pp source_captured Procname.pp pname) ;
+        F.pp_print_flush fmt ())
   in
   if not (List.is_empty duplicate_procs) then output_to_file duplicate_procs
 
@@ -296,7 +296,7 @@ let dump_duplicate_procs source_file procs =
 let register_callee ?caller_summary callee_pname =
   Option.iter
     ~f:(fun (summary : Summary.t) ->
-      summary.callee_pnames <- Procname.Set.add callee_pname summary.callee_pnames )
+      summary.callee_pnames <- Procname.Set.add callee_pname summary.callee_pnames)
     caller_summary
 
 
@@ -379,9 +379,9 @@ let analyze_procedures exe_env procs_to_analyze source_file_opt =
   in
   List.iter ~f:analyze_proc_name_call procs_to_analyze ;
   Option.iter source_file_opt ~f:(fun source_file ->
-      if Config.dump_duplicate_symbols then dump_duplicate_procs source_file procs_to_analyze ) ;
+      if Config.dump_duplicate_symbols then dump_duplicate_procs source_file procs_to_analyze) ;
   Option.iter source_file_opt ~f:(fun source_file ->
-      Callbacks.iterate_file_callbacks_and_store_issues procs_to_analyze exe_env source_file ) ;
+      Callbacks.iterate_file_callbacks_and_store_issues procs_to_analyze exe_env source_file) ;
   unset_exe_env () ;
   Language.curr_language := saved_language
 

@@ -185,7 +185,7 @@ module Variables = struct
                     in
                     let scope, map = scope_map in
                     with_scope Breakable ~inject_destructors:false body_ptr scope ~f:(fun scope ->
-                        visit_stmt_list body (scope, map) ) ) )
+                        visit_stmt_list body (scope, map))) )
 
 
   and with_scope ?(inject_destructors = true) kind pointer scope ~f =
@@ -204,7 +204,7 @@ module Variables = struct
   and visit_stmt_list stmt_list scope_map =
     List.fold stmt_list ~init:scope_map ~f:(fun scope_map stmt ->
         L.debug Capture Verbose "@;" ;
-        visit_stmt stmt scope_map )
+        visit_stmt stmt scope_map)
 
 
   let empty_scope = {current= []; current_kind= InitialScope; outers= []}
@@ -263,7 +263,7 @@ module CXXTemporaries = struct
   and visit_stmt_list context stmt_list temporaries =
     List.fold stmt_list ~init:temporaries ~f:(fun temporaries stmt ->
         L.debug Capture Verbose "@;" ;
-        visit_stmt context stmt temporaries )
+        visit_stmt context stmt temporaries)
 
 
   let get_destroyable_temporaries context stmt_list = visit_stmt_list context stmt_list []

@@ -26,7 +26,8 @@ struct
     let hash_fold_q s q = Hash.fold_int s (Hashtbl.hash q) in
     M.fold m
       ~init:(Hash.fold_int s (M.length m))
-      ~f:(fun ~key ~data state -> hash_fold_q (hash_fold_elt state key) data)
+      ~f:(fun ~key ~data state ->
+        hash_fold_q (hash_fold_elt state key) data)
 
   let sexp_of_t s =
     let sexp_of_q q = Sexp.Atom (Q.to_string q) in
@@ -59,7 +60,7 @@ struct
 
   let union m n =
     M.merge m n ~f:(fun ~key:_ -> function
-      | `Both (i, j) -> if_nz Q.(i + j) | `Left i | `Right i -> Some i )
+      | `Both (i, j) -> if_nz Q.(i + j) | `Left i | `Right i -> Some i)
 
   let map m ~f =
     let m' = empty in
@@ -68,7 +69,7 @@ struct
           let x', i' = f x i in
           if x' == x then
             if Q.equal i' i then (m, m') else (M.set m ~key:x ~data:i', m')
-          else (M.remove m x, add m' x' i') )
+          else (M.remove m x, add m' x' i'))
     in
     M.fold m' ~init:m ~f:(fun ~key:x ~data:i m -> add m x i)
 

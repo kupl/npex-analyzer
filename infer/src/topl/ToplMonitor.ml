@@ -13,7 +13,7 @@ let sourcefile =
   let x =
     lazy
       (let pid = Pid.to_int (Unix.getpid ()) in
-       SourceFile.create (Printf.sprintf "SynthesizedToplProperty%d.java" pid) )
+       SourceFile.create (Printf.sprintf "SynthesizedToplProperty%d.java" pid))
   in
   fun () -> Lazy.force x
 
@@ -234,7 +234,7 @@ let generate_save_args automaton proc_name =
   procedure proc_name
     (sequence
        (List.init n ~f:(fun i ->
-            assign (ToplUtils.static_var (ToplName.saved_arg i)) (local_var (ToplName.arg i)) )))
+            assign (ToplUtils.static_var (ToplName.saved_arg i)) (local_var (ToplName.arg i)))))
 
 
 let generate_execute automaton proc_name =
@@ -243,11 +243,11 @@ let generate_execute automaton proc_name =
   let calls = List.init (ToplAutomaton.vcount automaton) ~f:call_execute_state in
   let havoc_event_data =
     List.init (ToplAutomaton.max_args automaton) ~f:(fun i ->
-        assign (ToplUtils.static_var (ToplName.saved_arg i)) (fresh_var ()) )
+        assign (ToplUtils.static_var (ToplName.saved_arg i)) (fresh_var ()))
   in
   let havoc_transitions =
     List.init (ToplAutomaton.tcount automaton) ~f:(fun i ->
-        assign (ToplUtils.static_var (ToplName.transition i)) (fresh_var ()) )
+        assign (ToplUtils.static_var (ToplName.transition i)) (fresh_var ()))
   in
   let all = List.concat [calls; havoc_event_data; havoc_transitions] in
   procedure proc_name (sequence all)

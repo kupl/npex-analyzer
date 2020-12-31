@@ -514,7 +514,7 @@ let resolve_pname ~caller_pdesc tenv prop args pname call_flags : Procname.t =
             | Some class_name ->
                 Procname.parameter_of_name resolved_pname class_name :: accu
             | None ->
-                name :: accu )
+                name :: accu)
           ~init:[] args resolved_parameters
         |> List.rev
       with Invalid_argument _ ->
@@ -574,7 +574,7 @@ let resolve_args prop args =
           in
           (arg_exp, resolved_arg_typ)
       | _ ->
-          arg )
+          arg)
     args
 
 
@@ -606,11 +606,11 @@ let resolve_and_analyze
                    the objects in the heap, so we should update them to get the best results. *)
                 let resolved_args = resolve_args prop args in
                 SpecializeProcdesc.with_formals_types ~has_clang_model callee_proc_desc
-                  resolved_pname resolved_args )
+                  resolved_pname resolved_args)
       in
       ( resolved_proc_desc_option
       , Option.bind resolved_proc_desc_option ~f:(fun pdesc ->
-            analyze_pdesc_dependency pdesc |> Option.map ~f:(fun summary -> (pdesc, summary)) ) )
+            analyze_pdesc_dependency pdesc |> Option.map ~f:(fun summary -> (pdesc, summary))) )
   in
   let resolved_pname =
     resolve_pname ~caller_pdesc:proc_desc tenv prop args callee_proc_name call_flags
@@ -656,7 +656,7 @@ let receiver_self receiver prop =
       | Predicates.Hpointsto (Lvar pv, Eexp (e, _), _) ->
           Exp.equal e receiver && Pvar.is_seed pv && Pvar.is_self pv
       | _ ->
-          false )
+          false)
     prop.Prop.sigma
 
 
@@ -813,7 +813,7 @@ let add_constraints_on_retval tenv pdesc prop ret_exp ~has_nonnull_annot typ cal
             ->
               Some exp
           | _ ->
-              None )
+              None)
         p.Prop.sigma_fp
     in
     (* find an hpred [abduced] |-> A in [prop] and add [exp] = A to prop *)
@@ -1050,7 +1050,7 @@ let declare_locals_and_ret tenv pdesc (prop_ : Prop.normal Prop.t) =
       let sigma_locals =
         List.map locals ~f:(fun {ProcAttributes.name; typ} ->
             let pvar = Pvar.mk name pname in
-            mk_ptsto pvar typ )
+            mk_ptsto pvar typ)
       in
       sigma_ret :: sigma_locals
     in
@@ -1065,7 +1065,7 @@ let declare_locals_and_ret tenv pdesc (prop_ : Prop.normal Prop.t) =
 
 let get_closure_opt actual_params =
   List.find_map actual_params ~f:(fun (exp, _) ->
-      match exp with Exp.Closure c when Procname.is_objc_block c.name -> Some c | _ -> None )
+      match exp with Exp.Closure c when Procname.is_objc_block c.name -> Some c | _ -> None)
 
 
 (** Execute [instr] with a symbolic heap [prop].*)
@@ -1283,7 +1283,7 @@ let rec sym_exec
       match
         List.partition_tf
           ~f:(function
-            | Predicates.Hpointsto (Exp.Lvar pvar', _, _) -> Pvar.equal pvar pvar' | _ -> false )
+            | Predicates.Hpointsto (Exp.Lvar pvar', _, _) -> Pvar.equal pvar pvar' | _ -> false)
           eprop.Prop.sigma
       with
       | [Predicates.Hpointsto (e, se, typ)], sigma' ->
@@ -1361,7 +1361,7 @@ and add_constraints_on_actuals_by_ref tenv caller_pdesc prop actuals_by_ref call
           | Predicates.Hpointsto (Exp.Lvar pv, _, _) ->
               Pvar.equal pv abduced
           | _ ->
-              false )
+              false)
         p.Prop.sigma_fp
     in
     (* prevent introducing multiple abduced retvals for a single call site in a loop *)
@@ -1387,7 +1387,7 @@ and add_constraints_on_actuals_by_ref tenv caller_pdesc prop actuals_by_ref call
             | Predicates.Hpointsto (lhs, _, typ_exp) when Exp.equal lhs actual ->
                 Predicates.Hpointsto (lhs, abduced_strexp, typ_exp)
             | hpred ->
-                hpred )
+                hpred)
           prop'.Prop.sigma
       in
       Prop.normalize tenv (Prop.set prop' ~sigma:filtered_sigma)
@@ -1397,7 +1397,7 @@ and add_constraints_on_actuals_by_ref tenv caller_pdesc prop actuals_by_ref call
         let filtered_sigma =
           List.filter
             ~f:(function
-              | Predicates.Hpointsto (lhs, _, _) when Exp.equal lhs actual -> false | _ -> true )
+              | Predicates.Hpointsto (lhs, _, _) when Exp.equal lhs actual -> false | _ -> true)
             prop.Prop.sigma
         in
         Prop.normalize tenv (Prop.set prop ~sigma:filtered_sigma)
@@ -1409,7 +1409,7 @@ and add_constraints_on_actuals_by_ref tenv caller_pdesc prop actuals_by_ref call
               let new_hpred = Predicates.Hpointsto (actual, rhs, texp) in
               Prop.normalize tenv (Prop.set p ~sigma:(new_hpred :: prop'.Prop.sigma))
           | _ ->
-              p )
+              p)
         ~init:prop' prop'.Prop.sigma
   in
   let non_const_actuals_by_ref =
@@ -1488,7 +1488,7 @@ and unknown_or_scan_call ~is_scan ~reason ret_typ ret_annots
         | (Exp.Var _ as e), ({Typ.desc= Tptr _} as t) when should_abduce_param_value callee_pname ->
             Some (e, t, i)
         | _ ->
-            None )
+            None)
       args
   in
   let has_nonnull_annot = Annotations.ia_is_nonnull ret_annots in
@@ -1624,7 +1624,7 @@ and proc_call (callee_pdesc, callee_summary)
       handle_objc_instance_method_call actual_pars pre tenv (fst ret_id_typ) caller_pdesc
         callee_pname path (fun () ->
           Tabulation.exe_function_call analysis_data ~callee_attributes ~callee_pname
-            ~callee_summary ~ret_id:(fst ret_id_typ) loc ~actuals pre path )
+            ~callee_summary ~ret_id:(fst ret_id_typ) loc ~actuals pre path)
   | _ ->
       (* non-objective-c method call. Standard tabulation *)
       Tabulation.exe_function_call analysis_data ~callee_summary ~ret_id:(fst ret_id_typ)
@@ -1716,7 +1716,7 @@ and sym_exec_wrapper ({InterproceduralAnalysis.tenv; _} as analysis_data) handle
     Paths.PathSet.from_renamed_list results
   with exn ->
     IExn.reraise_if exn ~f:(fun () ->
-        (not !BiabductionConfig.footprint) || not (Exceptions.handle_exception exn) ) ;
+        (not !BiabductionConfig.footprint) || not (Exceptions.handle_exception exn)) ;
     handle_exn exn ;
     (* calls State.mark_instr_fail *)
     Paths.PathSet.empty

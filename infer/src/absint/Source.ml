@@ -49,14 +49,14 @@ module Make (Kind : Kind) = struct
     Kind.get ~caller_pname (CallSite.pname site) actuals tenv
     |> List.rev_map ~f:(fun (kind, index) ->
            let source = make kind site in
-           {source; index} )
+           {source; index})
 
 
   let get_tainted_formals pdesc tenv =
     let site = CallSite.make (Procdesc.get_proc_name pdesc) (Procdesc.get_loc pdesc) in
     List.map
       ~f:(fun (name, typ, kind_opt) ->
-        (name, typ, Option.map kind_opt ~f:(fun kind -> make kind site)) )
+        (name, typ, Option.map kind_opt ~f:(fun kind -> make kind site)))
       (Kind.get_tainted_formals pdesc tenv)
 
 

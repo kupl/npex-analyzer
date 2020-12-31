@@ -73,7 +73,7 @@ let map_endo map t ~f =
     map t ~f:(fun x ->
         let x' = f x in
         if x' != x then change := true ;
-        x' )
+        x')
   in
   if !change then t' else t
 
@@ -85,6 +85,6 @@ let filter_map_endo filter_map t ~f =
         ( match x'_opt with
         | Some x' when x' == x -> ()
         | _ -> change := true ) ;
-        x'_opt )
+        x'_opt)
   in
   if !change then t' else t

@@ -106,7 +106,7 @@ let find_comment_start_and_style lines n =
       | Line (s, starts_with_newline) when String.is_prefix ~prefix:s lines.(n) ->
           if starts_with_newline then n <> 0 else true
       | _ ->
-          false )
+          false)
   in
   let is_start i line =
     match cur_line_comment with
@@ -117,7 +117,7 @@ let find_comment_start_and_style lines n =
           | Block (s, _, _, starts_with_newline) when String.is_substring ~substring:s line ->
               if starts_with_newline then i <> 0 else true
           | _ ->
-              false )
+              false)
   in
   let find_in_line i line = is_start i line |> Option.map ~f:(fun style -> (i, style)) in
   array_rev_find_mapi_from lines ~from:n ~f:find_in_line
@@ -273,7 +273,7 @@ let comment_style_of_filename fname =
            in
            if Option.exists first_line ~f:(fun line -> String.equal line tuareg_magic_style_line)
            then comment_style_ocaml
-           else comment_style_lisp )
+           else comment_style_lisp)
 
 
 let output_diff ~fname lines ?notice_range ?(monoidics = false) ?(ropas = false) com_style =
@@ -311,7 +311,7 @@ let output_diff ~fname lines ?notice_range ?(monoidics = false) ?(ropas = false)
   if !update_files then
     Out_channel.with_file fname ~f:(fun cout ->
         let fmt = F.formatter_of_out_channel cout in
-        pp_newfile fmt )
+        pp_newfile fmt)
   else pp_newfile F.std_formatter
 
 
@@ -397,5 +397,5 @@ let () =
   let exit_code = ref 0 in
   List.iter to_check ~f:(fun file ->
       try check_copyright file
-      with CopyrightEvent event -> if not !keep_going then exit_code := exit_code_of_event event ) ;
+      with CopyrightEvent event -> if not !keep_going then exit_code := exit_code_of_event event) ;
   exit !exit_code

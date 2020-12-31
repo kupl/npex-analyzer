@@ -65,14 +65,14 @@ let extract_nullability ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party 
   let params_nullability =
     List.map param_annotated_types ~f:(fun (typ, annotations) ->
         AnnotatedNullability.of_type_and_annotation ~is_callee_in_trust_list ~nullsafe_mode
-          ~is_third_party typ annotations )
+          ~is_third_party typ annotations)
   in
   let has_propagates_nullable_in_param =
     List.exists params_nullability ~f:(function
       | AnnotatedNullability.Nullable AnnotatedNullability.AnnotatedPropagatesNullable ->
           true
       | _ ->
-          false )
+          false)
   in
   let return_nullability =
     nullability_for_return ~is_callee_in_trust_list ~nullsafe_mode ~is_third_party ret_type
@@ -110,7 +110,7 @@ let get ~is_callee_in_trust_list ~nullsafe_mode
       ~f:(fun ((mangled, typ), param_annotation_deprecated) nullability ->
         { param_annotation_deprecated
         ; mangled
-        ; param_annotated_type= AnnotatedType.{nullability; typ} } )
+        ; param_annotated_type= AnnotatedType.{nullability; typ} })
   in
   let kind = if is_third_party then ThirdParty Unregistered else FirstParty in
   {nullsafe_mode; kind; ret; params}

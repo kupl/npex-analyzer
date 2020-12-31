@@ -236,7 +236,7 @@ module AccessExpression = struct
       | ArrayOffset (ae, typ, index_opt) ->
           let access_paths =
             Option.value_map index_opt ~default:[] ~f:(fun index ->
-                to_access_paths (get_access_exprs index) )
+                to_access_paths (get_access_exprs index))
           in
           let base, accesses = to_access_path_ ae in
           (base, AccessPath.ArrayAccess (typ, access_paths) :: accesses)
@@ -321,7 +321,7 @@ module AccessExpression = struct
     | Closure (_, capt) ->
         List.fold capt ~init ~f:(fun init ((var, _typ), exp) ->
             let init = f init var in
-            fold_vars_exp exp ~init ~f )
+            fold_vars_exp exp ~init ~f)
     | Constant _ ->
         init
     | Sizeof (_, exp_opt) ->
@@ -371,7 +371,7 @@ module AccessExpression = struct
   let append ~onto y =
     to_accesses y |> snd
     |> List.fold ~init:(Some onto) ~f:(fun acc access ->
-           match acc with None -> acc | Some exp -> add_access exp access )
+           match acc with None -> acc | Some exp -> add_access exp access)
 
 
   let is_return_var = function Base (var, _) -> Var.is_return var | _ -> false
@@ -558,7 +558,7 @@ and of_sil ~include_array_indexes ~f_resolve_id ~add_deref exp typ =
                     (* capture by value *)
                     typ
               in
-              (AccessPath.base_of_pvar pvar typ', of_sil_ value typ') )
+              (AccessPath.base_of_pvar pvar typ', of_sil_ value typ'))
             closure.captured_vars
         in
         Closure (closure.name, environment)

@@ -370,7 +370,7 @@ and array_case_analysis_index analysis_data pname tenv orig_prop footprint_part 
                 let isel_new = list_rev_and_concat isel_seen_rev ((i, se') :: isel_unseen) in
                 let array_new = Predicates.Earray (array_len, isel_new, inst_arr) in
                 let typ_new = Typ.mk_array ~default:typ_array typ' ?length:typ_array_len in
-                (atoms_new, array_new, typ_new) :: acc' )
+                (atoms_new, array_new, typ_new) :: acc')
               ~init:[] atoms_se_typ_list
           in
           let acc_new = atoms_se_typ_list' :: acc in
@@ -442,7 +442,7 @@ let strexp_extend_values analysis_data pname tenv orig_prop footprint_part kind 
   in
   List.map
     ~f:(fun (atoms', se', typ') ->
-      (laundry_atoms @ atoms', se', Exp.Sizeof {sizeof_data with typ= typ'}) )
+      (laundry_atoms @ atoms', se', Exp.Sizeof {sizeof_data with typ= typ'}))
     atoms_se_typ_list_filtered
 
 
@@ -564,7 +564,7 @@ let prop_iter_extend_ptsto analysis_data pname tenv orig_prop iter lexp inst =
           let atoms_body_list =
             List.map
               ~f:(fun (atoms0, se0, te0) ->
-                (atoms0, Predicates.Hpointsto (e', se0, te0) :: body_rest) )
+                (atoms0, Predicates.Hpointsto (e', se0, te0) :: body_rest))
               atoms_se_te_list
           in
           let atoms_hpara_list =
@@ -629,7 +629,7 @@ let prop_iter_extend_ptsto analysis_data pname tenv orig_prop iter lexp inst =
                 | Predicates.Hlseg (_, _, e1, _, _) ->
                     Exp.equal e e1
                 | Predicates.Hdllseg (_, _, e_iF, _, _, e_iB, _) ->
-                    Exp.equal e e_iF || Exp.equal e e_iB )
+                    Exp.equal e e_iF || Exp.equal e e_iB)
               footprint_sigma
           in
           let atoms_sigma_list =
@@ -647,7 +647,7 @@ let prop_iter_extend_ptsto analysis_data pname tenv orig_prop iter lexp inst =
           in
           List.map
             ~f:(fun (atoms, sigma') ->
-              (atoms, List.stable_sort ~compare:Predicates.compare_hpred sigma') )
+              (atoms, List.stable_sort ~compare:Predicates.compare_hpred sigma'))
             atoms_sigma_list
         in
         let iter_atoms_fp_sigma_list = list_product iter_list atoms_fp_sigma_list in
@@ -656,7 +656,7 @@ let prop_iter_extend_ptsto analysis_data pname tenv orig_prop iter lexp inst =
             let iter' =
               List.fold ~f:(Prop.prop_iter_add_atom !BiabductionConfig.footprint) ~init:iter atoms
             in
-            Prop.prop_iter_replace_footprint_sigma iter' fp_sigma )
+            Prop.prop_iter_replace_footprint_sigma iter' fp_sigma)
           iter_atoms_fp_sigma_list
     in
     let res_prop_list = List.map ~f:(Prop.prop_iter_to_prop tenv) res_iter_list in
@@ -1097,7 +1097,7 @@ let param_has_annot predicate pvar params_with_annotations =
   List.exists
     ~f:(function
       | (mangled, _), param_annotation_deprecated ->
-          Mangled.equal mangled (Pvar.get_name pvar) && predicate param_annotation_deprecated )
+          Mangled.equal mangled (Pvar.get_name pvar) && predicate param_annotation_deprecated)
     params_with_annotations
 
 

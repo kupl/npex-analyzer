@@ -88,4 +88,4 @@ let summary_of_posts pdesc posts =
         Some
           (map exec_state ~f:(fun _astate ->
                (* prefer [astate] since it is an equivalent state that has been normalized *)
-               AbductiveDomain.summary_of_post pdesc astate )) )
+               AbductiveDomain.summary_of_post pdesc astate)))

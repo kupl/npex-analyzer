@@ -230,7 +230,7 @@ module ArrInfo = struct
             if Z.equal new_stride stride then arr
             else
               let set itv = Itv.div_const (Itv.mult_const itv stride) new_stride in
-              C {offset= set offset; size= set size; stride= Itv.of_big_int new_stride} )
+              C {offset= set offset; size= set size; stride= Itv.of_big_int new_stride})
     | Java _ ->
         L.(die InternalError) "Unexpected cast on Java array"
     | Top ->

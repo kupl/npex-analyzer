@@ -95,7 +95,7 @@ module Match = struct
     List.iter colon_splits ~f:(fun s ->
         (* Filter out the '<' in operator< and operator<= *)
         if (not (String.is_prefix s ~prefix:"operator<")) && String.contains s '<' then
-          raise (ParseError ("Unexpected template in fuzzy qualified name %s." ^ qual_name)) ) ;
+          raise (ParseError ("Unexpected template in fuzzy qualified name %s." ^ qual_name))) ;
     of_qual_string qual_name
 
 

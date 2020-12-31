@@ -67,7 +67,7 @@ let exec_instr domain proc_name formals_to_blocks_map _node instr =
                     let e = Exp.Lvar (Pvar.mk name proc_name) in
                     let id = Ident.create_fresh Ident.knormal in
                     let load_instr = Load {id; e; root_typ= typ; typ; loc} in
-                    ((Exp.Var id, typ), load_instr) )
+                    ((Exp.Var id, typ), load_instr))
                   extra_formals
                 |> List.unzip
               in

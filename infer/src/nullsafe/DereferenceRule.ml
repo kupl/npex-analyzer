@@ -81,7 +81,7 @@ module ReportableViolation = struct
     let alternative_recommendation =
       Option.value_map alternative_method_description
         ~f:(fun descr ->
-          Format.asprintf " If this is intentional, use %a instead." MF.pp_monospaced descr )
+          Format.asprintf " If this is intentional, use %a instead." MF.pp_monospaced descr)
         ~default:""
     in
     let description =
@@ -112,7 +112,7 @@ module ReportableViolation = struct
       |> IOption.if_none_eval ~f:(fun () ->
              Logging.die InternalError
                "get_description:: Dereference violation should not be possible for non-nullable \
-                values" )
+                values")
     in
     let nullable_object_origin = InferredNullability.get_origin nullability in
     match user_friendly_nullable with

@@ -79,7 +79,7 @@ let decode_json_file (database : t) json_format =
               | _ ->
                   exit_format_error
                     "the value of the \"arguments\" field is not a list of strings in command %s"
-                    (Yojson.Basic.to_string json) )
+                    (Yojson.Basic.to_string json))
           in
           match args with
           | [] ->

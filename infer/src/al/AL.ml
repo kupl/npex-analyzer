@@ -243,7 +243,7 @@ let rec do_frontend_checks_stmt linters (context : CLintersContext.context) stmt
         let other_stmts =
           Option.to_list isi_cond_var
           @ ( Option.map isi_else ~f:(fun (else_body, _) ->
-                  CAst_utils.get_stmt_exn else_body stmt_info.si_source_range )
+                  CAst_utils.get_stmt_exn else_body stmt_info.si_source_range)
             |> Option.to_list )
         in
         (* distinguish between then and else branch as they need different context *)
@@ -274,7 +274,7 @@ and do_frontend_checks_via_transition linters context an trans =
       | Ctl_parser_types.Decl d ->
           do_frontend_checks_decl linters context d
       | Ctl_parser_types.Stmt st ->
-          do_frontend_checks_stmt linters context st )
+          do_frontend_checks_stmt linters context st)
     succs
 
 

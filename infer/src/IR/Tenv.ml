@@ -148,7 +148,7 @@ let load source =
       SqliteUtils.result_single_column_option ~finalize:false ~log:"Tenv.load" db load_stmt
       |> Option.bind ~f:(fun x ->
              SQLite.deserialize x
-             |> function Global -> load_global () | FileLocal tenv -> Some tenv ) )
+             |> function Global -> load_global () | FileLocal tenv -> Some tenv))
 
 
 let store_debug_file tenv tenv_filename =

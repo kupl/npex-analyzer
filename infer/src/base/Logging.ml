@@ -33,23 +33,23 @@ let dup_formatter fmt1 fmt2 =
     { F.out_string=
         (fun s p n ->
           out_funs1.out_string s p n ;
-          out_funs2.out_string s p n )
+          out_funs2.out_string s p n)
     ; out_indent=
         (fun n ->
           out_funs1.out_indent n ;
-          out_funs2.out_indent n )
+          out_funs2.out_indent n)
     ; out_flush=
         (fun () ->
           out_funs1.out_flush () ;
-          out_funs2.out_flush () )
+          out_funs2.out_flush ())
     ; out_newline=
         (fun () ->
           out_funs1.out_newline () ;
-          out_funs2.out_newline () )
+          out_funs2.out_newline ())
     ; out_spaces=
         (fun n ->
           out_funs1.out_spaces n ;
-          out_funs2.out_spaces n ) } ;
+          out_funs2.out_spaces n) } ;
   f
 
 
@@ -155,7 +155,7 @@ let register_formatter =
        let formatters = mk_formatters () in
        let formatters_ref = ref formatters in
        logging_formatters := ((formatters_ref, mk_formatters), formatters) :: !logging_formatters ;
-       formatters_ref )
+       formatters_ref)
 
 
 let flush_formatters {file; console_file} =
@@ -185,7 +185,7 @@ let close_logs () =
   List.iter ~f:close_fmt !logging_formatters ;
   Option.iter !log_file ~f:(function file_fmt, chan ->
       F.pp_print_flush file_fmt () ;
-      Out_channel.close chan )
+      Out_channel.close chan)
 
 
 let () = Epilogues.register ~f:close_logs ~description:"flushing logs and closing log file"
@@ -344,7 +344,7 @@ let die error msg =
   F.kasprintf
     (fun msg ->
       log_of_kind error "%s@\n%s@." msg (Caml.Printexc.raw_backtrace_to_string backtrace) ;
-      raise_error ~backtrace error ~msg )
+      raise_error ~backtrace error ~msg)
     msg
 
 
@@ -421,7 +421,7 @@ let d_kfprintf ?color k f fmt =
       F.kfprintf
         (fun f ->
           F.pp_print_string f "</span>" ;
-          k f )
+          k f)
         f fmt
   | _ ->
       F.kfprintf k f fmt
@@ -500,5 +500,5 @@ let d_with_indent ?pp_result ~name f =
     (* Print result if needed *)
     Option.iter pp_result ~f:(fun pp_result ->
         d_printf "Result of %s:@\n" name ;
-        d_call_with_indent_impl ~f:(fun () -> d_printf "%a" pp_result result) ) ;
+        d_call_with_indent_impl ~f:(fun () -> d_printf "%a" pp_result result)) ;
     result )

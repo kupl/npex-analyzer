@@ -47,7 +47,7 @@ let assert_term term =
 
 let rec x_let init nes =
   List.fold nes ~init ~f:(fun n (name, term) ->
-      VarEnv.add_exn ~key:name ~data:(x_trm init term) n )
+      VarEnv.add_exn ~key:name ~data:(x_trm init term) n)
 
 and x_trm : var_env -> Smt.Ast.term -> Term.t =
  fun n term ->
@@ -72,7 +72,7 @@ and x_trm : var_env -> Smt.Ast.term -> Term.t =
             | None -> (
               match Term.const_of p with
               | Some q -> Term.mulq q e
-              | None -> fail "nonlinear: %a" Smt.Ast.pp_term term () ) )
+              | None -> fail "nonlinear: %a" Smt.Ast.pp_term term () ))
     | [] -> fail "malformed: %a" Smt.Ast.pp_term term () )
   | Arith (Div, es) -> (
     match List.map ~f:(x_trm n) es with
@@ -80,7 +80,7 @@ and x_trm : var_env -> Smt.Ast.term -> Term.t =
         List.fold es ~init:e ~f:(fun p e ->
             match Term.const_of e with
             | Some q -> Term.mulq (Q.inv q) p
-            | None -> fail "nonlinear: %a" Smt.Ast.pp_term term () )
+            | None -> fail "nonlinear: %a" Smt.Ast.pp_term term ())
     | [] -> fail "malformed: %a" Smt.Ast.pp_term term () )
   | If (c, t, e) ->
       Term.ite ~cnd:(x_fml n c) ~thn:(x_trm n t) ~els:(x_trm n e)

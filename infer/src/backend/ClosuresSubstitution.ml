@@ -107,7 +107,7 @@ let replace_closure_call node (astate : Domain.t) (instr : Sil.instr) : Sil.inst
               L.d_printfln "replaced by call %a " (Sil.pp_instr Pp.text ~print_types:true) new_instr ;
               new_instr )
       | _ ->
-          instr )
+          instr)
 
 
 (** [replace_closure_param] propagates closures to function parameters, so that more functions are

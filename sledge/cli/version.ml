@@ -30,17 +30,17 @@ let build_info =
       ~f:(fun lib ->
         ( Build_info.Statically_linked_library.name lib
         , version_to_string
-            (Build_info.Statically_linked_library.version lib) ) )
+            (Build_info.Statically_linked_library.version lib) ))
     |> List.sort ~compare:[%compare: string * string]
   in
   let max_length =
     List.fold_left libs ~init:0 ~f:(fun n (name, _) ->
-        max n (String.length name) )
+        max n (String.length name))
   in
   String.concat ~sep:"\n"
     ( Printf.sprintf "%-*s %s" (max_length + 2) "ocaml:" Sys.ocaml_version
       :: "statically linked libraries:"
       :: List.map libs ~f:(fun (name, v) ->
-             Printf.sprintf "- %-*s %s" max_length name v )
+             Printf.sprintf "- %-*s %s" max_length name v)
     @ [Printf.sprintf "%-*s %b" (max_length + 2) "debug:" debug; "version:"]
     )

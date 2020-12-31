@@ -22,7 +22,7 @@ let check_result_code db ~log rc =
 let exec db ~log ~stmt =
   (* Call [check_result_code] and catch exceptions to rewrite the error message. This avoids allocating the error string when not needed. *)
   PerfEvent.log (fun logger ->
-      PerfEvent.log_begin_event logger ~name:"sql exec" ~arguments:[("stmt", `String log)] () ) ;
+      PerfEvent.log_begin_event logger ~name:"sql exec" ~arguments:[("stmt", `String log)] ()) ;
   let rc = Sqlite3.exec db stmt in
   PerfEvent.(log (fun logger -> log_end_event logger ())) ;
   try check_result_code db ~log rc with Error err -> error "exec: %s (%s)" err (Sqlite3.errmsg db)
@@ -47,13 +47,14 @@ let result_fold_rows ?finalize:(do_finalize = true) db ~log stmt ~init ~f =
     | err ->
         L.die InternalError "%s: %s (%s)" log (Sqlite3.Rc.to_string err) (Sqlite3.errmsg db)
   in
-  if do_finalize then protect ~finally:(fun () -> finalize db ~log stmt) ~f:(fun () -> aux init stmt)
+  if do_finalize then
+    protect ~finally:(fun () -> finalize db ~log stmt) ~f:(fun () -> aux init stmt)
   else aux init stmt
 
 
 let result_fold_single_column_rows ?finalize db ~log stmt ~init ~f =
   result_fold_rows ?finalize db ~log stmt ~init ~f:(fun accum stmt ->
-      f accum (Sqlite3.column stmt 0) )
+      f accum (Sqlite3.column stmt 0))
 
 
 let zero_or_one_row ~log = function

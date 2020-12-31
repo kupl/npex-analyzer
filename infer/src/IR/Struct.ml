@@ -153,7 +153,7 @@ type field_info = {typ: Typ.t; annotations: Annot.Item.t; is_static: bool}
 let find_field field_list field_name_to_lookup =
   List.find_map
     ~f:(fun (field_name, typ, annotations) ->
-      if Fieldname.equal field_name field_name_to_lookup then Some (typ, annotations) else None )
+      if Fieldname.equal field_name field_name_to_lookup then Some (typ, annotations) else None)
     field_list
 
 

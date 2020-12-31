@@ -62,8 +62,8 @@ let load entry =
                | None, Some issues2 ->
                    Some issues2
                | None, None ->
-                   None )
-             acc map )
+                   None)
+             acc map)
   in
   match Sys.readdir issues_dir with
   | children ->

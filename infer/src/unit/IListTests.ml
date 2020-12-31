@@ -33,7 +33,7 @@ let inter_tests =
   in
   List.concat_map inputs ~f:(fun (name1, input1) ->
       List.map inputs ~f:(fun (name2, input2) ->
-          "inter_" ^ name1 ^ "_with_" ^ name2 >:: inter_test input1 input2 ) )
+          "inter_" ^ name1 ^ "_with_" ^ name2 >:: inter_test input1 input2))
 
 
 let traverse_test =

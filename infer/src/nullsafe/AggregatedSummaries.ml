@@ -53,7 +53,7 @@ module ClassInfo = struct
     let anonymous_summaries =
       JavaClassName.Map.bindings t.nested_anonymous_classes
       |> List.map ~f:(fun (class_name, summaries) ->
-             List.map summaries ~f:(fun summary -> (class_name, summary)) )
+             List.map summaries ~f:(fun summary -> (class_name, summary)))
       |> List.concat
     in
     let nested_summaries =
@@ -89,7 +89,7 @@ let update_in_map class_name ~update t =
   JavaClassName.Map.update class_name
     (fun class_info ->
       let info_to_update = Option.value class_info ~default:(ClassInfo.make_empty class_name) in
-      Some (update info_to_update) )
+      Some (update info_to_update))
     t
 
 
@@ -126,7 +126,7 @@ let register_classes_and_add_summary class_name summary map =
    without links to nested classes *)
 let create_initial_map all_summaries =
   List.fold all_summaries ~init:JavaClassName.Map.empty ~f:(fun map (class_name, summary) ->
-      register_classes_and_add_summary class_name summary map )
+      register_classes_and_add_summary class_name summary map)
 
 
 (* given a map containing all nested and parent class names (excluding anonymous classes),
@@ -137,7 +137,7 @@ let set_links map =
     (fun class_name class_info ->
       Option.iter (JavaClassName.get_outer_class_name class_name) ~f:(fun outer_class_name ->
           let outer_info = JavaClassName.Map.find outer_class_name map in
-          ClassInfo.add_nested_class_info ~nested:class_info outer_info ) )
+          ClassInfo.add_nested_class_info ~nested:class_info outer_info))
     map
 
 
@@ -150,4 +150,4 @@ let aggregate all_summaries =
          if Option.is_none (JavaClassName.get_outer_class_name class_name) then
            (* This class is the outermost, leave it *)
            Some class_info
-         else None )
+         else None)

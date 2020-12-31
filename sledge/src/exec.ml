@@ -104,12 +104,12 @@ let move_spec reg_exps =
   let ws, rs =
     IArray.fold reg_exps ~init:(Var.Set.empty, Var.Set.empty)
       ~f:(fun (ws, rs) (reg, exp) ->
-        (Var.Set.add ws reg, Var.Set.union rs (Term.fv exp)) )
+        (Var.Set.add ws reg, Var.Set.union rs (Term.fv exp)))
   in
   let+ sub, ms = Fresh.assign ~ws ~rs in
   let post =
     IArray.fold reg_exps ~init:Sh.emp ~f:(fun post (reg, exp) ->
-        Sh.and_ (Formula.eq (Term.var reg) (Term.rename sub exp)) post )
+        Sh.and_ (Formula.eq (Term.var reg) (Term.rename sub exp)) post)
   in
   {foot; sub; ms; post}
 
@@ -647,11 +647,11 @@ let exec_spec_ (xs, pre) (gs, {foot; sub; ms; post}) =
        gs Sh.pp foot
        (fun fs sub ->
          if not (Var.Subst.is_empty sub) then
-           Format.fprintf fs "∧ %a" Var.Subst.pp sub )
+           Format.fprintf fs "∧ %a" Var.Subst.pp sub)
        sub
        (fun fs ms ->
          if not (Var.Set.is_empty ms) then
-           Format.fprintf fs "%a := " Var.Set.pp ms )
+           Format.fprintf fs "%a := " Var.Set.pp ms)
        ms Sh.pp post ;
      (* gs contains all vars in spec not in pre.us *)
      assert (

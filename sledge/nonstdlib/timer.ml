@@ -66,5 +66,5 @@ let create ?at_exit:printf name =
           if !enabled then
             report ~name:t.name ~elapsed:(t.max *. 1000.)
               ~aggregate:((t.uaggregate +. t.saggregate) *. 1000.)
-              ~count:t.count ) ) ;
+              ~count:t.count)) ;
   t

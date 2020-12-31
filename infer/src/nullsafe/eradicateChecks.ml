@@ -35,7 +35,7 @@ let check_object_dereference ({IntraproceduralAnalysis.tenv; _} as analysis_data
           {dereference_violation; dereference_location= loc; nullable_object_descr; dereference_type}
       in
       TypeErr.register_error analysis_data find_canonical_duplicate type_error (Some instr_ref)
-        ~nullsafe_mode )
+        ~nullsafe_mode)
 
 
 (** [expr] is an expression that was explicitly compared with `null`. At the same time, [expr] had
@@ -154,7 +154,7 @@ let check_field_assignment
                  { assignment_violation
                  ; assignment_location= loc
                  ; assignment_type= AssignmentRule.ReportableViolation.AssigningToField fname })
-              (Some instr_ref) ~nullsafe_mode ) )
+              (Some instr_ref) ~nullsafe_mode))
 
 
 (* Check if the field declared as not nullable (implicitly or explicitly). If the field is
@@ -207,7 +207,7 @@ let get_nullability_upper_bound field_name typestate_list =
   (* Join upper bounds for all typestates in the list *)
   List.fold typestate_list ~init:Nullability.StrictNonnull ~f:(fun acc (proc_name, typestate) ->
       Nullability.join acc
-        (get_nullability_upper_bound_for_typestate proc_name field_name typestate) )
+        (get_nullability_upper_bound_for_typestate proc_name field_name typestate))
 
 
 let is_generated_field field_name =
@@ -256,7 +256,7 @@ let check_constructor_initialization
               predicate_holds_for_some_typestate
                 (Lazy.force typestates_for_curr_constructor_and_all_initializer_methods) field_name
                 ~predicate:(fun (_, nullability) ->
-                  is_initialized (InferredNullability.get_origin nullability) )
+                  is_initialized (InferredNullability.get_origin nullability))
             in
             (* TODO(T54584721) This check is completely independent of the current constuctor we check.
                This check should be moved out of this function. Until it is done,
@@ -317,7 +317,7 @@ let check_constructor_initialization
                              { over_annotated_violation
                              ; loc
                              ; violation_type= OverAnnotatedRule.FieldOverAnnoted field_name })
-                          ~nullsafe_mode None ) )
+                          ~nullsafe_mode None) )
           in
           List.iter ~f:do_field fields
       | None ->
@@ -337,7 +337,7 @@ let check_return_not_nullable analysis_data ~nullsafe_mode ~java_pname find_cano
            { assignment_violation
            ; assignment_location= loc
            ; assignment_type= ReturningFromFunction java_pname })
-        None ~nullsafe_mode )
+        None ~nullsafe_mode)
 
 
 let check_return_overrannotated ~java_pname analysis_data find_canonical_duplicate loc
@@ -354,7 +354,7 @@ let check_return_overrannotated ~java_pname analysis_data find_canonical_duplica
       TypeErr.register_error analysis_data find_canonical_duplicate
         (Over_annotation
            {over_annotated_violation; loc; violation_type= ReturnOverAnnotated java_pname})
-        None ~nullsafe_mode )
+        None ~nullsafe_mode)
 
 
 (** Check the annotations when returning from a method. *)
@@ -450,7 +450,7 @@ let check_inheritance_rule_for_return analysis_data find_canonical_duplicate loc
            ; violation_type= InconsistentReturn
            ; overridden_proc_name
            ; base_proc_name })
-        None ~nullsafe_mode )
+        None ~nullsafe_mode)
 
 
 let check_inheritance_rule_for_param analysis_data find_canonical_duplicate loc ~nullsafe_mode
@@ -468,7 +468,7 @@ let check_inheritance_rule_for_param analysis_data find_canonical_duplicate loc 
            ; base_proc_name
            ; loc
            ; overridden_proc_name })
-        None ~nullsafe_mode )
+        None ~nullsafe_mode)
 
 
 let check_inheritance_rule_for_params analysis_data find_canonical_duplicate loc ~nullsafe_mode
@@ -481,11 +481,12 @@ let check_inheritance_rule_for_params analysis_data find_canonical_duplicate loc
       let should_index_from_zero = is_virtual base_params in
       (* Check the rule for each pair of base and overridden param *)
       List.iteri base_and_overridden_params
-        ~f:(fun index
-           ( AnnotatedSignature.{param_annotated_type= {nullability= annotated_nullability_base}}
-           , AnnotatedSignature.
-               { mangled= overridden_param_name
-               ; param_annotated_type= {nullability= annotated_nullability_overridden} } )
+        ~f:(fun
+             index
+             ( AnnotatedSignature.{param_annotated_type= {nullability= annotated_nullability_base}}
+             , AnnotatedSignature.
+                 { mangled= overridden_param_name
+                 ; param_annotated_type= {nullability= annotated_nullability_overridden} } )
            ->
           check_inheritance_rule_for_param analysis_data find_canonical_duplicate loc ~nullsafe_mode
             ~overridden_param_name ~base_proc_name
@@ -493,7 +494,7 @@ let check_inheritance_rule_for_params analysis_data find_canonical_duplicate loc
             ~base_nullability:(AnnotatedNullability.get_nullability annotated_nullability_base)
             ~overridden_proc_name
             ~overridden_nullability:
-              (AnnotatedNullability.get_nullability annotated_nullability_overridden) )
+              (AnnotatedNullability.get_nullability annotated_nullability_overridden))
   | Unequal_lengths ->
       (* Skip checking.
          TODO (T5280249): investigate why argument lists can be of different length. *)

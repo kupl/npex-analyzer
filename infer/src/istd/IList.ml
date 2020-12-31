@@ -47,7 +47,7 @@ let map_changed ~equal ~f l =
 let filter_changed ~f l =
   let res_rev, changed =
     List.fold_left l ~init:([], false) ~f:(fun (l, changed) x ->
-        if f x then (x :: l, changed) else (l, true) )
+        if f x then (x :: l, changed) else (l, true))
   in
   if changed then List.rev res_rev else l
 
@@ -143,9 +143,9 @@ let append_no_duplicates (type a) ~(cmp : a -> a -> int) =
       let set1 = Set.of_list list1 in
       let res_rev =
         List.fold_left list2 ~init:(List.rev list1) ~f:(fun res_rev x ->
-            if Set.mem set1 x then res_rev else x :: res_rev )
+            if Set.mem set1 x then res_rev else x :: res_rev)
       in
-      List.rev res_rev )
+      List.rev res_rev)
 
 
 let merge_dedup l1 l2 ~compare =
@@ -207,7 +207,7 @@ let pp_print_list ~max ?(pp_sep = Format.pp_print_cut) pp_v ppf =
 
 let fold2_result ~init ~f l1 l2 =
   List.fold2 l1 l2 ~init:(Ok init) ~f:(fun result x1 x2 ->
-      Result.bind result ~f:(fun acc -> f acc x1 x2) )
+      Result.bind result ~f:(fun acc -> f acc x1 x2))
 
 
 let eval_until_first_some thunks = List.find_map thunks ~f:(fun f -> f ())
@@ -232,5 +232,5 @@ let traverse_opt xs ~f =
       | Some r ->
           Continue_or_stop.Continue (r :: acc)
       | _ ->
-          Continue_or_stop.Stop None )
+          Continue_or_stop.Stop None)
     ~finish:(fun acc -> Some (List.rev acc))

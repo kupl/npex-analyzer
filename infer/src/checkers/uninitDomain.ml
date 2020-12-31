@@ -28,7 +28,7 @@ module MaybeUninitVars = struct
           | _ ->
               t
         in
-        HilExp.AccessExpression.replace_base ~remove_deref_after_base:true (v', t') access_expr )
+        HilExp.AccessExpression.replace_base ~remove_deref_after_base:true (v', t') access_expr)
       init_formals
 
 
@@ -56,7 +56,7 @@ module MaybeUninitVars = struct
             List.fold fields ~init:maybe_uninit_vars ~f:(fun acc (fn, _, _) ->
                 remove
                   (HilExp.AccessExpression.field_offset (HilExp.AccessExpression.base base) fn)
-                  acc )
+                  acc)
         | _ ->
             maybe_uninit_vars )
       | _ ->

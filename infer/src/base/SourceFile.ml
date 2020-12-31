@@ -64,7 +64,7 @@ let to_string =
            let+ pos = String.substr_index path ~pattern:isysroot_suffix in
            "${XCODE_ISYSROOT}" ^ String.subo ~pos:(pos + String.length isysroot_suffix) path)
           |> IOption.if_none_eval ~f:(fun () ->
-                 Option.value_exn (Utils.filename_to_relative ~force_full_backtrack:true ~root path) )
+                 Option.value_exn (Utils.filename_to_relative ~force_full_backtrack:true ~root path))
         else path
 
 
@@ -117,7 +117,7 @@ let of_header ?(warn_on_error = true) header_file =
       List.find_map source_exts ~f:(fun ext ->
           let possible_file = file_no_ext ^ "." ^ ext in
           if path_exists possible_file then Some (from_abs_path ~warn_on_error possible_file)
-          else None )
+          else None)
   | _ ->
       None
 
@@ -140,7 +140,7 @@ let changed_sources_from_changed_files changed_files =
             Set.add src changed_files'
         | None ->
             changed_files'
-      with _exn -> changed_files_set )
+      with _exn -> changed_files_set)
 
 
 module SQLite = struct

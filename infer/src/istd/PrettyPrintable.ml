@@ -166,7 +166,7 @@ module MakePPMap (Ord : PrintableOrderedType) = struct
         (fun value ->
           let acc', res = f !acc value in
           acc := acc' ;
-          res )
+          res)
         m
     in
     (!acc, new_map)
@@ -289,7 +289,7 @@ module MakePPUniqRankSet
   let is_subset m ~of_ =
     Map.for_all
       (fun rank value ->
-        match Map.find_opt rank of_ with None -> false | Some value' -> Val.equal value value' )
+        match Map.find_opt rank of_ with None -> false | Some value' -> Val.equal value value')
       m
 
 
@@ -298,7 +298,7 @@ module MakePPUniqRankSet
       (fun rank value ->
         let value' = f value in
         assert (Rank.equal rank (Val.to_rank value')) ;
-        value' )
+        value')
       m
 
 
@@ -308,7 +308,7 @@ module MakePPUniqRankSet
       map m ~f:(fun value ->
           let acc', v' = f !accum value in
           accum := acc' ;
-          v' )
+          v')
     in
     (!accum, m')
 

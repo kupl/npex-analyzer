@@ -32,7 +32,7 @@ let parse_gradle_line ~line =
           let fname = String.drop_prefix arg 1 in
           if file_exist fname then {state with opts= concat_st opts (arg :: opt_st); opt_st= []}
           else {state with opt_st= arg :: opt_st}
-        else {state with opt_st= arg :: opt_st} )
+        else {state with opt_st= arg :: opt_st})
   in
   {files= concat_st res.files res.file_st; opts= res.opts @ res.opt_st}
 
@@ -48,7 +48,7 @@ let process_gradle_output_line =
            else
              let javac_data = parse_gradle_line ~line:content in
              let out_dir = Unix.mkdtemp capture_output_template in
-             (String.Set.add seen content, (out_dir, javac_data) :: target_dirs) )
+             (String.Set.add seen content, (out_dir, javac_data) :: target_dirs))
 
 
 let run_gradle ~prog ~args =
@@ -77,7 +77,7 @@ let capture_gradle_target (out_dir, (javac_data : javac_data)) =
   in
   List.iter javac_data.files ~f:(fun file ->
       Out_channel.output_string oc (Escape.escape_shell file) ;
-      Out_channel.newline oc ) ;
+      Out_channel.newline oc) ;
   Out_channel.close oc ;
   let prog = Config.bin_dir ^/ "infer" in
   let args =
@@ -85,7 +85,7 @@ let capture_gradle_target (out_dir, (javac_data : javac_data)) =
     :: List.filter_map javac_data.opts ~f:(fun arg ->
            if String.equal "-Werror" arg then None
            else if String.is_substring arg ~substring:"-g:" then Some "-g"
-           else Some arg )
+           else Some arg)
   in
   L.debug Capture Verbose "%s %s@." prog (String.concat ~sep:" " args) ;
   Process.create_process_and_wait ~prog ~args ;
@@ -105,7 +105,7 @@ let write_rev_infer_deps rev_target_data =
   ResultsDir.get_path CaptureDependencies
   |> Utils.with_file_out ~f:(fun out_channel ->
          List.rev_map rev_target_data ~f:(fun (out_dir, _) -> Printf.sprintf "-\t-\t%s" out_dir)
-         |> Out_channel.output_lines out_channel )
+         |> Out_channel.output_lines out_channel)
 
 
 let log_environment_info ~prog =

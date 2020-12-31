@@ -124,7 +124,7 @@ let mk_find_duplicate_nodes : Procdesc.t -> Procdesc.Node.t -> Procdesc.NodeSet.
           (fun s_opt ->
             let s = Option.value s_opt ~default:Procdesc.NodeMap.empty in
             if Procdesc.NodeMap.cardinal s > E.threshold then raise E.Threshold ;
-            Some (Procdesc.NodeMap.add node normalized_instrs s) )
+            Some (Procdesc.NodeMap.add node normalized_instrs s))
           m
       in
       try Procdesc.fold_nodes proc_desc ~init:M.empty ~f:do_node with E.Threshold -> M.empty
@@ -174,7 +174,7 @@ let extract_pre p tenv pdesc abstract_fun =
       (List.map
          ~f:(fun id ->
            incr count ;
-           (id, Exp.Var (Ident.create_normal Ident.name_spec !count)) )
+           (id, Exp.Var (Ident.create_normal Ident.name_spec !count)))
          idlist)
   in
   let _, p' = PropUtil.remove_locals_formals tenv pdesc p in

@@ -192,7 +192,7 @@ end = struct
     Jprop.sorted_gen_free_vars tenv spec.pre
     >>= fun () ->
     ISequence.gen_sequence_list spec.posts ~f:(fun (p, _) ->
-        Prop.dfs_sort tenv p |> Prop.sorted_gen_free_vars )
+        Prop.dfs_sort tenv p |> Prop.sorted_gen_free_vars)
 
 
   let free_vars tenv spec = Sequence.Generator.run (gen_free_vars tenv spec)
@@ -212,7 +212,7 @@ end = struct
         (List.map
            ~f:(fun id ->
              incr count ;
-             (id, Exp.Var (Ident.create_normal Ident.name_spec !count)) )
+             (id, Exp.Var (Ident.create_normal Ident.name_spec !count)))
            idlist)
     in
     spec_sub tenv sub spec
@@ -284,7 +284,7 @@ let pp_specs pe fmt specs =
       List.iteri specs ~f:(fun cnt spec -> pp_spec0 pe (Some (cnt + 1, total)) fmt spec)
   | HTML ->
       List.iteri specs ~f:(fun cnt spec ->
-          F.fprintf fmt "%a<br>@\n" (pp_spec0 pe (Some (cnt + 1, total))) spec )
+          F.fprintf fmt "%a<br>@\n" (pp_spec0 pe (Some (cnt + 1, total))) spec)
 
 
 let get_specs_from_preposts preposts =

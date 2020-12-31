@@ -39,7 +39,7 @@ end) : S with type key = Key.t = struct
           | (`Both (data, _) | `Left data), Some data' when data' == data ->
               ()
           | _ -> change := true ) ;
-          f_side )
+          f_side)
     in
     if !change then t' else t
 
@@ -54,14 +54,14 @@ end) : S with type key = Key.t = struct
   let root_key_exn m =
     let@ {return} = with_return in
     binary_search_segmented m `Last_on_left ~segment_of:(fun ~key ~data:_ ->
-        return key )
+        return key)
     |> ignore ;
     raise (Not_found_s (Atom __LOC__))
 
   let choose_exn m =
     let@ {return} = with_return in
     binary_search_segmented m `Last_on_left ~segment_of:(fun ~key ~data ->
-        return (key, data) )
+        return (key, data))
     |> ignore ;
     raise (Not_found_s (Atom __LOC__))
 
@@ -82,14 +82,14 @@ end) : S with type key = Key.t = struct
     let m =
       change m k ~f:(fun v ->
           found := v ;
-          None )
+          None)
     in
     Option.map ~f:(fun v -> (v, m)) !found
 
   let pp pp_k pp_v fs m =
     Format.fprintf fs "@[<1>[%a]@]"
       (List.pp ",@ " (fun fs (k, v) ->
-           Format.fprintf fs "@[%a@ @<2>↦ %a@]" pp_k k pp_v v ))
+           Format.fprintf fs "@[%a@ @<2>↦ %a@]" pp_k k pp_v v))
       (to_alist m)
 
   let pp_diff ~data_equal pp_key pp_val pp_diff_val fs (x, y) =

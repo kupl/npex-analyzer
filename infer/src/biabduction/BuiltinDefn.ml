@@ -80,7 +80,7 @@ let add_array_to_prop ({InterproceduralAnalysis.tenv; _} as analysis_data) prop_
              let prop' = Prop.set prop ~sigma:(hpred :: sigma) in
              let prop'' = Prop.set prop' ~sigma_fp:(hpred :: sigma_fp) in
              let prop'' = Prop.normalize tenv prop'' in
-             (len, prop'') )
+             (len, prop''))
 
 
 (* Add an array in prop if it is not allocated.*)
@@ -220,8 +220,7 @@ let execute___get_type_of
         let hpred_opt =
           List.find_map
             ~f:(function
-              | Predicates.Hpointsto (e, _, texp) when Exp.equal e n_lexp -> Some texp | _ -> None
-              )
+              | Predicates.Hpointsto (e, _, texp) when Exp.equal e n_lexp -> Some texp | _ -> None)
             prop.Prop.sigma
         in
         match hpred_opt with
@@ -321,7 +320,7 @@ let execute___instanceof_cast ~instof
                        | None ->
                            mk_res pos_type_opt val1 )
                  | _ ->
-                     [] )
+                     [])
           in
           match res_opt with
           | Some res ->
@@ -508,7 +507,7 @@ let execute_free mk ?(mark_as_freed = true)
           ~f:(fun p ->
             execute_free_nonzero_ mk ~mark_as_freed analysis_data instr p
               (Prop.exp_normalize_prop tenv p lexp)
-              typ loc )
+              typ loc)
           prop_nonzero
       in
       List.map ~f:(fun p -> (p, path)) plist

@@ -322,8 +322,8 @@ let do_symexec_join analysis_data proc_cfg wl curr_node (edgeset_todo : Paths.Pa
           State.set_path path None ;
           propagate wl pname ~is_exception:false
             (Paths.PathSet.from_renamed_list [(prop, path)])
-            node )
-        new_dset' )
+            node)
+        new_dset')
 
 
 let prop_max_size = ref (0, Prop.prop_emp)
@@ -361,7 +361,7 @@ let instrs_get_normal_vars instrs =
     |> List.fold_left ~init:res ~f:(fun res e ->
            Exp.free_vars e
            |> Sequence.filter ~f:Ident.is_normal
-           |> Ident.hashqueue_of_sequence ~init:res )
+           |> Ident.hashqueue_of_sequence ~init:res)
   in
   Instrs.fold ~init:(Ident.HashQueue.create ()) ~f:do_instr instrs |> Ident.HashQueue.keys
 
@@ -445,7 +445,7 @@ let forward_tabulate ({InterproceduralAnalysis.proc_desc; err_log; tenv; _} as a
       L.d_ln ()
     with exn ->
       IExn.reraise_if exn ~f:(fun () ->
-          (not !BiabductionConfig.footprint) || not (Exceptions.handle_exception exn) ) ;
+          (not !BiabductionConfig.footprint) || not (Exceptions.handle_exception exn)) ;
       handle_exn exn ;
       L.d_decrease_indent () ;
       L.d_ln ()
@@ -476,7 +476,7 @@ let forward_tabulate ({InterproceduralAnalysis.proc_desc; err_log; tenv; _} as a
   while not (Worklist.is_empty wl) do
     let curr_node = Worklist.remove wl in
     AnalysisCallbacks.html_debug_new_node_session ~pp_name curr_node ~f:(fun () ->
-        do_node_and_handle curr_node )
+        do_node_and_handle curr_node)
   done ;
   L.d_strln ".... Work list empty. Stop ...." ;
   L.d_ln ()
@@ -586,7 +586,7 @@ let collect_postconditions analysis_data wl tenv proc_cfg :
             (fun prop ->
               Attribute.remove_resource tenv Racquire (Rmemory Mobjc)
                 (Attribute.remove_resource tenv Racquire (Rmemory Mmalloc)
-                   (Attribute.remove_resource tenv Racquire Rfile prop)) )
+                   (Attribute.remove_resource tenv Racquire Rfile prop)))
             pathset
         else pathset
     | _ ->
@@ -709,7 +709,7 @@ let execute_filter_prop ({InterproceduralAnalysis.tenv; _} as analysis_data) pro
         let init_prop =
           initial_prop_from_pre tenv pdesc (BiabductionSummary.Jprop.to_prop precondition)
         in
-        Paths.PathSet.add_renamed_prop init_prop (Paths.Path.start init_node) Paths.PathSet.empty )
+        Paths.PathSet.add_renamed_prop init_prop (Paths.Path.start init_node) Paths.PathSet.empty)
   in
   try
     Worklist.add wl init_node ;
@@ -737,7 +737,7 @@ let execute_filter_prop ({InterproceduralAnalysis.tenv; _} as analysis_data) pro
         in
         let spec = BiabductionSummary.{pre; posts; visited} in
         L.d_decrease_indent () ;
-        Some spec )
+        Some spec)
   with RE_EXE_ERROR ->
     AnalysisCallbacks.html_debug_new_node_session ~pp_name init_node ~f:(fun () ->
         L.d_printfln ~color:Red "#### [FUNCTION %a] ...ERROR" Procname.pp pname ;
@@ -746,7 +746,7 @@ let execute_filter_prop ({InterproceduralAnalysis.tenv; _} as analysis_data) pro
         Prop.d_prop (BiabductionSummary.Jprop.to_prop precondition) ;
         L.d_strln "This precondition is filtered out." ;
         L.d_decrease_indent () ;
-        None )
+        None)
 
 
 type exe_phase =
@@ -942,7 +942,7 @@ let update_specs analysis_data prev_summary_opt phase
            SpecMap.add spec.BiabductionSummary.pre
              ( Paths.PathSet.from_renamed_list spec.BiabductionSummary.posts
              , spec.BiabductionSummary.visited )
-             map )
+             map)
          ~init:SpecMap.empty old_specs)
   in
   let re_exe_filter old_spec =
@@ -953,7 +953,7 @@ let update_specs analysis_data prev_summary_opt phase
            (List.exists
               ~f:(fun new_spec ->
                 BiabductionSummary.Jprop.equal new_spec.BiabductionSummary.pre
-                  old_spec.BiabductionSummary.pre )
+                  old_spec.BiabductionSummary.pre)
               new_specs)
     then (
       changed := true ;
@@ -1037,7 +1037,7 @@ let transition_footprint_re_exe summary tenv joined_pres : BiabductionSummary.t 
       List.map
         ~f:(fun jp ->
           BiabductionSummary.spec_normalize tenv
-            {BiabductionSummary.pre= jp; posts= []; visited= BiabductionSummary.Visitedset.empty} )
+            {BiabductionSummary.pre= jp; posts= []; visited= BiabductionSummary.Visitedset.empty})
         joined_pres
     in
     {BiabductionSummary.preposts; phase= RE_EXECUTION}
@@ -1071,7 +1071,7 @@ let perform_transition ({InterproceduralAnalysis.tenv; _} as analysis_data) proc
             let error = Exceptions.recognize_exception exn in
             let err_str = "exception raised " ^ error.issue_type.unique_id in
             L.(debug Analysis Medium) "Error: %s %a@." err_str L.pp_ocaml_pos_opt error.ocaml_pos ;
-            [] )
+            [])
     in
     transition_footprint_re_exe summary tenv joined_pres
   in

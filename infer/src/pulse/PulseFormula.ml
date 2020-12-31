@@ -114,7 +114,7 @@ end = struct
     ( Var.Map.union
         (fun _v c1 c2 ->
           let c = Q.add c1 c2 in
-          if Q.is_zero c then None else Some c )
+          if Q.is_zero c then None else Some c)
         vs1 vs2
     , Q.add c1 c2 )
 
@@ -142,7 +142,7 @@ end = struct
         let vs' =
           Var.Map.fold
             (fun v' coeff' vs' ->
-              if Var.equal v' x then vs' else Var.Map.add v' (Q.div coeff' d) vs' )
+              if Var.equal v' x then vs' else Var.Map.add v' (Q.div coeff' d) vs')
             vs Var.Map.empty
         in
         let c' = Q.div c d in
@@ -187,7 +187,7 @@ end = struct
         (fun v_foreign q0 (acc_f, l) ->
           let acc_f, op = f acc_f v_foreign in
           (match op with VarSubst v when Var.equal v v_foreign -> () | _ -> changed := true) ;
-          (acc_f, add (mult q0 (of_subst_target op)) l) )
+          (acc_f, add (mult q0 (of_subst_target op)) l))
         vs_foreign
         (init, (Var.Map.empty, c))
     in
@@ -518,7 +518,7 @@ module Term = struct
     | BitNot t' ->
         q_map t' (fun c ->
             let open Option.Monad_infix in
-            Q.to_int64 c >>| Int64.bit_not >>| Q.of_int64 |> or_undef )
+            Q.to_int64 c >>| Int64.bit_not >>| Q.of_int64 |> or_undef)
     | Mult (t1, t2) ->
         q_map2 t1 t2 Q.mul
     | Div (t1, t2) ->
@@ -555,7 +555,7 @@ module Term = struct
             | BitShiftRight _ ->
                 map_i64_i c1 c2 Int64.shift_right |> or_undef
             | BitXor _ ->
-                map_i64_i64 c1 c2 Int64.bit_xor |> or_undef )
+                map_i64_i64 c1 c2 Int64.bit_xor |> or_undef)
 
 
   let rec simplify_shallow t =
@@ -1043,7 +1043,7 @@ module Formula = struct
           | None ->
               VarSubst repr
           | Some l' ->
-              LinSubst l' )
+              LinSubst l')
 
 
     let rec solve_normalized_eq ~fuel l1 l2 phi =
@@ -1144,7 +1144,7 @@ module Formula = struct
             let* changed, phi = acc in
             let l' = apply phi0 l in
             let+ phi' = and_var_linarith v l' phi in
-            (changed || not (phys_equal l l'), phi') )
+            (changed || not (phys_equal l l'), phi'))
           phi0.linear_eqs
           (Sat (false, {phi0 with linear_eqs= Var.Map.empty}))
       in
@@ -1167,7 +1167,7 @@ module Formula = struct
             | None ->
                 VarSubst v_canon
             | Some l -> (
-              match LinArith.get_as_const l with None -> LinSubst l | Some q -> QSubst q ) )
+              match LinArith.get_as_const l with None -> LinSubst l | Some q -> QSubst q ))
       in
       let atom' = Atom.map_terms atom ~f:(fun t -> normalize_term phi t) in
       Atom.eval atom' |> sat_of_eval_result
@@ -1196,7 +1196,7 @@ module Formula = struct
       IContainer.fold_of_pervasives_set_fold Atom.Set.fold atoms0 ~init ~f:(fun acc atom ->
           let* changed, phi = acc in
           let+ changed', phi = and_atom atom phi in
-          (changed || changed', phi) )
+          (changed || changed', phi))
 
 
     let normalize phi =
@@ -1301,7 +1301,7 @@ let normalize phi =
         | Sat None ->
             (* normalized to [true] *) pruned_sat
         | Sat (Some atom) ->
-            Sat (Atom.Set.add atom pruned) )
+            Sat (Atom.Set.add atom pruned))
       phi.pruned (Sat Atom.Set.empty)
   in
   {both; known; pruned}
@@ -1326,7 +1326,7 @@ let and_fold_subst_variables phi0 ~up_to_f:phi_foreign ~init ~f:f_var =
           ~f:(fun (acc_f, phi) v_foreign ->
             let acc_f, v = f_var acc_f v_foreign in
             let phi = Formula.Normalizer.and_var_var repr v phi |> sat_value_exn in
-            (acc_f, phi) ) )
+            (acc_f, phi)))
   in
   let and_linear_eqs linear_eqs_foreign acc_phi =
     IContainer.fold_of_pervasives_map_fold Var.Map.fold linear_eqs_foreign ~init:acc_phi
@@ -1334,14 +1334,14 @@ let and_fold_subst_variables phi0 ~up_to_f:phi_foreign ~init ~f:f_var =
         let acc_f, v = f_var acc_f v_foreign in
         let acc_f, l = LinArith.fold_subst_variables l_foreign ~init:acc_f ~f:f_subst in
         let phi = Formula.Normalizer.and_var_linarith v l phi |> sat_value_exn in
-        (acc_f, phi) )
+        (acc_f, phi))
   in
   let and_atoms atoms_foreign acc_phi =
     IContainer.fold_of_pervasives_set_fold Atom.Set.fold atoms_foreign ~init:acc_phi
       ~f:(fun (acc_f, phi) atom_foreign ->
         let acc_f, atom = Atom.fold_subst_variables atom_foreign ~init:acc_f ~f:f_subst in
         let phi = Formula.Normalizer.and_atom atom phi |> sat_value_exn in
-        (acc_f, phi) )
+        (acc_f, phi))
   in
   let and_ phi_foreign acc phi =
     try
@@ -1362,7 +1362,7 @@ let and_fold_subst_variables phi0 ~up_to_f:phi_foreign ~init ~f:f_var =
         let pruned =
           Option.fold atom_opt ~init:pruned ~f:(fun pruned atom -> Atom.Set.add atom pruned)
         in
-        (acc_f, pruned) )
+        (acc_f, pruned))
   in
   let+ acc, pruned =
     try Sat (and_pruned phi_foreign.pruned (acc, phi0.pruned)) with Contradiction -> Unsat
@@ -1403,7 +1403,7 @@ let build_var_graph phi =
     (fun v l ->
       LinArith.get_variables l
       |> Seq.fold_left (fun vs v -> Var.Set.add v vs) (Var.Set.singleton v)
-      |> add_all )
+      |> add_all)
     phi.Formula.linear_eqs ;
   (* add edges between all pairs of variables appearing in [t1] or [t2] (yes this is quadratic in
      the number of variables of these terms) *)
@@ -1417,7 +1417,7 @@ let build_var_graph phi =
   Atom.Set.iter
     (fun atom ->
       let t1, t2 = Atom.get_terms atom in
-      add_from_terms t1 t2 )
+      add_from_terms t1 t2)
     phi.Formula.atoms ;
   graph
 
@@ -1442,8 +1442,8 @@ let get_reachable_from graph vs =
                if not (Caml.Hashtbl.mem reachable v') then (
                  (* [v'] seen for the first time: we need to explore it *)
                  Caml.Hashtbl.replace reachable v' () ;
-                 new_vs := v' :: !new_vs ) )
-             vs' )
+                 new_vs := v' :: !new_vs ))
+             vs')
   done ;
   Caml.Hashtbl.to_seq_keys reachable |> Var.Set.of_seq
 

@@ -77,7 +77,7 @@ let callback_fragment_retains_view_java {IntraproceduralAnalysis.proc_desc; tenv
               not
                 ( Annotations.ia_ends_with ia Annotations.auto_cleanup
                 || Fieldname.Set.mem fname fields_nullified )
-            then report_warning proc_desc err_log class_name fname fld_typ )
+            then report_warning proc_desc err_log class_name fname fld_typ)
           declared_view_fields
     | _ ->
         ()

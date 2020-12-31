@@ -126,8 +126,8 @@ let get_trace = function
                          (F.asprintf "in call to %a" CallEvent.pp call)
                          []
                        :: errlog
-                     , depth + 1 ) )
-               |> fst ) )
+                     , depth + 1 ))
+               |> fst ))
       @@
       let start_location = Trace.get_start_location invalidation_trace in
       add_errlog_header ~title:"invalidation part of the trace starts here" start_location

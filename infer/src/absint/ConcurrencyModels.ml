@@ -121,7 +121,7 @@ end = struct
     let mk_model_matcher ~f =
       let lock_methods =
         List.concat_map lock_models ~f:(fun mdl ->
-            List.map (f mdl) ~f:(fun mtd -> mdl.classname ^ "::" ^ mtd) )
+            List.map (f mdl) ~f:(fun mtd -> mdl.classname ^ "::" ^ mtd))
       in
       mk_matcher lock_methods
     in
@@ -180,7 +180,7 @@ end = struct
     let make_trylock ~mthds guard =
       let qual_name = QualifiedCppName.of_qual_string guard in
       List.map mthds ~f:(fun qual ->
-          QualifiedCppName.append_qualifier qual_name ~qual |> QualifiedCppName.to_qual_string )
+          QualifiedCppName.append_qualifier qual_name ~qual |> QualifiedCppName.to_qual_string)
     in
     ( make_with_classname ~f:(fun class_name -> class_name)
     , make_with_classname ~f:(fun class_name -> "~" ^ class_name)
@@ -316,7 +316,7 @@ let is_android_lifecycle_method tenv pname =
                false
            | JavaClass java_class_name ->
                JavaClassName.package java_class_name
-               |> Option.exists ~f:(String.is_prefix ~prefix:"android") )
+               |> Option.exists ~f:(String.is_prefix ~prefix:"android"))
   in
   let overrides_android_method tenv pname =
     PatternMatch.override_exists package_starts_with_android tenv pname
@@ -354,7 +354,7 @@ let find_override_or_superclass_annotated is_annot tenv proc_name =
     | Some (tstruct : Struct.t) -> (
       match
         List.find_map tstruct.methods ~f:(fun pn ->
-            if is_override pn && is_annotated pn then Some (Override pn) else None )
+            if is_override pn && is_annotated pn then Some (Override pn) else None)
       with
       | Some _ as result ->
           result

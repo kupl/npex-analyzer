@@ -265,7 +265,8 @@ let make_nullsafe_issue_if_reportable_lazy ~nullsafe_mode err_instance =
                       this can have a lot of reasons to be actually nullable.
                       Until it is made non-precise, it is recommended to not turn this warning on.
                       But even when it is on, this should not be more than advice.
-                 *) ~severity:IssueType.Advice) )
+                 *)
+               ~severity:IssueType.Advice) )
     | Over_annotation {over_annotated_violation; loc; violation_type} ->
         Some
           ( lazy
@@ -282,7 +283,7 @@ let make_nullsafe_issue_if_reportable_lazy ~nullsafe_mode err_instance =
              NullsafeIssue.make ~description ~issue_type ~loc
                ~severity:
                  (* Very non-precise issue. Should be actually turned off unless for experimental purposes. *)
-                 IssueType.Advice ) )
+                 IssueType.Advice) )
     | Field_not_initialized {field_name; loc} ->
         Some
           ( lazy
@@ -341,7 +342,7 @@ let report_now_if_reportable analysis_data err_instance ~nullsafe_mode =
          Logging.debug Analysis Medium "About to report: %s"
            (NullsafeIssue.get_description nullsafe_issue) ;
          let field_name = get_field_name_for_error_suppressing err_instance in
-         EradicateReporting.report_error analysis_data Eradicate nullsafe_issue ~field_name )
+         EradicateReporting.report_error analysis_data Eradicate nullsafe_issue ~field_name)
 
 
 (** Register issue (unless exactly the same issue was already registered). If needed, report this

@@ -123,7 +123,7 @@ let flag_reachable g start_pname =
     else (
       Node.set_flag n ;
       List.fold n.successors ~init ~f:(fun acc id ->
-          match node_of_id g id with Some n' when not n'.flag -> n' :: acc | _ -> acc ) )
+          match node_of_id g id with Some n' when not n'.flag -> n' :: acc | _ -> acc) )
   in
   let rec flag_list frontier =
     if not (List.is_empty frontier) then flag_list (List.fold frontier ~init:[] ~f:process_node)

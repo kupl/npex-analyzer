@@ -45,7 +45,7 @@ let fold_option xs ~init ~f =
   let@ {return} = with_return in
   Some
     (fold xs ~init ~f:(fun acc elt ->
-         match f acc elt with Some res -> res | None -> return None ))
+         match f acc elt with Some res -> res | None -> return None))
 
 let filter_map_endo t ~f = filter_map_endo filter_map t ~f
 let map_endo t ~f = map_endo map t ~f
@@ -53,7 +53,7 @@ let map_endo t ~f = map_endo map t ~f
 let rev_map_unzip xs ~f =
   fold xs ~init:([], []) ~f:(fun (ys, zs) x ->
       let y, z = f x in
-      (y :: ys, z :: zs) )
+      (y :: ys, z :: zs))
 
 let remove_exn ?(equal = phys_equal) xs x =
   let rec remove_ ys = function

@@ -69,7 +69,7 @@ let edge_is_strong tenv obj_edge =
       ~f:(fun Annot.{value} ->
         Annot.has_matching_str_value value ~pred:(fun att ->
             String.equal Config.unsafe_unret att
-            || String.equal Config.weak att || String.equal Config.assign att ) )
+            || String.equal Config.weak att || String.equal Config.assign att))
       params
   in
   let rc_field =
@@ -93,7 +93,7 @@ let edge_is_strong tenv obj_edge =
              ~f:(fun ((ann : Annot.t), _) ->
                ( String.equal ann.class_name Config.property_attributes
                || String.equal ann.class_name Config.ivar_attributes )
-               && has_weak_or_unretained_or_assign ann.parameters )
+               && has_weak_or_unretained_or_assign ann.parameters)
              ia
        | _ ->
            (* Assume the edge is weak if the type or field cannot be found in the tenv, to avoid FPs *)
@@ -124,8 +124,7 @@ let get_cycle_blocks root_node exp =
           | Typ.Tptr (_, Typ.Pk_objc_weak) | Typ.Tptr (_, Typ.Pk_objc_unsafe_unretained) ->
               None
           | _ ->
-              if Exp.equal e root_node.RetainCyclesType.rc_node_exp then Some (name, var) else None
-          )
+              if Exp.equal e root_node.RetainCyclesType.rc_node_exp then Some (name, var) else None)
         captured_vars
   | _ ->
       None
@@ -154,7 +153,7 @@ let get_cycles found_cycles root tenv prop =
   let get_points_to e =
     List.find
       ~f:(fun hpred ->
-        match hpred with Predicates.Hpointsto (e', _, _) -> Exp.equal e' e | _ -> false )
+        match hpred with Predicates.Hpointsto (e', _, _) -> Exp.equal e' e | _ -> false)
       sigma
   in
   (* Perform a dfs of a graph stopping when e_root is reached. Returns the set of cycles reached. *)
@@ -245,7 +244,7 @@ let report_cycle {InterproceduralAnalysis.proc_desc; tenv; err_log} prop =
     RetainCyclesType.Set.iter
       (fun cycle ->
         let exn = exn_retain_cycle tenv cycle in
-        BiabductionReporting.log_issue_using_state proc_desc err_log exn )
+        BiabductionReporting.log_issue_using_state proc_desc err_log exn)
       cycles ;
     (* we report the retain cycles above but need to raise an exception as well to stop the analysis *)
     raise (Exceptions.Analysis_stops (Localise.verbatim_desc "retain cycle found", Some __POS__)) )

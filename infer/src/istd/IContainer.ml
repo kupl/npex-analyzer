@@ -13,7 +13,7 @@ type 'a singleton_or_more = Empty | Singleton of 'a | More
 let singleton_or_more ~fold t =
   With_return.with_return (fun {return} ->
       fold t ~init:Empty ~f:(fun acc item ->
-          match acc with Empty -> Singleton item | _ -> return More ) )
+          match acc with Empty -> Singleton item | _ -> return More))
 
 
 let mem_nth ~fold t index =
@@ -21,7 +21,7 @@ let mem_nth ~fold t index =
       let (_ : int) =
         fold t ~init:index ~f:(fun index _ -> if index <= 0 then return true else index - 1)
       in
-      false )
+      false)
 
 
 let forto excl ~init ~f =
@@ -50,7 +50,7 @@ let iter_consecutive ~fold t ~f =
   let (_ : _ option) =
     fold t ~init:None ~f:(fun prev_opt curr ->
         (match prev_opt with Some prev -> f prev curr | None -> ()) ;
-        Some curr )
+        Some curr)
   in
   ()
 
@@ -90,4 +90,4 @@ let fold_result_until ~fold ~init ~f ~finish collection =
              | Continue x ->
                  x
              | Stop x ->
-                 return (Result.Ok x) )) )
+                 return (Result.Ok x))))

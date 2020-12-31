@@ -172,7 +172,7 @@ let get_info object_origin nullsafe_mode untrusted_kind =
               Option.value_map suggested_third_party_sig_file
                 ~f:(fun sig_file_name ->
                   ThirdPartyAnnotationGlobalRepo.get_user_friendly_third_party_sig_file_name
-                    ~filename:sig_file_name )
+                    ~filename:sig_file_name)
                   (* this can happen when third party is registered in a deprecated way (not in third party repository) *)
                 ~default:"the third party signature storage"
             in

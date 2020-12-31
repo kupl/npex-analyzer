@@ -53,7 +53,7 @@ let call_matches ~search_superclasses ~method_prefix ~actuals_pred clazz methods
     actuals_pred actuals
     &&
     let mthd = Procname.get_method pn |> strip_template_args in
-    List.exists methods ~f:(method_matcher mthd) && class_matcher tenv pn )
+    List.exists methods ~f:(method_matcher mthd) && class_matcher tenv pn)
   |> Staged.stage
 
 

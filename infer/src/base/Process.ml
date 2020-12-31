@@ -17,7 +17,7 @@ let print_error_and_exit ?(exit_code = 1) fmt =
   F.kfprintf
     (fun _ ->
       L.external_error "%s" (F.flush_str_formatter ()) ;
-      L.exit exit_code )
+      L.exit exit_code)
     F.str_formatter fmt
 
 

@@ -158,7 +158,7 @@ let tests =
                CallbackOfChecker.mk_interprocedural_field_t Payloads.Fields.quandary (Exe_env.mk ())
                  summary ~tenv:(Tenv.create ()) ()
                |> fst
-           ; formal_map= FormalMap.empty } )
+           ; formal_map= FormalMap.empty })
          ~initial:(MockTaintAnalysis.Domain.bottom, Bindings.empty)
   in
   "taint_test_suite" >::: test_list

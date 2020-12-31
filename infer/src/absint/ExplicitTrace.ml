@@ -92,7 +92,7 @@ module MakeTraceElemWithComparator
       List.fold e.trace ~init:([], nesting) ~f:(fun (tr, ns) callsite ->
           let descr = F.asprintf "%a" CallPrinter.pp callsite in
           let call = Errlog.make_trace_element ns (CallSite.loc callsite) descr [] in
-          (call :: tr, ns + 1) )
+          (call :: tr, ns + 1))
     in
     let endpoint_descr = F.asprintf "%a" Elem.describe e.elem in
     let endpoint = Errlog.make_trace_element nesting e.loc endpoint_descr [] in

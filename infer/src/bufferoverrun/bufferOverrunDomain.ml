@@ -377,7 +377,7 @@ module Val = struct
           x.itv_thresholds
           |> ItvThresholds.add Z.(z - one)
           |> ItvThresholds.add z
-          |> ItvThresholds.add Z.(z + one) )
+          |> ItvThresholds.add Z.(z + one))
     in
     let arrayblk = g x.arrayblk y.arrayblk in
     if
@@ -800,7 +800,7 @@ module MemPure = struct
             | Top ->
                 acc )
         | None ->
-            acc )
+            acc)
       mem
       (Polynomials.NonNegativePolynomial.one ())
 
@@ -817,7 +817,7 @@ module MemPure = struct
               let v2 = MVal.on_demand ~default:Val.bot oenv l in
               Some (MVal.join v1 v2)
           | None, None ->
-              None )
+              None)
         astate1 astate2
 
 
@@ -836,7 +836,7 @@ module MemPure = struct
               let v1 = MVal.on_demand ~default:Val.bot oenv l in
               Some (MVal.widen ~prev:v1 ~next:v2 ~num_iters)
           | None, None ->
-              None )
+              None)
         prev next
 
 
@@ -1124,7 +1124,7 @@ module AliasTargets = struct
   let subst ~subst_loc x =
     let accum_substed rhs tgt acc =
       Option.value_map (subst_loc rhs) ~default:acc ~f:(fun rhs ->
-          add rhs (AliasTarget.loc_map tgt ~f:subst_loc) acc )
+          add rhs (AliasTarget.loc_map tgt ~f:subst_loc) acc)
     in
     fold accum_substed x empty
 
@@ -1275,7 +1275,7 @@ module AliasMap = struct
           | IContainer.Singleton loc ->
               incr_iterator_simple_alias ~prev:x loc IntLit.one acc
           | IContainer.Empty | IContainer.More ->
-              acc )
+              acc)
     in
     PowLoc.fold accum_increased_alias callee_locs x
 
@@ -1335,7 +1335,7 @@ module AliasMap = struct
             let tgt = apply_i tgt ~f:IntLit.(add one) in
             let acc = add_alias ~lhs:(KeyLhs.of_id id) ~rhs tgt acc in
             Option.value_map java_tmp ~default:x ~f:(fun java_tmp ->
-                add_alias ~lhs:(KeyLhs.of_loc java_tmp) ~rhs (java_tmp_none tgt) acc )
+                add_alias ~lhs:(KeyLhs.of_loc java_tmp) ~rhs (java_tmp_none tgt) acc)
         | _ ->
             acc
       in
@@ -1973,7 +1973,7 @@ module MemReach = struct
     IOption.value_default_f (find_opt l m) ~f:(fun () ->
         GOption.value_map_f m.find_global_array ~default:ondemand_fallback
           ~f:(fun find_global_array ->
-            IOption.value_default_f (find_global_array l) ~f:ondemand_fallback ) )
+            IOption.value_default_f (find_global_array l) ~f:ondemand_fallback))
 
 
   let find_heap : ?typ:Typ.t -> Loc.t -> _ t0 -> Val.t =
@@ -2021,7 +2021,7 @@ module MemReach = struct
    fun get_summary oenv ->
     let find_global_array loc =
       Option.bind (Loc.get_global_array_initializer loc) ~f:(fun pname ->
-          Option.bind (get_summary pname) ~f:(find_opt loc) )
+          Option.bind (get_summary pname) ~f:(find_opt loc))
     in
     { stack_locs= StackLocs.bot
     ; mem_pure= MemPure.bot

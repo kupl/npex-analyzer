@@ -19,7 +19,7 @@ let unknown_call call =
           match Llair.Reg.of_exp callee with
           | Some reg -> Llair.Reg.pp_demangled fs reg
           | None -> Llair.Exp.pp fs callee )
-        | _ -> () )
+        | _ -> ())
       call Llair.Term.pp call]
 
 let invalid_access_count = ref 0
@@ -120,7 +120,7 @@ let output entry =
   Option.iter !chan ~f:(fun chan ->
       Out_channel.output_string chan
         (Sexp.to_string (sexp_of_t {name= !name; entry})) ;
-      Out_channel.newline chan )
+      Out_channel.newline chan)
 
 let init ?append filename =
   (chan :=
@@ -135,6 +135,6 @@ let init ?append filename =
   at_exit (fun () ->
       output (process_times ()) ;
       output (gc_stats ()) ;
-      Option.iter ~f:Out_channel.close_no_err !chan )
+      Option.iter ~f:Out_channel.close_no_err !chan)
 
 let status s = output (Status s)

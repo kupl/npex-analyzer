@@ -92,7 +92,7 @@ let create_condition_ls ids_private id_base p_leftover (inst : Predicates.subst)
   Prop.sigma_free_vars p_leftover.Prop.sigma |> Fn.non intersects_fav_insts_of_private_ids
   && (* [fav_insts_of_private_ids] does not intersect the free vars in [insts_of_public_ids] *)
   List.for_all insts_of_public_ids ~f:(fun e ->
-      Exp.free_vars e |> Fn.non intersects_fav_insts_of_private_ids )
+      Exp.free_vars e |> Fn.non intersects_fav_insts_of_private_ids)
 
 
 let mk_rule_ptspts_ls tenv impl_ok1 impl_ok2 (para : Predicates.hpara) =
@@ -883,7 +883,7 @@ let abstract_pure_part tenv p ~(from_abstract_footprint : bool) =
         |> Sequence.for_all ~f:(fun id ->
                if Ident.is_primed id then Ident.Set.mem id fav_sigma
                else if Ident.is_footprint id then Ident.Set.mem id fav_nonpure
-               else true )
+               else true)
       in
       List.filter ~f:filter pure
     in
@@ -903,7 +903,7 @@ let abstract_pure_part tenv p ~(from_abstract_footprint : bool) =
           | Aneq (Var _, _) | Apred (_, Var _ :: _) | Anpred (_, Var _ :: _) ->
               a :: pi
           | Aeq _ | Aneq _ | Apred _ | Anpred _ ->
-              pi )
+              pi)
         ~init:[] pi_filtered
     in
     List.rev new_pure

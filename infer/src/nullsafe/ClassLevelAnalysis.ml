@@ -36,7 +36,7 @@ let is_reportable_typing_rules_violation ~nullsafe_mode issue =
 
 let get_reportable_typing_rules_violations modes_with_issues =
   List.filter modes_with_issues ~f:(fun (nullsafe_mode, issue) ->
-      is_reportable_typing_rules_violation ~nullsafe_mode issue )
+      is_reportable_typing_rules_violation ~nullsafe_mode issue)
   |> List.map ~f:(fun (_, a) -> a)
 
 
@@ -91,7 +91,7 @@ let calc_mode_to_promote_to curr_mode all_issues =
 let make_meta_issue modes_and_issues top_level_class_mode top_level_class_name =
   let currently_reportable_issues = get_reportable_typing_rules_violations modes_and_issues in
   List.iter currently_reportable_issues ~f:(fun issue ->
-      Logging.debug Analysis Medium "Issue: %a@\n" TypeErr.pp_err_instance issue ) ;
+      Logging.debug Analysis Medium "Issue: %a@\n" TypeErr.pp_err_instance issue) ;
   let currently_reportable_issue_count = List.length currently_reportable_issues in
   let all_issues = List.map modes_and_issues ~f:(fun (_, a) -> a) in
   let mode_to_promote_to =
@@ -174,7 +174,7 @@ let report_meta_issue_for_top_level_class tenv source_file class_name class_stru
     let all_issues =
       List.map class_names_and_summaries ~f:(fun (class_name, NullsafeSummary.{issues}) ->
           let mode_for_class_name = NullsafeMode.of_class tenv class_name in
-          List.map issues ~f:(fun issue -> (mode_for_class_name, issue)) )
+          List.map issues ~f:(fun issue -> (mode_for_class_name, issue)))
       |> List.fold ~init:[] ~f:( @ )
     in
     let {issue_type; description; severity; meta_issue_info} =

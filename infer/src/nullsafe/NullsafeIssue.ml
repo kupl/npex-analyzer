@@ -57,7 +57,7 @@ let to_third_party_method_according_to_source_code_annotations (proc_name, annot
   let params_nullability =
     AnnotatedSignature.get_non_virtual_params annotated_signature
     |> List.map ~f:(fun AnnotatedSignature.{param_annotated_type= {nullability}} ->
-           to_third_party_nullability nullability )
+           to_third_party_nullability nullability)
   in
   let params =
     match List.zip param_types params_nullability with
@@ -76,7 +76,7 @@ let to_nullable_method_json nullable_methods =
         { class_name= Procname.Java.get_simple_class_name pname
         ; method_name= Procname.Java.get_method pname
         ; package= Procname.Java.get_package pname |> Option.value ~default:""
-        ; call_line= call_loc.Location.line } )
+        ; call_line= call_loc.Location.line })
 
 
 let get_nullsafe_extra {third_party_dependent_methods; nullable_methods} proc_name =

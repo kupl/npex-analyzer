@@ -160,7 +160,7 @@ let is_future_is_done =
 (* sort from High to Low *)
 let may_block tenv pn actuals =
   List.find_map standard_matchers ~f:(fun (matcher, sev) ->
-      Option.some_if (matcher tenv pn actuals) sev )
+      Option.some_if (matcher tenv pn actuals) sev)
 
 
 let is_monitor_wait =
@@ -306,7 +306,7 @@ let rec get_executor_thread_annotation_constraint tenv (receiver : HilExp.Access
       |> Option.bind ~f:(fun (_, _, annot) ->
              if Annotations.(ia_ends_with annot for_ui_thread) then Some ForUIThread
              else if Annotations.(ia_ends_with annot for_non_ui_thread) then Some ForNonUIThread
-             else None )
+             else None)
   | Dereference prefix ->
       get_executor_thread_annotation_constraint tenv prefix
   | _ ->
@@ -345,7 +345,7 @@ let get_returned_executor tenv callee actuals =
              | Tstruct tname | Typ.Tptr ({desc= Tstruct tname}, _) ->
                  PatternMatch.is_subtype_of_str tenv tname executor_type_str
              | _ ->
-                 false ) )
+                 false) )
   in
   match (callee, actuals) with
   | Procname.Java java_pname, [] -> (

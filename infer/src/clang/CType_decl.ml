@@ -691,7 +691,7 @@ and get_struct_methods struct_decl tenv =
       | ObjCMethodDecl _ ->
           Some (procname_from_decl ~tenv decl)
       | _ ->
-          None )
+          None)
 
 
 and get_record_struct_type tenv definition_decl : Typ.desc =

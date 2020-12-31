@@ -200,7 +200,7 @@ module Node = struct
     |> ISequence.gen_sequence_list ~f:(fun parent ->
            get_succs parent |> Sequence.of_list
            |> Sequence.filter ~f:(fun n -> not (equal node n))
-           |> Sequence.Generator.of_sequence )
+           |> Sequence.Generator.of_sequence)
     |> Sequence.Generator.run
 
 
@@ -434,6 +434,7 @@ module Node = struct
     let preds = get_preds node in
     NodeKey.compute node ~simple_key ~succs ~preds
 
+
   let replace_instrs_with_given node instrs = node.instrs <- instrs
 end
 
@@ -556,7 +557,7 @@ let get_static_callees pdesc =
         | Sil.Call (_, Exp.Const (Const.Cfun callee_pn), _, _, _) ->
             Procname.Set.add callee_pn acc
         | _ ->
-            acc )
+            acc)
   in
   Procname.Set.remove (get_proc_name pdesc) callees |> Procname.Set.elements
 
@@ -624,7 +625,7 @@ let set_succs (node : Node.t) ~normal:succs_opt ~exn:exn_opt =
   Option.iter succs_opt ~f:(fun new_succs ->
       List.iter node.succs ~f:(remove_pred node) ;
       List.iter new_succs ~f:(add_pred node) ;
-      node.succs <- new_succs ) ;
+      node.succs <- new_succs) ;
   Option.iter exn_opt ~f:(fun exn -> node.exn <- exn)
 
 
@@ -705,7 +706,7 @@ let get_wto pdesc =
       let (_ : int) =
         WeakTopologicalOrder.Partition.fold_nodes wto ~init:0 ~f:(fun idx node ->
             node.Node.wto_index <- idx ;
-            idx + 1 )
+            idx + 1)
       in
       pdesc.wto <- Some wto ;
       wto
@@ -767,7 +768,7 @@ let pp_captured_list fmt etl =
     ~f:(fun (id, ty, mode) ->
       Format.fprintf fmt " [%s] %a:%a"
         (Pvar.string_of_capture_mode mode)
-        Mangled.pp id (Typ.pp_full Pp.text) ty )
+        Mangled.pp id (Typ.pp_full Pp.text) ty)
     etl
 
 
@@ -856,4 +857,4 @@ let load =
         Sqlite3.bind stmt 1 (Sqlite3.Data.TEXT (Procname.to_unique_id pname))
         |> SqliteUtils.check_result_code db ~log:"load bind proc_uid" ;
         SqliteUtils.result_single_column_option ~finalize:false ~log:"Procdesc.load" db stmt
-        |> Option.bind ~f:SQLite.deserialize )
+        |> Option.bind ~f:SQLite.deserialize)

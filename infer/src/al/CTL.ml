@@ -69,7 +69,7 @@ let print_checker c =
             match paths_keyword with `WhitelistPath -> "whitelist_path" | _ -> "blacklist_path"
           in
           let paths_str = String.concat ~sep:"," (List.map ~f:ALVar.alexp_to_string paths) in
-          L.(debug Linters Medium) "    %s=  @\n    %s@\n@\n" keyword paths_str )
+          L.(debug Linters Medium) "    %s=  @\n    %s@\n@\n" keyword paths_str)
     c.definitions ;
   L.(debug Linters Medium) "@\n-------------------- @\n"
 
@@ -842,7 +842,7 @@ and eval_EX ?(keep_witness = false) phi an lcxt trans =
   in
   let witness_opt =
     List.fold_left succs ~init:None ~f:(fun acc node ->
-        choose_witness_opt (eval_formula phi node lcxt) acc )
+        choose_witness_opt (eval_formula phi node lcxt) acc)
   in
   if keep_witness then witness_opt
   else
@@ -891,7 +891,7 @@ and in_node node_type_list phi an lctx =
   in
   (* This is basically an OR of formula holds in the various nodes in the list *)
   List.fold_left node_type_list ~init:None ~f:(fun acc node ->
-      choose_witness_opt (holds_for_one_node node) acc )
+      choose_witness_opt (holds_for_one_node node) acc)
 
 
 (* Intuitive meaning: (an,lcxt) satifies EH[Classes] phi

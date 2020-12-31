@@ -25,7 +25,7 @@ register_sexp_of_exn
   (function
     | Replay (exn, _, payload) ->
         Sexp.List [Atom "Replay"; sexp_of_exn exn; payload]
-    | exn -> Sexp.Atom (Printexc.to_string exn) )
+    | exn -> Sexp.Atom (Printexc.to_string exn))
 
 let fail = Trace.fail
 
@@ -40,7 +40,7 @@ let warn fmt =
   Format.kfprintf
     (fun fs () ->
       Format.pp_close_box fs () ;
-      Format.pp_force_newline fs () )
+      Format.pp_force_newline fs ())
     fs fmt
 
 (** Assertions *)
@@ -88,7 +88,7 @@ module Invariant = struct
             ; sexp_of_exn exn
             ; Source_code_position.sexp_of_t pos
             ; payload ]
-      | exn -> Sexp.Atom (Printexc.to_string exn) )
+      | exn -> Sexp.Atom (Printexc.to_string exn))
 
   let invariant here t sexp_of_t f =
     assert (

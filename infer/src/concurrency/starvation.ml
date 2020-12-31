@@ -62,7 +62,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
              let attributes =
                AttributeDomain.add future (Attribute.FutureDoneState bool_value) acc.attributes
              in
-             {acc with attributes} )
+             {acc with attributes})
     in
     match HilExp.get_access_exprs assume_exp with
     | [access_expr] ->
@@ -84,10 +84,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     AttributeDomain.find_opt exp astate.attributes
     |> IOption.if_none_evalopt ~f:(fun () ->
            StarvationModels.get_executor_thread_annotation_constraint tenv exp
-           |> Option.map ~f:(fun constr -> Attribute.WorkScheduler constr) )
+           |> Option.map ~f:(fun constr -> Attribute.WorkScheduler constr))
     |> IOption.if_none_evalopt ~f:(fun () ->
            StarvationModels.get_run_method_from_runnable tenv exp
-           |> Option.map ~f:(fun procname -> Attribute.Runnable procname) )
+           |> Option.map ~f:(fun procname -> Attribute.Runnable procname))
 
 
   let do_work_scheduling tenv callee actuals loc (astate : Domain.t) =
@@ -124,7 +124,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     |> Option.bind ~f:(fun exp -> get_exp_attributes tenv exp astate)
     |> Option.value_map ~default:astate ~f:(fun attribute ->
            let attributes = Domain.AttributeDomain.add lhs_access_exp attribute astate.attributes in
-           {astate with attributes} )
+           {astate with attributes})
 
 
   let do_call {interproc= {tenv; analyze_dependency}; formals} lhs callee actuals loc
@@ -196,7 +196,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                    let attributes =
                      AttributeDomain.add receiver (Runnable procname) astate.attributes
                    in
-                   {astate with attributes} )
+                   {astate with attributes})
         | _ ->
             None
       else None
@@ -218,7 +218,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
       |> Option.map ~f:(fun summary ->
              let subst = Lock.make_subst formals actuals in
              let callsite = CallSite.make callee loc in
-             Domain.integrate_summary ~tenv ~lhs ~subst callsite astate summary )
+             Domain.integrate_summary ~tenv ~lhs ~subst callsite astate summary)
     in
     IList.eval_until_first_some
       [treat_handler_constructor; treat_thread_constructor; treat_assume; treat_modeled_summaries]
@@ -236,7 +236,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let astate =
       get_access_expr rhs_hil_exp
       |> Option.value_map ~default:astate ~f:(fun acc_exp ->
-             {astate with var_state= Domain.VarDomain.set lhs_var acc_exp astate.var_state} )
+             {astate with var_state= Domain.VarDomain.set lhs_var acc_exp astate.var_state})
     in
     let lhs_hil_acc_exp = HilExp.AccessExpression.base lhs in
     do_assignment tenv lhs_hil_acc_exp rhs_hil_exp astate
@@ -278,7 +278,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         hilexp_of_sil ~add_deref:true astate e1 (Typ.mk_ptr typ)
         |> get_access_expr
         |> Option.value_map ~default:astate ~f:(fun lhs_hil_acc_exp ->
-               do_assignment tenv lhs_hil_acc_exp rhs_hil_exp astate )
+               do_assignment tenv lhs_hil_acc_exp rhs_hil_exp astate)
     | Call (_, Const (Cfun callee), actuals, _, _)
       when should_skip_analysis tenv callee (hilexp_of_sils ~add_deref:false astate actuals) ->
         astate
@@ -541,7 +541,7 @@ end = struct
         | reports ->
             List.max_elt ~compare reports
             |> Option.fold ~init:issue_log ~f:(fun acc (_, rep) ->
-                   mk_deduped_report rep |> log_report ~issue_log:acc loc )
+                   mk_deduped_report rep |> log_report ~issue_log:acc loc)
       else
         List.fold reports ~init:issue_log ~f:(fun acc (_, rep) -> log_report ~issue_log:acc loc rep)
     in
@@ -587,7 +587,8 @@ end = struct
     in
     let source_map =
       Location.Map.fold
-        (fun key value acc -> SourceFile.Map.update key.Location.file (update_loc_map key value) acc)
+        (fun key value acc ->
+          SourceFile.Map.update key.Location.file (update_loc_map key value) acc)
         loc_map SourceFile.Map.empty
     in
     SourceFile.Map.iter
@@ -642,7 +643,7 @@ let fold_reportable_summaries analyze_ondemand tenv clazz ~init ~f =
              analyze_ondemand mthd
              |> Option.map ~f:(fun (_, payload) -> (mthd, payload))
              |> Option.fold ~init:acc ~f
-           else acc )
+           else acc)
   in
   List.fold methods ~init ~f
 
@@ -779,7 +780,7 @@ let report_on_pair ~analyze_ondemand tenv pattrs (pair : Domain.CriticalPair.t) 
                        CriticalPairs.fold
                          (report_on_parallel_composition ~should_report_starvation tenv pattrs pair
                             lock other_pname)
-                         critical_pairs acc ) ) ) )
+                         critical_pairs acc))) )
   | _ ->
       report_map
 
@@ -798,6 +799,6 @@ let reporting {InterproceduralAnalysis.procedures; file_exe_env; analyze_file_de
              let attributes = Procdesc.get_attributes proc_desc in
              let tenv = Exe_env.get_tenv file_exe_env procname in
              if should_report attributes then report_on_proc tenv attributes report_map summary
-             else report_map )
+             else report_map)
     in
     List.fold procedures ~init:ReportMap.empty ~f:report_procedure |> ReportMap.issue_log_of

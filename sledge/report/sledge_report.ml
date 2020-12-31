@@ -21,7 +21,7 @@ let read filename =
       | Some (times, gcs, statuses), GcStats gc ->
           Tbl.replace tbl name (times, gc :: gcs, statuses)
       | Some (times, gc, statuses), Status status ->
-          Tbl.replace tbl name (times, gc, status :: statuses) ) ;
+          Tbl.replace tbl name (times, gc, status :: statuses)) ;
   tbl
 
 type times = {etime: float; utime: float; stime: float}
@@ -50,7 +50,7 @@ let add_time base_times row ptimes =
       ~f:(fun times_deltas {etime= btt; utime= but; stime= bst} ->
         let {etime= tt; utime= ut; stime= st} = tustimes in
         {etime= tt -. btt; utime= ut -. but; stime= st -. bst}
-        :: times_deltas )
+        :: times_deltas)
   in
   {row with times; times_deltas}
 
@@ -67,7 +67,7 @@ let add_gc base_gcs row gc =
           { allocated= gc.allocated -. bgc.allocated
           ; promoted= gc.promoted -. bgc.promoted
           ; peak_size= gc.peak_size -. bgc.peak_size }
-        :: gcs_deltas )
+        :: gcs_deltas)
   in
   {row with gcs; gcs_deltas}
 
@@ -96,7 +96,7 @@ let ave_floats flts =
   let min, max, sum, num =
     Iter.fold flts ~init:(Float.infinity, Float.neg_infinity, 0., 0)
       ~f:(fun (min, max, sum, num) flt ->
-        (Float.min min flt, Float.max max flt, sum +. flt, num + 1) )
+        (Float.min min flt, Float.max max flt, sum +. flt, num + 1))
   in
   if num >= 5 then (sum -. min -. max) /. Float.of_int (num - 2)
   else sum /. Float.of_int num
@@ -116,15 +116,17 @@ let combine name b_result c_result =
                   , Iter.empty
                   , Iter.empty
                   , Iter.empty )
-                ~f:(fun (etimes, utimes, stimes, cutimes, cstimes)
-                   ( etime
-                   , {Unix.tms_utime; tms_cutime; tms_stime; tms_cstime} )
+                ~f:(fun
+                     (etimes, utimes, stimes, cutimes, cstimes)
+                     ( etime
+                     , {Unix.tms_utime; tms_cutime; tms_stime; tms_cstime}
+                     )
                    ->
                   ( Iter.cons etime etimes
                   , Iter.cons tms_utime utimes
                   , Iter.cons tms_stime stimes
                   , Iter.cons tms_cutime cutimes
-                  , Iter.cons tms_cstime cstimes ) )
+                  , Iter.cons tms_cstime cstimes ))
             in
             Some
               (times_of_raw
@@ -139,12 +141,13 @@ let combine name b_result c_result =
           else
             let allocs, promos, peaks =
               List.fold gcs ~init:(Iter.empty, Iter.empty, Iter.empty)
-                ~f:(fun (allocs, promos, peaks)
-                   {Report.allocated; promoted; peak_size}
+                ~f:(fun
+                     (allocs, promos, peaks)
+                     {Report.allocated; promoted; peak_size}
                    ->
                   ( Iter.cons allocated allocs
                   , Iter.cons promoted promos
-                  , Iter.cons peak_size peaks ) )
+                  , Iter.cons peak_size peaks ))
             in
             Some
               Report.
@@ -206,9 +209,9 @@ let ranges rows =
           let pct_time =
             Option.fold times ~init:acc.pct_time ~f:(fun pct_time times ->
                 let pct = 100. *. deltas.etime /. times.etime in
-                Float.max pct_time (Float.abs pct) )
+                Float.max pct_time (Float.abs pct))
           in
-          {acc with max_time; pct_time} )
+          {acc with max_time; pct_time})
       |> fun init ->
       Option.fold gcs_deltas ~init ~f:(fun acc deltas ->
           let max_alloc = Float.max acc.max_alloc deltas.Report.allocated in
@@ -217,7 +220,7 @@ let ranges rows =
                 let pct =
                   100. *. deltas.Report.allocated /. gcs.Report.allocated
                 in
-                Float.max pct_alloc (Float.abs pct) )
+                Float.max pct_alloc (Float.abs pct))
           in
           let max_promo = Float.max acc.max_promo deltas.Report.promoted in
           let pct_promo =
@@ -225,7 +228,7 @@ let ranges rows =
                 let pct =
                   100. *. deltas.Report.promoted /. gcs.Report.promoted
                 in
-                Float.max pct_promo (Float.abs pct) )
+                Float.max pct_promo (Float.abs pct))
           in
           let max_peak = Float.max acc.max_peak deltas.Report.peak_size in
           let pct_peak =
@@ -233,7 +236,7 @@ let ranges rows =
                 let pct =
                   100. *. deltas.Report.peak_size /. gcs.Report.peak_size
                 in
-                Float.max pct_peak (Float.abs pct) )
+                Float.max pct_peak (Float.abs pct))
           in
           { acc with
             max_alloc
@@ -241,7 +244,7 @@ let ranges rows =
           ; max_promo
           ; pct_promo
           ; max_peak
-          ; pct_peak } ) )
+          ; pct_peak }))
 
 let color max dat =
   (* linear interpolation mapping -1 to green, 0 to lace, and 1 to red *)
@@ -351,7 +354,7 @@ let write_html ranges rows chan =
                     Printf.fprintf ppf
                       "<td style=\"border-left: 2px solid #eee8d5\"; \
                        class=\"regress\">%a</td>\n"
-                      pf_status s )
+                      pf_status s)
       in
       let statd ppf = function
         | None | Some [] -> Printf.fprintf ppf "<td></td>\n"
@@ -418,7 +421,7 @@ let write_html ranges rows chan =
              <td style=\"border-left: 2px solid \
              #eee8d5\";></td><td></td><td></td>\n" ) ;
       pf "%a%a" stat status statd status_deltas ;
-      pf "</tr>\n" ) ;
+      pf "</tr>\n") ;
   pf "<table>\n" ;
   pf "</body></html>\n"
 
@@ -431,7 +434,7 @@ let average row =
           ~f:(fun (etimes, utimes, stimes) {etime; utime; stime} ->
             ( Iter.cons etime etimes
             , Iter.cons utime utimes
-            , Iter.cons stime stimes ) )
+            , Iter.cons stime stimes ))
       in
       Some
         { etime= ave_floats etimes
@@ -445,12 +448,13 @@ let average row =
     else
       let alloc, promo, peak =
         List.fold gcs ~init:(Iter.empty, Iter.empty, Iter.empty)
-          ~f:(fun (alloc, promo, peak)
-             {Report.allocated; promoted; peak_size}
+          ~f:(fun
+               (alloc, promo, peak)
+               {Report.allocated; promoted; peak_size}
              ->
             ( Iter.cons allocated alloc
             , Iter.cons promoted promo
-            , Iter.cons peak_size peak ) )
+            , Iter.cons peak_size peak ))
       in
       Some
         Report.
@@ -520,7 +524,7 @@ let add_total rows =
           then Some []
           else None
         in
-        {total with times; times_deltas; gcs; gcs_deltas; status_deltas} )
+        {total with times; times_deltas; gcs; gcs_deltas; status_deltas})
   in
   Iter.cons total rows
 
@@ -540,7 +544,9 @@ let cmp x y =
 
 let filter rows =
   Iter.filter rows ~f:(fun {status} ->
-      List.exists status ~f:(function Unimplemented _ -> false | _ -> true) )
+      List.exists status ~f:(function
+        | Unimplemented _ -> false
+        | _ -> true))
 
 let input_rows ?baseline current =
   let b_tbl = Option.map ~f:read baseline in
@@ -558,7 +564,7 @@ let input_rows ?baseline current =
       let opt_find_opt t n = Option.bind ~f:(fun t -> Tbl.find_opt t n) t in
       let b_result = opt_find_opt b_tbl name in
       let c_result = Tbl.find_opt c_tbl name in
-      combine name b_result c_result )
+      combine name b_result c_result)
 
 let generate_html ?baseline current output =
   let rows = input_rows ?baseline current in
@@ -594,7 +600,7 @@ let write_status rows chan =
         (List.pp ", " Report.pp_status)
         status
         (Option.pp "\t%a" (List.pp ", " Report.pp_status))
-        status_deltas )
+        status_deltas)
 
 let generate_status ?baseline current output =
   let rows = input_rows ?baseline current in

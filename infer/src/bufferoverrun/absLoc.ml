@@ -53,7 +53,7 @@ module Allocsite = struct
     | Known {proc_name; node_hash; inst_num; dimension; path} ->
         F.fprintf fmt "%s-%d-%d-%d" proc_name node_hash inst_num dimension ;
         Option.iter path ~f:(fun path ->
-            F.fprintf fmt "(%a)" (Symb.SymbolPath.pp_partial_paren ~paren:false) path )
+            F.fprintf fmt "(%a)" (Symb.SymbolPath.pp_partial_paren ~paren:false) path)
     | LiteralString s ->
         F.fprintf fmt "%S" s
 

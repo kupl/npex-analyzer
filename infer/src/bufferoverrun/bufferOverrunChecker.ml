@@ -174,7 +174,7 @@ let check_expr_for_array_access :
         check_sub_expr e cond_set
     | Exp.Closure {captured_vars} ->
         List.fold captured_vars ~init:cond_set ~f:(fun cond_set (e, _, _, _) ->
-            check_sub_expr e cond_set )
+            check_sub_expr e cond_set)
     | Exp.Var _ | Exp.Lvar _ | Exp.Const _ | Exp.Sizeof _ ->
         cond_set
   in
@@ -227,7 +227,7 @@ let rec check_expr_for_integer_overflow integer_type_widths pname exp location m
       |> check_expr_for_integer_overflow integer_type_widths pname e2 location mem
   | Exp.Closure {captured_vars} ->
       List.fold captured_vars ~init:cond_set ~f:(fun cond_set (e, _, _, _) ->
-          check_expr_for_integer_overflow integer_type_widths pname e location mem cond_set )
+          check_expr_for_integer_overflow integer_type_widths pname e location mem cond_set)
   | Exp.Var _ | Exp.Const _ | Exp.Lvar _ | Exp.Sizeof {dynamic_length= None} ->
       cond_set
 
@@ -283,11 +283,11 @@ let check_instr :
   | Sil.Call (_, Const (Cfun callee_pname), params, location, _) -> (
       let cond_set =
         List.fold params ~init:cond_set ~f:(fun cond_set (exp, _) ->
-            check_expr_for_integer_overflow integer_type_widths pname exp location mem cond_set )
+            check_expr_for_integer_overflow integer_type_widths pname exp location mem cond_set)
       in
       let fun_arg_list =
         List.map params ~f:(fun (exp, typ) ->
-            ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()} )
+            ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()})
       in
       match Models.Call.dispatch tenv callee_pname fun_arg_list with
       | Some {Models.check} ->
@@ -464,4 +464,4 @@ let checker ({InterproceduralAnalysis.proc_desc; tenv; exe_env; analyze_dependen
           cfg inv_map
       in
       report_errors analysis_data checks ;
-      Some (get_checks_summary checks) )
+      Some (get_checks_summary checks))

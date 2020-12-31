@@ -398,7 +398,7 @@ let should_flag_interface_call tenv exps call_flags pname =
     |> Option.exists ~f:(fun package_name ->
            String.is_prefix ~prefix:"java." package_name
            || String.is_prefix ~prefix:"android." package_name
-           || String.is_prefix ~prefix:"com.google." package_name )
+           || String.is_prefix ~prefix:"com.google." package_name)
   in
   let receiver_is_not_safe exps tenv =
     List.hd exps
@@ -408,7 +408,7 @@ let should_flag_interface_call tenv exps call_flags pname =
          | Some (receiver_prefix, receiver_access) ->
              not (is_safe_access receiver_access receiver_prefix tenv)
          | _ ->
-             true )
+             true)
   in
   let implements_threadsafe_interface java_pname tenv =
     (* generated classes implementing this interface are always threadsafe *)

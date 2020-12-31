@@ -186,7 +186,7 @@ module Set = struct
       (fun caller traces ->
         fold
           (fun callee traces -> add (BoTrace.call location ~caller ~callee) traces)
-          traces_callee traces )
+          traces_callee traces)
       traces_caller bottom
 
 

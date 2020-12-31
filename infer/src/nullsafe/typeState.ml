@@ -51,7 +51,7 @@ let map_join m1 m2 =
               Let's take the left one.
            *)
            let joined_type = typ1 in
-           (joined_type, InferredNullability.join inferred_nullability1 inferred_nullability2) )
+           (joined_type, InferredNullability.join inferred_nullability1 inferred_nullability2))
   in
   if phys_equal m1 m2 then m1 else M.merge range_join m1 m2
 

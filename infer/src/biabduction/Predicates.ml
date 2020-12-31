@@ -189,7 +189,7 @@ let pp_atom =
       | Apred (a, es) ->
           F.fprintf f "%s(%a)" (PredSymb.to_string pe a) (Pp.comma_seq (Exp.pp_diff pe)) es
       | Anpred (a, es) ->
-          F.fprintf f "!%s(%a)" (PredSymb.to_string pe a) (Pp.comma_seq (Exp.pp_diff pe)) es )
+          F.fprintf f "!%s(%a)" (PredSymb.to_string pe a) (Pp.comma_seq (Exp.pp_diff pe)) es)
 
 
 (** dump an atom *)
@@ -535,7 +535,7 @@ let rec pp_sexp_env pe0 envo f se =
       | Earray (len, nel, inst) ->
           let pp_diff f (i, se) = F.fprintf f "%a:%a" (Exp.pp_diff pe) i (pp_sexp_env pe envo) se in
           F.fprintf f "[%a|%a]%a" (Exp.pp_diff pe) len (pp_seq_diff pp_diff pe) nel
-            (pp_inst_if_trace pe) inst )
+            (pp_inst_if_trace pe) inst)
 
 
 (** Pretty print an hpred with an optional predicate env *)
@@ -560,7 +560,7 @@ let rec pp_hpred_env pe0 envo f hpred =
           F.fprintf f "dllseg%a(%a,%a,%a,%a,[%a],%a)" pp_lseg_kind k (Exp.pp_diff pe) iF
             (Exp.pp_diff pe) oB (Exp.pp_diff pe) oF (Exp.pp_diff pe) iB
             (Pp.comma_seq (Exp.pp_diff pe))
-            elist (pp_hpara_dll_env pe envo) hpara_dll )
+            elist (pp_hpara_dll_env pe envo) hpara_dll)
 
 
 and pp_hpara_env pe envo f hpara =
@@ -745,7 +745,7 @@ let rec strexp_gen_free_vars =
       Exp.gen_free_vars len
       >>= fun () ->
       ISequence.gen_sequence_list idx_se_list ~f:(fun (e, se) ->
-          Exp.gen_free_vars e >>= fun () -> strexp_gen_free_vars se )
+          Exp.gen_free_vars e >>= fun () -> strexp_gen_free_vars se)
 
 
 let hpred_gen_free_vars =
@@ -931,7 +931,7 @@ let rec exp_sub_ids (f : subst_fun) exp =
         IList.map_changed ~equal:[%compare.equal: Exp.t * Pvar.t * Typ.t * Pvar.capture_mode]
           ~f:(fun ((e, pvar, typ, mode) as captured) ->
             let e' = exp_sub_ids f e in
-            if phys_equal e' e then captured else (e', pvar, typ, mode) )
+            if phys_equal e' e then captured else (e', pvar, typ, mode))
           c.captured_vars
       in
       if phys_equal captured_vars c.captured_vars then exp else Exp.Closure {c with captured_vars}
@@ -995,7 +995,7 @@ let instr_sub_ids ~sub_id_binders f (instr : Sil.instr) : Sil.instr =
         IList.map_changed ~equal:[%compare.equal: Exp.t * Typ.t]
           ~f:(fun ((actual, typ) as actual_pair) ->
             let actual' = exp_sub_ids f actual in
-            if phys_equal actual' actual then actual_pair else (actual', typ) )
+            if phys_equal actual' actual then actual_pair else (actual', typ))
           actuals
       in
       if phys_equal ret_id' ret_id_typ && phys_equal fun_exp' fun_exp && phys_equal actuals' actuals

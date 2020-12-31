@@ -99,7 +99,7 @@ module NonNegativeBoundWithDegreeKind = struct
 
   let split_mult {degree_kind; symbol} =
     Option.map (NonNegativeBound.split_mult symbol) ~f:(fun (s1, s2) ->
-        (make degree_kind s1, make degree_kind s2) )
+        (make degree_kind s1, make degree_kind s2))
 
 
   let make_err_trace_symbol symbol = NonNegativeBound.make_err_trace symbol
@@ -139,7 +139,7 @@ module NonNegativeNonTopPolynomial = struct
             | Some lhs, Some rhs when not (le_elt ~lhs ~rhs) ->
                 raise Exit
             | _ ->
-                None )
+                None)
           m1 m2
       with
       | _ ->
@@ -200,13 +200,13 @@ module NonNegativeNonTopPolynomial = struct
             let degree_term =
               Degree.succ (NonNegativeBoundWithDegreeKind.degree_kind t) (degree_poly p)
             in
-            if Degree.compare degree_term cur_max > 0 then degree_term else cur_max )
+            if Degree.compare degree_term cur_max > 0 then degree_term else cur_max)
       terms Degree.zero
 
 
   let join_autoreleasepool_trace poly_x poly_y x y =
     Option.merge x y ~f:(fun x y ->
-        if Degree.compare (degree_poly poly_x) (degree_poly poly_y) >= 0 then x else y )
+        if Degree.compare (degree_poly poly_x) (degree_poly poly_y) >= 0 then x else y)
 
 
   let poly_of_non_negative_int : NonNegativeInt.t -> poly = fun const -> {const; terms= M.empty}
@@ -320,8 +320,7 @@ module NonNegativeNonTopPolynomial = struct
   (** It takes only the trace of the body part, because the trace for the iteration number will be
       taken later from symbolic values. *)
   let mult_loop ~iter ~body =
-    mult_common iter body ~join_autoreleasepool_trace:(fun _iter_poly _body_poly _iter body ->
-        body )
+    mult_common iter body ~join_autoreleasepool_trace:(fun _iter_poly _body_poly _iter body -> body)
 
 
   let rec of_valclass : (NonNegativeInt.t, Key.t, 't) valclass -> ('t, t, 't) below_above = function
@@ -355,7 +354,7 @@ module NonNegativeNonTopPolynomial = struct
         | NonNegativeBoundWithDegreeKind symbol ->
             let s_lb = NonNegativeBoundWithDegreeKind.int_lb symbol in
             let p_lb = int_lb polynomial in
-            NonNegativeInt.((s_lb * p_lb) + acc) )
+            NonNegativeInt.((s_lb * p_lb) + acc))
       terms const
 
 
@@ -367,7 +366,7 @@ module NonNegativeNonTopPolynomial = struct
             Option.bind acc ~f:(fun acc ->
                 Option.bind (NonNegativeBoundWithDegreeKind.int_ub symbol) ~f:(fun s_ub ->
                     Option.map (int_ub polynomial) ~f:(fun p_ub ->
-                        NonNegativeInt.((s_ub * p_ub) + acc) ) ) ) )
+                        NonNegativeInt.((s_ub * p_ub) + acc)))))
       terms (Some const)
 
 
@@ -378,7 +377,7 @@ module NonNegativeNonTopPolynomial = struct
     || NonNegativeInt.leq ~lhs:lhs.const ~rhs:rhs.const
        && M.le ~le_elt:leq_poly lhs.terms rhs.terms
     || Option.exists (int_ub lhs) ~f:(fun lhs_ub ->
-           NonNegativeInt.leq ~lhs:lhs_ub ~rhs:(int_lb rhs) )
+           NonNegativeInt.leq ~lhs:lhs_ub ~rhs:(int_lb rhs))
 
 
   let leq ~lhs ~rhs = leq_poly ~lhs:lhs.poly ~rhs:rhs.poly
@@ -408,8 +407,8 @@ module NonNegativeNonTopPolynomial = struct
                     | None ->
                         Some p'
                     | Some p ->
-                        if leq_poly ~lhs:p ~rhs:p' then Some p' else Some p )
-                  acc )
+                        if leq_poly ~lhs:p ~rhs:p' then Some p' else Some p)
+                  acc)
           terms M.empty }
 
 
@@ -449,7 +448,7 @@ module NonNegativeNonTopPolynomial = struct
                 if is_zero_poly p then acc else raise (ReturnTop (s, trace))
             | Symbolic s ->
                 let p = subst_poly p eval_sym in
-                mult_symb_poly p (NonNegativeBoundWithDegreeKind s) |> plus_poly acc ) )
+                mult_symb_poly p (NonNegativeBoundWithDegreeKind s) |> plus_poly acc ))
         terms (poly_of_non_negative_int const)
     in
     fun {poly; autoreleasepool_trace} eval_sym ->
@@ -476,7 +475,7 @@ module NonNegativeNonTopPolynomial = struct
                 ( Degree.succ (NonNegativeBoundWithDegreeKind.degree_kind t) d
                 , mult_symb p' (NonNegativeBoundWithDegreeKind t) )
               in
-              if [%compare: Degree.t * t] degree_term cur_max > 0 then degree_term else cur_max )
+              if [%compare: Degree.t * t] degree_term cur_max > 0 then degree_term else cur_max)
         terms
         (Degree.zero, one ())
     in
@@ -524,7 +523,7 @@ module NonNegativeNonTopPolynomial = struct
       ( M.fold
           (fun s p print_plus ->
             pp_sub ~hum ~print_plus (add_symb s symbs) fmt p ;
-            true )
+            true)
           terms print_plus
         : bool )
       |> ignore
@@ -535,7 +534,7 @@ module NonNegativeNonTopPolynomial = struct
       ( M.fold
           (fun s p print_plus ->
             pp_sub ~hum ~print_plus ((s, PositiveInt.one), []) fmt p ;
-            true )
+            true)
           terms const_not_zero
         : bool )
       |> ignore
@@ -549,7 +548,7 @@ module NonNegativeNonTopPolynomial = struct
         (fun s p acc ->
           match s with
           | NonNegativeBoundWithDegreeKind s ->
-              get_symbols_sub p (NonNegativeBoundWithDegreeKind.symbol s :: acc) )
+              get_symbols_sub p (NonNegativeBoundWithDegreeKind.symbol s :: acc))
         terms acc
     in
     get_symbols_sub p.poly []
@@ -562,7 +561,7 @@ module NonNegativeNonTopPolynomial = struct
     if is_autoreleasepool_trace then
       traces
       @ Option.value_map (get_autoreleasepool_trace p) ~default:[] ~f:(fun trace ->
-            [("autorelease", BoundTrace.make_err_trace ~depth:0 trace)] )
+            [("autorelease", BoundTrace.make_err_trace ~depth:0 trace)])
     else traces
 end
 
@@ -774,7 +773,7 @@ module NonNegativePolynomial = struct
 
   let mult_loop ~iter ~body =
     top_lifted_increasing iter body ~f:(fun iter body ->
-        NonNegativeNonTopPolynomial.mult_loop ~iter ~body )
+        NonNegativeNonTopPolynomial.mult_loop ~iter ~body)
 
 
   let min_default_left p1 p2 =
@@ -798,7 +797,7 @@ module NonNegativePolynomial = struct
     | Val p ->
         NonNegativeNonTopPolynomial.subst callee_pname location p eval_sym
         |> make_trace_set ~map_above:(fun (symbol, bound_trace) ->
-               TopTrace.unbounded_symbol ~location ~symbol bound_trace )
+               TopTrace.unbounded_symbol ~location ~symbol bound_trace)
 
 
   let degree p =
@@ -811,7 +810,7 @@ module NonNegativePolynomial = struct
       ~cmp:(fun p1 p2 ->
         Degree.compare
           (NonNegativeNonTopPolynomial.degree p1)
-          (NonNegativeNonTopPolynomial.degree p2) )
+          (NonNegativeNonTopPolynomial.degree p2))
       ~cmp_below:cmp
 
 

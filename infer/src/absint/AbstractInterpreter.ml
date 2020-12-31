@@ -122,7 +122,7 @@ struct
     let rev_filter_not_over_approximated disjuncts ~not_in =
       List.rev_filter disjuncts ~f:(fun disjunct ->
           List.exists not_in ~f:(fun disj_not_in -> T.Domain.leq ~lhs:disjunct ~rhs:disj_not_in)
-          |> not )
+          |> not)
 
 
     let join : t -> t -> t =
@@ -176,7 +176,7 @@ struct
     let pp f disjuncts =
       let pp_disjuncts f disjuncts =
         List.iteri disjuncts ~f:(fun i disjunct ->
-            F.fprintf f "#%d: @[%a@]@;" i T.Domain.pp disjunct )
+            F.fprintf f "#%d: @[%a@]@;" i T.Domain.pp disjunct)
       in
       F.fprintf f "@[<v>%d disjuncts:@;%a@]" (List.length disjuncts) pp_disjuncts disjuncts
   end
@@ -196,7 +196,7 @@ struct
           ( if Config.write_html then
             let n = List.length disjuncts' in
             L.d_printfln "@]@\n@[Got %d disjunct%s back@]" n (if Int.equal n 1 then "" else "s") ) ;
-          Domain.join post_disjuncts disjuncts' ) )
+          Domain.join post_disjuncts disjuncts' ))
 
 
   let exec_node_instrs old_state_opt ~exec_instr pre instrs =
@@ -216,7 +216,7 @@ struct
           Domain.join post_disjuncts disjuncts' )
         else (
           L.d_printfln "@[Skipping already-visited disjunct #%d@]@;" i ;
-          post_disjuncts ) )
+          post_disjuncts ))
 
 
   let pp_session_name node f = T.pp_session_name node f
@@ -388,7 +388,7 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
       ~kind:(if is_narrowing then `ExecNodeNarrowing else `ExecNode)
       ~pp_name:(TransferFunctions.pp_session_name node)
       ~f:(fun () ->
-        exec_node ~pp_instr proc_data node ~is_loop_head ~is_narrowing astate_pre inv_map )
+        exec_node ~pp_instr proc_data node ~is_loop_head ~is_narrowing astate_pre inv_map)
 
 
   let compute_pre cfg node inv_map =
@@ -404,7 +404,7 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
           | Some joined_post ->
               let res = Domain.join post joined_post in
               if Config.write_html then debug_absint_operation (`Join (joined_post, post, res)) ;
-              Some res ) )
+              Some res ))
 
 
   (* shadowed for HTML debug *)
@@ -491,7 +491,7 @@ module MakeWTONode (TransferFunctions : NodeTransferFunctions) = struct
         let loop_heads =
           wto |> IContainer.to_rev_list ~fold:WeakTopologicalOrder.Partition.fold_heads |> List.rev
         in
-        L.d_printfln "Loop heads: %a" (Pp.seq pp_node) loop_heads )
+        L.d_printfln "Loop heads: %a" (Pp.seq pp_node) loop_heads)
 
 
   let exec_wto_node ~pp_instr cfg proc_data inv_map node ~is_loop_head ~is_narrowing =

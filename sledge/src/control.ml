@@ -176,7 +176,7 @@ module Make (Dom : Domain_intf.Dom) = struct
       let pp fs {dst; src} =
         Format.fprintf fs "#%i %%%s <--%a" dst.sort_index dst.lbl
           (Option.pp "%a" (fun fs (src : Llair.Block.t) ->
-               Format.fprintf fs " #%i %%%s" src.sort_index src.lbl ))
+               Format.fprintf fs " #%i %%%s" src.sort_index src.lbl))
           src
     end
 
@@ -192,7 +192,7 @@ module Make (Dom : Domain_intf.Dom) = struct
       let join x y =
         M.merge x y ~f:(fun ~key:_ -> function
           | `Left d | `Right d -> Some d
-          | `Both (d1, d2) -> Some (Int.max d1 d2) )
+          | `Both (d1, d2) -> Some (Int.max d1 d2))
     end
 
     type priority = int * Edge.t [@@deriving compare]
@@ -243,7 +243,7 @@ module Make (Dom : Domain_intf.Dom) = struct
               List.fold qs ~init:([], q) ~f:(fun (skipped, joined) curr ->
                   match join curr joined with
                   | Some joined, depths -> (skipped, (joined, depths))
-                  | None, _ -> (curr :: skipped, joined) )
+                  | None, _ -> (curr :: skipped, joined))
             in
             let ws = Llair.Block.Map.add_exn ws ~key:dst ~data:skipped in
             run ~f (f stk qs dst depths (pq, ws, bnd))
@@ -301,7 +301,7 @@ module Make (Dom : Domain_intf.Dom) = struct
                 match Dom.recursion_beyond_bound with
                 | `skip -> Work.seq acc (exec_jump stk state block return)
                 | `prune -> Work.skip ) )
-        | Some post -> Work.seq acc (exec_jump stk post block return) )
+        | Some post -> Work.seq acc (exec_jump stk post block return))
     |>
     [%Trace.retn fun {pf} _ -> pf ""]
 
@@ -311,7 +311,7 @@ module Make (Dom : Domain_intf.Dom) = struct
           Hashtbl.iteri summary_table ~f:(fun ~key ~data ->
               Format.fprintf fs "@[<v>%a:@ @[%a@]@]@ " Llair.Reg.pp key
                 (List.pp "@," Dom.pp_summary)
-                data ) )]
+                data))]
 
   let exec_return ~opts stk pre_state (block : Llair.block) exp =
     let Llair.{name; formals; freturn; locals} = block.parent in
@@ -407,13 +407,13 @@ module Make (Dom : Domain_intf.Dom) = struct
           ~f:(fun x (case, jump) ->
             match Dom.exec_assume state (Llair.Exp.eq key case) with
             | Some state -> exec_jump stk state block jump |> Work.seq x
-            | None -> x )
+            | None -> x)
           ~init:
             ( match
                 Dom.exec_assume state
                   (IArray.fold tbl ~init:Llair.Exp.true_
                      ~f:(fun b (case, _) ->
-                       Llair.Exp.and_ (Llair.Exp.dq key case) b ))
+                       Llair.Exp.and_ (Llair.Exp.dq key case) b))
               with
             | Some state -> exec_jump stk state block els
             | None -> Work.skip )
@@ -427,7 +427,7 @@ module Make (Dom : Domain_intf.Dom) = struct
                       ~name:jump.dst.lbl))
             with
             | Some state -> exec_jump stk state block jump |> Work.seq x
-            | None -> x )
+            | None -> x)
     | Call ({callee; actuals; areturn; return} as call) -> (
         let lookup name =
           Option.to_list (Llair.Func.find pgm.functions name)
@@ -454,7 +454,7 @@ module Make (Dom : Domain_intf.Dom) = struct
                     exec_call opts stk state block {call with callee}
                       (Domain_used_globals.by_function opts.globals
                          callee.name.reg) )
-                |> Work.seq x ) )
+                |> Work.seq x) )
     | Return {exp} -> exec_return ~opts stk state block exp
     | Throw {exc} ->
         if opts.skip_throw then Work.skip
@@ -511,5 +511,5 @@ module Make (Dom : Domain_intf.Dom) = struct
     exec_pgm opts pgm ;
     Hashtbl.fold summary_table ~init:Llair.Reg.Map.empty
       ~f:(fun ~key ~data map ->
-        match data with [] -> map | _ -> Llair.Reg.Map.set map ~key ~data )
+        match data with [] -> map | _ -> Llair.Reg.Map.set map ~key ~data)
 end

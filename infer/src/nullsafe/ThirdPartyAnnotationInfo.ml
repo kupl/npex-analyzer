@@ -55,7 +55,7 @@ let pp_parsing_error fmt {line_number; unparsable_method; parsing_error} =
  *)
 let bind_list_with_index ~init list ~f =
   List.foldi list ~init:(Ok init) ~f:(fun index acc elem ->
-      Result.bind acc ~f:(fun acc -> f acc index elem) )
+      Result.bind acc ~f:(fun acc -> f acc index elem))
 
 
 let is_whitespace_or_comment line =
@@ -83,7 +83,7 @@ let add_from_signature_file storage ~filename ~lines =
     ~f:(fun signature_map line_index method_as_str ->
       parse_line_and_add_to_storage signature_map ~filename ~line_index method_as_str
       |> Result.map_error ~f:(fun parsing_error ->
-             {line_number= line_index + 1; unparsable_method= method_as_str; parsing_error} ) )
+             {line_number= line_index + 1; unparsable_method= method_as_str; parsing_error}))
   >>= fun new_map -> Ok {signature_map= new_map; filenames= new_filenames}
 
 

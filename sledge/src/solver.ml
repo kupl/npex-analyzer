@@ -173,7 +173,7 @@ let excise_exists goal =
         else (
           excise (fun {pf} ->
               pf "@[<2>excise_exists @[%a%a@]@]" Var.Set.pp_xs removed
-                Context.Subst.pp witnesses ) ;
+                Context.Subst.pp witnesses) ;
           let us = Var.Set.union goal.us removed in
           let xs = Var.Set.diff goal.xs removed in
           let min = Sh.and_subst witnesses goal.min in
@@ -195,7 +195,7 @@ let excise_exists goal =
 let excise_seg_same ({com; min; sub} as goal) msg ssg =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_same@ %a@ \\- %a@]" (Sh.pp_seg_norm sub.ctx)
-        msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.bas= b; len= m; seq= a} = msg in
   let {Sh.bas= b'; len= m'; seq= a'} = ssg in
   let com = Sh.star (Sh.seg msg) com in
@@ -224,7 +224,7 @@ let excise_seg_sub_prefix ({us; com; min; xs; sub; zs} as goal) msg ssg o_n
     =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_sub_prefix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let o_n = Term.integer o_n in
@@ -264,7 +264,7 @@ let excise_seg_min_prefix ({us; com; min; xs; sub; zs} as goal) msg ssg n_o
     =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_min_prefix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let n_o = Term.integer n_o in
@@ -300,7 +300,7 @@ let excise_seg_sub_suffix ({us; com; min; xs; sub; zs} as goal) msg ssg l_k
     =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_sub_suffix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let l_k = Term.integer l_k in
@@ -342,7 +342,7 @@ let excise_seg_sub_infix ({us; com; min; xs; sub; zs} as goal) msg ssg l_k
     ko_ln =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_sub_infix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let l_k = Term.integer l_k in
@@ -389,7 +389,7 @@ let excise_seg_min_skew ({us; com; min; xs; sub; zs} as goal) msg ssg l_k
     ko_l ln_ko =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_min_skew@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let l_k = Term.integer l_k in
@@ -439,7 +439,7 @@ let excise_seg_min_suffix ({us; com; min; xs; sub; zs} as goal) msg ssg k_l
     =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_min_suffix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let k_l = Term.integer k_l in
@@ -476,7 +476,7 @@ let excise_seg_min_infix ({us; com; min; xs; sub; zs} as goal) msg ssg k_l
     ln_ko =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_min_infix@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let k_l = Term.integer k_l in
@@ -517,7 +517,7 @@ let excise_seg_sub_skew ({us; com; min; xs; sub; zs} as goal) msg ssg k_l
     ln_k ko_ln =
   excise (fun {pf} ->
       pf "@[<hv 2>excise_seg_sub_skew@ %a@ \\- %a@]"
-        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) msg (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o; seq= a} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n; seq= a'} = ssg in
   let k_l = Term.integer k_l in
@@ -552,7 +552,7 @@ let excise_seg_sub_skew ({us; com; min; xs; sub; zs} as goal) msg ssg k_l
 let excise_seg ({sub} as goal) msg ssg =
   trace (fun {pf} ->
       pf "@[<2>excise_seg@ %a@  |-  %a@]" (Sh.pp_seg_norm sub.ctx) msg
-        (Sh.pp_seg_norm sub.ctx) ssg ) ;
+        (Sh.pp_seg_norm sub.ctx) ssg) ;
   let {Sh.loc= k; bas= b; len= m; siz= o} = msg in
   let {Sh.loc= l; bas= b'; len= m'; siz= n} = ssg in
   let* k_l = difference sub.ctx k l in
@@ -632,7 +632,7 @@ let excise_heap ({min; sub} as goal) =
   trace (fun {pf} -> pf "@[<2>excise_heap@ %a@]" pp goal) ;
   match
     List.find_map sub.heap ~f:(fun ssg ->
-        List.find_map min.heap ~f:(fun msg -> excise_seg goal msg ssg) )
+        List.find_map min.heap ~f:(fun msg -> excise_seg goal msg ssg))
   with
   | Some goal -> Some (goal |> with_ ~pgs:true)
   | None -> Some goal
@@ -670,16 +670,16 @@ let excise_dnf : Sh.t -> Var.Set.t -> Sh.t -> Sh.t option =
               ~retn:(fun {pf} -> pf "%a" (Option.pp "%a" Sh.pp))
             @@ fun () ->
             let sub = Sh.and_ctx min.ctx (Sh.extend_us us sub) in
-            excise (goal ~us ~com ~min ~xs ~sub ~zs ~pgs:true) )
+            excise (goal ~us ~com ~min ~xs ~sub ~zs ~pgs:true))
       in
-      Sh.or_ remainders remainder )
+      Sh.or_ remainders remainder)
 
 let infer_frame : Sh.t -> Var.Set.t -> Sh.t -> Sh.t option =
  fun minuend xs subtrahend ->
   [%trace]
     ~call:(fun {pf} ->
       pf "@[<hv>%a@ \\- %a%a@]" Sh.pp minuend Var.Set.pp_xs xs Sh.pp
-        subtrahend )
+        subtrahend)
     ~retn:(fun {pf} r ->
       pf "%a" (Option.pp "%a" Sh.pp) r ;
       Option.iter r ~f:(fun frame ->
@@ -688,8 +688,7 @@ let infer_frame : Sh.t -> Var.Set.t -> Sh.t -> Sh.t option =
           assert (
             Var.Set.is_empty lost || fail "lost: %a" Var.Set.pp lost () ) ;
           assert (
-            Var.Set.is_empty gain || fail "gained: %a" Var.Set.pp gain () ) )
-      )
+            Var.Set.is_empty gain || fail "gained: %a" Var.Set.pp gain () )))
   @@ fun () ->
   assert (Var.Set.disjoint minuend.us xs) ;
   assert (Var.Set.is_subset xs ~of_:subtrahend.us) ;

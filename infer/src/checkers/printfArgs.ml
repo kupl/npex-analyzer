@@ -132,7 +132,7 @@ let check_printf_args_ok tenv (node : Procdesc.Node.t) (instr : Sil.instr) (proc
           | Sil.Load {id; e= Exp.Lvar iv} when Ident.equal id nid ->
               Some iv
           | _ ->
-              None )
+              None)
         |> IOption.find_value_exn
     | _ ->
         raise Caml.Not_found

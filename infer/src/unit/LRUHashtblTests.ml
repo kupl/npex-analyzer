@@ -15,7 +15,7 @@ let inputs =
     , (fun () ->
         let map = LRUHash.create ~initial_size:5 ~max_size:3 in
         LRUHash.replace map 0 10 ;
-        map )
+        map)
     , [(0, 10)] )
   ; ( "LRU1"
     , (fun () ->
@@ -26,7 +26,7 @@ let inputs =
         let (_ : int option) = LRUHash.find_opt map 1 in
         LRUHash.replace map 3 10 ;
         LRUHash.replace map 4 10 ;
-        map )
+        map)
     , [(1, 10); (3, 10); (4, 10)] )
   ; ( "LRU2"
     , (fun () ->
@@ -36,7 +36,7 @@ let inputs =
         LRUHash.replace map 2 10 ;
         LRUHash.replace map 0 20 ;
         LRUHash.replace map 3 10 ;
-        map )
+        map)
     , [(0, 20); (2, 10); (3, 10)] )
   ; ( "clear"
     , (fun () ->
@@ -45,7 +45,7 @@ let inputs =
         LRUHash.replace map 1 10 ;
         LRUHash.replace map 2 10 ;
         LRUHash.clear map ;
-        map )
+        map)
     , [] ) ]
 
 
@@ -57,4 +57,4 @@ let tests =
   "LRUHashtble"
   >::: List.map inputs ~f:(fun (name, input, expected) ->
            name
-           >:: fun _ -> assert_equal (input () |> LRUHash.bindings |> List.sort ~compare) expected )
+           >:: fun _ -> assert_equal (input () |> LRUHash.bindings |> List.sort ~compare) expected)

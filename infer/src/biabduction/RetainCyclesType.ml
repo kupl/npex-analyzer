@@ -116,7 +116,7 @@ let d_retain_cycle cycle =
 
 let find_minimum_element cycle =
   List.reduce_exn cycle.rc_elements ~f:(fun el1 el2 ->
-      if compare_retain_cycle_edge el1 el2 < 0 then el1 else el2 )
+      if compare_retain_cycle_edge el1 el2 < 0 then el1 else el2)
 
 
 let shift cycle head : t =

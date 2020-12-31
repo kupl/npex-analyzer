@@ -128,7 +128,7 @@ module InlineJavaSyntheticMethods = struct
       match instr with
       | Call (ret_id_typ, Const (Cfun pn), etl, loc, _) when should_inline pn ->
           Option.bind (Procdesc.load pn) ~f:(fun proc_desc_callee ->
-              inline_synthetic_method ret_id_typ etl proc_desc_callee loc )
+              inline_synthetic_method ret_id_typ etl proc_desc_callee loc)
           |> Option.value ~default:instr
       | _ ->
           instr
@@ -249,7 +249,7 @@ module Liveness = struct
     let is_local pvar = not (Liveness.is_always_in_scope proc_desc pvar) in
     let prepend_node_nullify_instructions loc pvars instrs =
       List.fold pvars ~init:instrs ~f:(fun instrs pvar ->
-          if is_local pvar then Sil.Metadata (Nullify (pvar, loc)) :: instrs else instrs )
+          if is_local pvar then Sil.Metadata (Nullify (pvar, loc)) :: instrs else instrs)
     in
     let node_deadvars_instruction loc vars =
       let local_vars =
@@ -257,7 +257,7 @@ module Liveness = struct
           | Var.ProgramVar pvar ->
               is_local pvar
           | Var.LogicalVar _ ->
-              true )
+              true)
       in
       if List.is_empty local_vars then None else Some (Sil.Metadata (ExitScope (local_vars, loc)))
     in
@@ -276,7 +276,7 @@ module Liveness = struct
                     | _ ->
                         pvars_to_nullify
                   in
-                  (var :: dead_vars, pvars_to_nullify) )
+                  (var :: dead_vars, pvars_to_nullify))
                 to_nullify ([], [])
             in
             let loc = Procdesc.Node.get_last_loc node in
@@ -284,7 +284,7 @@ module Liveness = struct
             |> prepend_node_nullify_instructions loc pvars_to_nullify
             |> Procdesc.Node.append_instrs node
         | None ->
-            () ) ;
+            ()) ;
     (* nullify all address taken variables at the end of the procedure *)
     if not (AddressTaken.Domain.is_empty address_taken_vars) then
       let exit_node = ProcCfg.Exceptional.exit_node nullify_proc_cfg in
@@ -317,7 +317,7 @@ module NoReturn = struct
              | _ ->
                  NoReturnModels.dispatch tenv proc_name |> Option.value ~default:false )
            | _ ->
-               false )
+               false)
 
 
   let has_throw_call node =
@@ -329,7 +329,7 @@ module NoReturn = struct
                  (Procname.get_method BuiltinDecl.objc_cpp_throw)
                  (Procname.get_method proc_name)
            | _ ->
-               false )
+               false)
 
 
   let get_all_reachable_catch_nodes start_node =
@@ -362,7 +362,7 @@ module NoReturn = struct
             if List.is_empty catch_nodes then (* throw with no catch *)
               [exit_node] else catch_nodes
           in
-          Procdesc.set_succs node ~normal:(Some catch_or_exit_nodes) ~exn:None )
+          Procdesc.set_succs node ~normal:(Some catch_or_exit_nodes) ~exn:None)
       proc_desc
 end
 

@@ -33,9 +33,9 @@ let assert_has_nullability_info ?expected_file ?expected_line storage unique_rep
              unique_repr)
         ~printer:(Pp.string_of_pp ThirdPartyMethod.pp) ;
       Option.iter expected_file ~f:(fun expected_file ->
-          assert_equal expected_file filename ~msg:"Filename does not match" ) ;
+          assert_equal expected_file filename ~msg:"Filename does not match") ;
       Option.iter expected_line ~f:(fun expected_line ->
-          assert_equal expected_line line_number ~msg:"Line number does not match" )
+          assert_equal expected_line line_number ~msg:"Line number does not match")
 
 
 let assert_no_info storage unique_repr =

@@ -39,14 +39,14 @@ module TransferFunctions = struct
                Symb.SymbolPath.get_pvar path
                |> Option.value_map ~default:modified_acc ~f:(fun pvar ->
                       debug "Add alias of %a -> %a " Var.pp var (Pvar.pp Pp.text) pvar ;
-                      ModifiedVarSet.add (Var.of_pvar pvar) modified_acc ) ) )
+                      ModifiedVarSet.add (Var.of_pvar pvar) modified_acc)))
       pow_locs default
 
 
   let get_modified_params formals ~f =
     List.foldi ~init:Domain.ModifiedParamIndices.empty
       ~f:(fun i modified_acc var ->
-        if f var then Domain.ModifiedParamIndices.add i modified_acc else modified_acc )
+        if f var then Domain.ModifiedParamIndices.add i modified_acc else modified_acc)
       formals
 
 
@@ -60,7 +60,7 @@ module TransferFunctions = struct
     else
       let alias_set = lazy (get_alias_set inferbo_mem base_var) in
       get_modified_params formals ~f:(fun var ->
-          Var.equal var base_var || ModifiedVarSet.mem var (Lazy.force alias_set) )
+          Var.equal var base_var || ModifiedVarSet.mem var (Lazy.force alias_set))
       |> Domain.impure_params
 
 
@@ -92,7 +92,7 @@ module TransferFunctions = struct
           let modified_acc' =
             if Typ.is_pointer typ then ModifiedVarSet.add base_var modified_acc else modified_acc
           in
-          ModifiedVarSet.union modified_acc' alias_set )
+          ModifiedVarSet.union modified_acc' alias_set)
 
 
   (* given the modified parameters and the args of the callee, find
@@ -116,13 +116,13 @@ module TransferFunctions = struct
           ~f:(fun i acc arg_exp ->
             if Domain.ModifiedParamIndices.mem i callee_modified_params then
               get_modified_vars_unless_global inferbo_mem acc arg_exp
-            else acc )
+            else acc)
           callee_args
       in
       (* find the respective parameter of the caller, matching the modified vars *)
       let caller_modified_params =
         get_modified_params formals ~f:(fun formal_var ->
-            ModifiedVarSet.mem formal_var vars_of_modified_args )
+            ModifiedVarSet.mem formal_var vars_of_modified_args)
       in
       Domain.impure_params caller_modified_params
     with Modified_Global -> Domain.impure_global

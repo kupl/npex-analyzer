@@ -151,7 +151,8 @@ module TransferFunctions = struct
     let pvar_name = Pvar.get_name pvar in
     Pvar.is_self pvar
     && List.exists
-         ~f:(fun (captured, typ, _) -> Mangled.equal captured pvar_name && Typ.is_strong_pointer typ)
+         ~f:(fun (captured, typ, _) ->
+           Mangled.equal captured pvar_name && Typ.is_strong_pointer typ)
          attributes.ProcAttributes.captured
 
 
@@ -162,7 +163,7 @@ module TransferFunctions = struct
          ~f:(fun (captured, typ, _) ->
            Typ.is_strong_pointer typ
            && Mangled.equal captured (Pvar.get_name pvar)
-           && String.is_suffix ~suffix:"self" (String.lowercase (Mangled.to_string captured)) )
+           && String.is_suffix ~suffix:"self" (String.lowercase (Mangled.to_string captured)))
          attributes.ProcAttributes.captured
 
 
@@ -171,7 +172,7 @@ module TransferFunctions = struct
       ~f:(fun (captured, typ, _) ->
         Mangled.equal captured (Pvar.get_name pvar)
         && String.is_substring ~substring:"self" (String.lowercase (Mangled.to_string captured))
-        && Typ.is_weak_pointer typ )
+        && Typ.is_weak_pointer typ)
       attributes.ProcAttributes.captured
 
 
@@ -207,7 +208,7 @@ module TransferFunctions = struct
         (fun pvar {loc} trace_elems ->
           let trace_elem_desc = F.asprintf "%a assigned here" (Pvar.pp Pp.text) pvar in
           let trace_elem = Errlog.make_trace_element 0 loc trace_elem_desc [] in
-          trace_elem :: trace_elems )
+          trace_elem :: trace_elems)
         domain.strongVars []
     in
     let trace_elems_vars =
@@ -221,12 +222,12 @@ module TransferFunctions = struct
               let trace_elem = Errlog.make_trace_element 0 loc trace_elem_desc [] in
               trace_elem :: trace_elems
           | _ ->
-              trace_elems )
+              trace_elems)
         domain.vars []
     in
     let trace_elems = List.append trace_elems_strongVars trace_elems_vars in
     List.sort trace_elems ~compare:(fun {Errlog.lt_loc= loc1} {Errlog.lt_loc= loc2} ->
-        Location.compare loc1 loc2 )
+        Location.compare loc1 loc2)
 
 
   let report_unchecked_strongself_issues proc_desc err_log (domain : Domain.t) var_use var =
@@ -401,11 +402,11 @@ let make_trace_use_self_weakself domain =
             let trace_elem = Errlog.make_trace_element 0 loc trace_elem_desc [] in
             trace_elem :: trace_elems
         | _ ->
-            trace_elems )
+            trace_elems)
       domain []
   in
   List.sort trace_elems ~compare:(fun {Errlog.lt_loc= loc1} {Errlog.lt_loc= loc2} ->
-      Location.compare loc1 loc2 )
+      Location.compare loc1 loc2)
 
 
 let make_trace_captured_strong_self domain =
@@ -418,11 +419,11 @@ let make_trace_captured_strong_self domain =
             let trace_elem = Errlog.make_trace_element 0 loc trace_elem_desc [] in
             trace_elem :: trace_elems
         | _ ->
-            trace_elems )
+            trace_elems)
       domain []
   in
   List.sort trace_elems ~compare:(fun {Errlog.lt_loc= loc1} {Errlog.lt_loc= loc2} ->
-      Location.compare loc1 loc2 )
+      Location.compare loc1 loc2)
 
 
 let report_mix_self_weakself_issues proc_desc err_log domain (weakSelf : DomainData.t)
@@ -535,7 +536,7 @@ let report_issues proc_desc err_log domain =
   let domain_bindings =
     Vars.bindings domain
     |> List.sort ~compare:(fun (_, {DomainData.loc= loc1}) (_, {DomainData.loc= loc2}) ->
-           Location.compare loc1 loc2 )
+           Location.compare loc1 loc2)
   in
   let {weakSelfList; selfList} =
     List.fold_left ~f:process_domain_item ~init:report_issues_result_empty domain_bindings

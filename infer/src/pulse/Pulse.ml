@@ -121,7 +121,7 @@ module PulseTransferFunctions = struct
           ( astate
           , ProcnameDispatcher.Call.FuncArg.
               {exp= actual_exp; arg_payload= actual_evaled; typ= actual_typ}
-            :: rev_func_args ) )
+            :: rev_func_args ))
     in
     let func_args = List.rev rev_func_args in
     let model =
@@ -143,7 +143,7 @@ module PulseTransferFunctions = struct
           PerfEvent.(log (fun logger -> log_begin_event logger ~name:"pulse interproc call" ())) ;
           let only_actuals_evaled =
             List.map func_args ~f:(fun ProcnameDispatcher.Call.FuncArg.{arg_payload; typ} ->
-                (arg_payload, typ) )
+                (arg_payload, typ))
           in
           let r =
             interprocedural_call analysis_data ret call_exp only_actuals_evaled call_loc astate
@@ -156,7 +156,7 @@ module PulseTransferFunctions = struct
         L.d_printfln "%a is going out of scope" Pvar.pp_value (fst pvar_typ) ;
         let* exec_states = exec_state_res in
         List.map exec_states ~f:(fun exec_state ->
-            exec_object_out_of_scope call_loc pvar_typ exec_state )
+            exec_object_out_of_scope call_loc pvar_typ exec_state)
         |> Result.all
     | None ->
         exec_state_res
@@ -206,7 +206,7 @@ module PulseTransferFunctions = struct
                 dispatch_call analysis_data ret call_exp actuals location call_flags astate
                 |> check_error_transform analysis_data ~f:Fn.id
           in
-          List.rev_append astate astates )
+          List.rev_append astate astates)
         ~init:[] astate_list
     in
     let dynamic_types_unreachable =
@@ -266,7 +266,7 @@ module PulseTransferFunctions = struct
                    []
                  else
                    (* [condition] is true or unknown value: go into the branch *)
-                   [Domain.ContinueProgram astate] )
+                   [Domain.ContinueProgram astate])
       | Call (ret, call_exp, actuals, loc, call_flags) ->
           dispatch_call analysis_data ret call_exp actuals loc call_flags astate
           |> check_error_transform analysis_data ~f:(fun id -> id)
@@ -282,7 +282,7 @@ module PulseTransferFunctions = struct
                       PulseOperations.remove_vars vars location astate
                       |> check_error_continue analysis_data
                     in
-                    List.rev_append astate astates )
+                    List.rev_append astate astates)
               ~init:[] astates
           in
           if Procname.is_java (Procdesc.get_proc_name proc_desc) then

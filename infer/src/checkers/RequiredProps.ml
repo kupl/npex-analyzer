@@ -22,8 +22,8 @@ let get_required_props typename tenv =
         not
           (List.exists
              ~f:(fun Annot.{name; value} ->
-               match (name, value) with Some "optional", Annot.Bool true -> true | _ -> false )
-             parameters) )
+               match (name, value) with Some "optional", Annot.Bool true -> true | _ -> false)
+             parameters))
       annot_list
   in
   let get_var_args annot_list =
@@ -38,9 +38,9 @@ let get_required_props typename tenv =
               | Some "varArg", Annot.Str str_value ->
                   Some str_value
               | _ ->
-                  acc )
+                  acc)
             parameters
-        else acc )
+        else acc)
       annot_list
   in
   match Tenv.lookup tenv typename with
@@ -52,8 +52,8 @@ let get_required_props typename tenv =
             let var_prop_opt = get_var_args annot in
             Some
               (Option.value_map var_prop_opt ~default:(Prop prop) ~f:(fun var_prop ->
-                   VarProp {var_prop; prop} ))
-          else None )
+                   VarProp {var_prop; prop}))
+          else None)
         fields
   | None ->
       []
@@ -82,7 +82,7 @@ let report_missing_required_prop proc_desc err_log prop parent_typename ~create_
            let call_msg =
              F.asprintf "calls %a" (Procname.pp_simplified_string ~withclass:false) procname
            in
-           Errlog.make_trace_element 0 location call_msg [] )
+           Errlog.make_trace_element 0 location call_msg [])
   in
   Reporting.log_issue proc_desc err_log ~loc:create_loc ~ltr LithoRequiredProps
     IssueType.missing_required_prop message
@@ -96,7 +96,7 @@ let has_prop prop_set prop =
           that all @Prop's can be set any of these 6 ways. *)
     String.Set.exists prop_set ~f:(fun el ->
         String.chop_prefix el ~prefix:prop
-        |> Option.exists ~f:(fun suffix -> String.Set.mem LithoDomain.suffixes suffix) )
+        |> Option.exists ~f:(fun suffix -> String.Set.mem LithoDomain.suffixes suffix))
   in
   match prop with
   | Prop prop ->
@@ -163,7 +163,7 @@ let satisfies_heuristic ~callee_pname ~callee_summary_opt tenv =
      its summary, we want to track it in the domain. *)
   let build_exists_in_callees =
     Option.value_map ~default:false callee_summary_opt ~f:(fun sum ->
-        LithoDomain.Mem.contains_build sum )
+        LithoDomain.Mem.contains_build sum)
   in
   is_build_method callee_pname tenv
   || is_create_method callee_pname tenv
@@ -183,7 +183,7 @@ let report {InterproceduralAnalysis.proc_desc; tenv; err_log} astate =
     List.iter required_props ~f:(fun required_prop ->
         if not (has_prop prop_set required_prop) then
           report_missing_required_prop proc_desc err_log required_prop parent_typename ~create_loc
-            call_chain )
+            call_chain)
   in
   Domain.check_required_props ~check_on_string_set astate
 
@@ -202,7 +202,7 @@ module TransferFunctions = struct
       actuals astate =
     Option.value_map summary_opt ~default:astate ~f:(fun callee_summary ->
         Domain.subst ~callsite ~formals ~actuals ~ret_id_typ ~caller_pname ~callee_pname
-          ~caller:astate ~callee:callee_summary )
+          ~caller:astate ~callee:callee_summary)
 
 
   let assume_null caller_pname x astate =
@@ -244,19 +244,19 @@ module TransferFunctions = struct
                   Domain.MethodCallPrefix.make_with_prefixes callee_pname location
                 in
                 List.fold ~init:astate callee_prefixes ~f:(fun acc callee_prefix ->
-                    Domain.call_builder ~ret:return_access_path ~receiver callee_prefix acc )
+                    Domain.call_builder ~ret:return_access_path ~receiver callee_prefix acc)
               else astate
         else
           (* treat it like a normal call *)
           Option.value_map callee_summary_and_formals_opt ~default:astate ~f:(fun (_, formals) ->
               apply_callee_summary callee_summary_opt location ~caller_pname ~callee_pname
-                return_base formals actuals astate )
+                return_base formals actuals astate)
     | Call (ret_id_typ, Direct callee_pname, actuals, _, location) ->
         let callee_summary_and_formals_opt = get_proc_summary_and_formals callee_pname in
         let callee_summary_opt = Option.map callee_summary_and_formals_opt ~f:fst in
         Option.value_map callee_summary_and_formals_opt ~default:astate ~f:(fun (_, formals) ->
             apply_callee_summary callee_summary_opt location ~caller_pname ~callee_pname ret_id_typ
-              formals actuals astate )
+              formals actuals astate)
     | Assign (lhs_ae, rhs, _) ->
         let astate =
           match rhs with
@@ -304,7 +304,7 @@ let init_analysis_data ({InterproceduralAnalysis.analyze_dependency} as interpro
   let get_proc_summary_and_formals callee_pname =
     analyze_dependency callee_pname
     |> Option.map ~f:(fun (callee_pdesc, callee_summary) ->
-           (callee_summary, Procdesc.get_pvar_formals callee_pdesc) )
+           (callee_summary, Procdesc.get_pvar_formals callee_pdesc))
   in
   {interproc; get_proc_summary_and_formals}
 
@@ -321,4 +321,4 @@ let checker ({InterproceduralAnalysis.proc_desc; tenv} as analysis_data) =
   |> Option.map ~f:(fun post ->
          let is_void_func = Typ.is_void ret_typ in
          let post = Domain.get_summary ~is_void_func post in
-         if should_report proc_name tenv then report analysis_data post else post )
+         if should_report proc_name tenv then report analysis_data post else post)

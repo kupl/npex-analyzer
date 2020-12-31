@@ -45,7 +45,7 @@ module MethodCallPrefix = struct
     let default = [{prefix= method_name; procname; location}] in
     Option.value_map prefix_opt ~default ~f:(fun prefix ->
         (* We have to add the default as well as the stripped prefix since there could be a required prop which actually includes the suffix. *)
-        {prefix; procname; location} :: default )
+        {prefix; procname; location} :: default)
 
 
   let pp fmt {procname} = Procname.pp fmt procname
@@ -85,7 +85,7 @@ module CreatedLocations = struct
       (fun created_location ->
         if mem created_location to_update then
           CreatedLocation.update_latest_callsite callsite created_location
-        else created_location )
+        else created_location)
       x
 end
 
@@ -98,7 +98,7 @@ module SubstPathMap = struct
     let map = singleton callee_return caller_return in
     match
       List.fold2 formals actuals ~init:map ~f:(fun acc formal actual ->
-          Option.fold actual ~init:acc ~f:(fun acc actual -> add formal actual acc) )
+          Option.fold actual ~init:acc ~f:(fun acc actual -> add formal actual acc))
     with
     | Ok map ->
         map
@@ -132,9 +132,9 @@ module Created = struct
           | CreatedLocation.ByParameter path ->
               let caller_path = SubstPathMap.find path map in
               Option.value_map (find_opt caller_path caller) ~default:acc ~f:(fun caller_created ->
-                  append caller_return caller_created acc )
+                  append caller_return caller_created acc)
         in
-        CreatedLocations.fold accum_subst callee_returns acc )
+        CreatedLocations.fold accum_subst callee_returns acc)
 
 
   let get_all_created_locations x =
@@ -305,13 +305,13 @@ module MethodCalled = struct
           | None ->
               Some method_calls
           | Some acc_method_calls ->
-              Some (MethodCalls.merge acc_method_calls method_calls) )
+              Some (MethodCalls.merge acc_method_calls method_calls))
         acc
     in
     let merge_method_calls_on_substed ~callee_method_calls ~is_build_called caller_created acc =
       CreatedLocations.fold
         (fun created_location acc ->
-          merge_method_calls ~callee_method_calls {Key.created_location; is_build_called} acc )
+          merge_method_calls ~callee_method_calls {Key.created_location; is_build_called} acc)
         caller_created acc
     in
     let accum_substed ({Key.created_location; is_build_called} as callee_key) callee_method_calls
@@ -326,7 +326,7 @@ module MethodCalled = struct
               Option.value_map (find_caller_created caller_path) ~default:acc
                 ~f:(fun caller_created ->
                   merge_method_calls_on_substed ~callee_method_calls ~is_build_called caller_created
-                    acc ) )
+                    acc))
     in
     let caller' = fold accum_substed callee empty in
     merge (fun _ v v' -> match v' with Some _ -> v' | None -> v) caller caller'
@@ -342,7 +342,7 @@ module MethodCalled = struct
     fold
       (fun k v acc ->
         let k = Key.update_latest_callsite callsite to_update k in
-        add k v acc )
+        add k v acc)
       x empty
 end
 
@@ -369,7 +369,7 @@ module Mem = struct
     ; method_called=
         (let ret_x = Created.lookup ret_path x.created in
          let ret_y = Created.lookup ret_path y.created in
-         MethodCalled.join_ignore_null_ret ~ret_x ~ret_y ~x:x.method_called ~y:y.method_called ) }
+         MethodCalled.join_ignore_null_ret ~ret_x ~ret_y ~x:x.method_called ~y:y.method_called) }
 
 
   let widen ~prev ~next ~num_iters =
@@ -400,7 +400,7 @@ module Mem = struct
           | _ ->
               acc )
         | _ ->
-            acc )
+            acc)
 
 
   let assign ~lhs ~rhs ({created} as x) =
@@ -476,7 +476,7 @@ module Mem = struct
         | HilExp.AccessExpression actual ->
             Some (LocalAccessPath.make_from_access_expression actual caller_pname)
         | _ ->
-            None )
+            None)
     in
     let map = SubstPathMap.make ~formals ~actuals ~caller_return ~callee_return in
     let created =

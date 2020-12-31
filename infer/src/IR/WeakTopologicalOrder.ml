@@ -161,7 +161,7 @@ module Bourdoncle_SCC (CFG : PreProcCfg) = struct
       let stack_top = Option.value_exn !stack in
       stack_top.head <- min stack_top.head cur_head ;
       Option.iter add_to_component ~f:(fun add ->
-          stack_top.component <- ARList.append add stack_top.component )
+          stack_top.component <- ARList.append add stack_top.component)
     in
     let visit node =
       let node_id = CFG.Node.id node in
@@ -215,7 +215,7 @@ module Bourdoncle_SCC (CFG : PreProcCfg) = struct
               And we recursively construct a WTO for the component.
             *)
             Container.iter component ~fold:ARList.fold_unordered ~f:(fun nid ->
-                dfn := Dfn.remove nid !dfn ) ;
+                dfn := Dfn.remove nid !dfn) ;
             let component_partition =
               let partition = ref Partition.empty in
               stack_top.building_component <- true ;

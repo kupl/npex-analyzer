@@ -223,7 +223,7 @@ end = struct
                         in
                         normalized_block_to_patch
                     in
-                    Obj.set_field normalized_block_to_patch field_i_to_patch normalized ) ;
+                    Obj.set_field normalized_block_to_patch field_i_to_patch normalized) ;
                 (*
                   For cycle heads, for consistency with the [Visiting] case above we need to
                   use the shallow hash.
@@ -282,6 +282,6 @@ module ForHashtbl (H : Caml.Hashtbl.S) = struct
     List.iter rev_bindings ~f:(fun (k, v) ->
         let k' = Sharer.normalize_value sharer k in
         let v' = Sharer.normalize_value sharer v in
-        H.add h' k' v' ) ;
+        H.add h' k' v') ;
     h'
 end

@@ -18,7 +18,7 @@ let add_flavors_to_buck_arguments buck_mode ~extra_flavors original_buck_args =
   let targets =
     List.rev_map targets ~f:(fun t ->
         Buck.Target.(
-          t |> of_string |> add_flavor ~extra_flavors buck_mode Config.command |> to_string) )
+          t |> of_string |> add_flavor ~extra_flavors buck_mode Config.command |> to_string))
   in
   {command; rev_not_targets; targets}
 
@@ -70,7 +70,7 @@ let merge_deps_files depsfiles =
                      Sys.file_exists (ResultsDirEntryName.get_path ~results_dir:dir CaptureDB)
                      = `Yes)
               then Printf.sprintf "\t\t%s" dir :: acc
-              else acc )
+              else acc)
         in
         (infouts, [])
     | [] when Config.buck_merge_all_deps ->
@@ -83,7 +83,7 @@ let merge_deps_files depsfiles =
   in
   depslines
   @ List.fold depsfiles ~init:[] ~f:(fun acc file ->
-        List.rev_append acc (Utils.with_file_in file ~f:In_channel.input_lines) )
+        List.rev_append acc (Utils.with_file_in file ~f:In_channel.input_lines))
   |> List.dedup_and_sort ~compare:String.compare
 
 
@@ -94,7 +94,7 @@ let clang_flavor_capture ~prog ~buck_build_cmd =
   let deplines = merge_deps_files depsfiles in
   let infer_out_depsfile = ResultsDir.get_path CaptureDependencies in
   Utils.with_file_out infer_out_depsfile ~f:(fun out_chan ->
-      Out_channel.output_lines out_chan deplines ) ;
+      Out_channel.output_lines out_chan deplines) ;
   ()
 
 

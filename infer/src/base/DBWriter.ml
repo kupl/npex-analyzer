@@ -60,7 +60,7 @@ module Implementation = struct
           |> SqliteUtils.check_result_code db ~log:"replace bind cfg" ;
           Sqlite3.bind replace_stmt 7 (* :callees *) callees
           |> SqliteUtils.check_result_code db ~log:"replace bind callees" ;
-          SqliteUtils.result_unit db ~finalize:false ~log:"replace_attributes" replace_stmt )
+          SqliteUtils.result_unit db ~finalize:false ~log:"replace_attributes" replace_stmt)
 
 
   let add_source_file =
@@ -88,7 +88,7 @@ module Implementation = struct
           Sqlite3.bind store_stmt 5 (Sqlite3.Data.INT Int64.one)
           (* :freshly_captured *)
           |> SqliteUtils.check_result_code db ~log:"store freshness" ;
-          SqliteUtils.result_unit ~finalize:false ~log:"Cfg.store" db store_stmt )
+          SqliteUtils.result_unit ~finalize:false ~log:"Cfg.store" db store_stmt)
 
 
   let mark_all_source_files_stale () =
@@ -195,7 +195,7 @@ module Implementation = struct
           |> SqliteUtils.check_result_code db ~log:"store spec bind analysis_summary" ;
           Sqlite3.bind store_stmt 4 report_summary
           |> SqliteUtils.check_result_code db ~log:"store spec bind report_summary" ;
-          SqliteUtils.result_unit ~finalize:false ~log:"store spec" db store_stmt )
+          SqliteUtils.result_unit ~finalize:false ~log:"store spec" db store_stmt)
 
 
   let delete_spec =
@@ -206,7 +206,7 @@ module Implementation = struct
       ResultsDatabase.with_registered_statement delete_statement ~f:(fun db delete_stmt ->
           Sqlite3.bind delete_stmt 1 (Sqlite3.Data.TEXT proc_uid)
           |> SqliteUtils.check_result_code db ~log:"delete spec bind proc_uid" ;
-          SqliteUtils.result_unit ~finalize:false ~log:"store spec" db delete_stmt )
+          SqliteUtils.result_unit ~finalize:false ~log:"store spec" db delete_stmt)
 
 
   let delete_all_specs () =
@@ -350,7 +350,7 @@ module Server = struct
     let shutdown () =
       in_results_dir ~f:(fun () ->
           Unix.close socket ;
-          Unix.remove socket_name )
+          Unix.remove socket_name)
     in
     Utils.try_finally_swallow_timeout ~f:(fun () -> server_loop socket) ~finally:shutdown
 

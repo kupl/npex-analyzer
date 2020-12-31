@@ -489,7 +489,7 @@ end = struct
           |> Option.map ~f:(fun n ->
                  let eq = add_and_gen_eq e e' n in
                  let eqs_acc' = eq :: eqs_acc in
-                 f_eqs_entry entry eqs_acc' t_seen t_rest' )
+                 f_eqs_entry entry eqs_acc' t_seen t_rest')
         with
         | Some res ->
             res
@@ -1723,7 +1723,7 @@ let sigma_partial_join tenv mode (sigma1 : Prop.sigma) (sigma2 : Prop.sigma) :
       if Rename.check lost_little then (s1, s2, s3)
       else (
         L.d_strln "failed Rename.check" ;
-        raise Predicates.JoinFail ) )
+        raise Predicates.JoinFail ))
     ~finally:CheckJoin.final
 
 
@@ -2002,7 +2002,7 @@ let prop_partial_meet tenv p1 p2 =
       ~finally:(fun () ->
         Rename.final () ;
         FreshVarExp.final () ;
-        Todo.final () )
+        Todo.final ())
   with Predicates.JoinFail -> None
 
 
@@ -2118,11 +2118,11 @@ let prop_partial_join ({InterproceduralAnalysis.tenv; _} as analysis_data) mode 
             Todo.reset rename_footprint ;
             let res = eprop_partial_join' tenv mode (Prop.expose p1') (Prop.expose p2') in
             if !BiabductionConfig.footprint then JoinState.set_footprint false ;
-            Some res )
+            Some res)
           ~finally:(fun () ->
             Rename.final () ;
             FreshVarExp.final () ;
-            Todo.final () )
+            Todo.final ())
       with Predicates.JoinFail -> None )
   | Some _ ->
       res_by_implication_only
@@ -2138,7 +2138,7 @@ let eprop_partial_join tenv mode (ep1 : Prop.exposed Prop.t) (ep2 : Prop.exposed
     ~finally:(fun () ->
       Rename.final () ;
       FreshVarExp.final () ;
-      Todo.final () )
+      Todo.final ())
 
 
 (** {2 Join and Meet for Propset} *)

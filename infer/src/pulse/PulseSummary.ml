@@ -15,7 +15,7 @@ let pp fmt summary =
   F.open_vbox 0 ;
   F.fprintf fmt "%d pre/post(s)@;" (List.length summary) ;
   List.iteri summary ~f:(fun i (pre_post : ExecutionDomain.summary) ->
-      F.fprintf fmt "#%d: @[%a@]@;" i ExecutionDomain.pp (pre_post :> ExecutionDomain.t) ) ;
+      F.fprintf fmt "#%d: @[%a@]@;" i ExecutionDomain.pp (pre_post :> ExecutionDomain.t)) ;
   F.close_box ()
 
 

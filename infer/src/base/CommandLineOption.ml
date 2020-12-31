@@ -133,7 +133,7 @@ let xdesc {long; short; spec} =
                 (Arg.Bad
                    (F.sprintf "wrong argument '%s'; option '%s' expects one of: %s" arg
                       (dashdash ~short long)
-                      (String.concat ~sep:" | " symbols))) )
+                      (String.concat ~sep:" | " symbols))))
     | _ ->
         spec
   in
@@ -220,7 +220,7 @@ let add parse_mode sections desc =
           |> List.remove_consecutive_duplicates ~equal:InferCommand.equal
           |> List.map ~f:(fun cmd ->
                  let exe = InferCommand.to_exe_name cmd in
-                 Printf.sprintf "$(b,%s)(1)" (Cmdliner.Manpage.escape exe) )
+                 Printf.sprintf "$(b,%s)(1)" (Cmdliner.Manpage.escape exe))
           |> oxford_comma
         in
         {desc with doc= Printf.sprintf "%s\nSee also %s." desc.doc commands}
@@ -301,7 +301,7 @@ let mk ?(deprecated = []) ?(parse_mode = InferCommand) ?(in_help = []) ~long ?sh
   if not (String.is_empty short) then add parse_mode [] {desc with long= ""; meta= ""; doc= ""} ;
   (* add desc for deprecated options only for parsing, without documentation *)
   List.iter deprecated ~f:(fun deprecated ->
-      deprecate_desc parse_mode ~long ~short ~deprecated doc desc |> add parse_mode [] ) ;
+      deprecate_desc parse_mode ~long ~short ~deprecated doc desc |> add parse_mode []) ;
   variable
 
 
@@ -430,7 +430,7 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
   and noshort =
     Option.map
       ~f:(fun short ->
-        if Char.is_lowercase short then Char.uppercase short else Char.lowercase short )
+        if Char.is_lowercase short then Char.uppercase short else Char.lowercase short)
       short
   in
   let doc long short =
@@ -475,7 +475,7 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
     mk ~long ?short ~deprecated ~default ?parse_mode ?in_help ~meta doc ~default_to_string
       ~mk_setter:(fun var _ -> var := f true)
       ~decode_json:(fun ~inferconfig_dir:_ json ->
-        [(if YBU.to_bool json then best_nonempty_enable else best_nonempty_disable)] )
+        [(if YBU.to_bool json then best_nonempty_enable else best_nonempty_disable)])
       ~mk_spec
   in
   ignore
@@ -483,7 +483,7 @@ let mk_bool ?(deprecated_no = []) ?(default = false) ?(f = fun b -> b) ?(depreca
        ?in_help ~meta nodoc ~default_to_string
        ~mk_setter:(fun _ _ -> var := f false)
        ~decode_json:(fun ~inferconfig_dir:_ json ->
-         [(if YBU.to_bool json then best_nonempty_disable else best_nonempty_enable)] )
+         [(if YBU.to_bool json then best_nonempty_disable else best_nonempty_enable)])
        ~mk_spec) ;
   var
 
@@ -576,8 +576,8 @@ let mk_string_map ?(default = String.Map.empty) ?(default_to_string = map_to_str
     ~default_to_string
     ~mk_setter:(fun var str ->
       let key, data = split_str str in
-      var := add_to_map !var ~key ~data )
-    ~mk_spec:(fun set -> String set )
+      var := add_to_map !var ~key ~data)
+    ~mk_spec:(fun set -> String set)
       (* In spirit of JSON we could have presented json as list of key-value pairs
          with e.g. "key" and "value" fields, but for simplicity let's present each key-value pair
          as it is passed to command line, which is a <key>=<value> *)
@@ -603,7 +603,7 @@ let mk_path_helper ~setter ~default_to_string ~default ~deprecated ~long ~short 
     ~default_to_string
     ~mk_setter:(fun var str ->
       let abs_path = normalize_path_in_args_being_parsed ~is_anon_arg:false str in
-      setter var abs_path )
+      setter var abs_path)
     ~mk_spec:(fun set -> String set)
 
 
@@ -692,7 +692,7 @@ let mk_symbol_seq ?(default = []) ~symbols ~eq ?(deprecated = []) ~long ?short ?
     ~default_to_string:(fun syms -> String.concat ~sep:" " (List.map ~f:to_string syms))
     ~mk_setter:(fun var str_seq -> var := List.map ~f:of_string (String.split ~on:',' str_seq))
     ~decode_json:(fun ~inferconfig_dir:_ json ->
-      [dashdash long; String.concat ~sep:"," (YBU.convert_each YBU.to_string json)] )
+      [dashdash long; String.concat ~sep:"," (YBU.convert_each YBU.to_string json)])
     ~mk_spec:(fun set -> String set)
 
 
@@ -812,7 +812,7 @@ let mk_rest_actions ?(parse_mode = InferCommand) ?(in_help = []) doc ~usage deco
     String
       (fun arg ->
         rest := List.rev (Array.to_list (Array.slice !args_to_parse (!arg_being_parsed + 1) 0)) ;
-        select_parse_mode ~usage (decode_action arg) |> ignore )
+        select_parse_mode ~usage (decode_action arg) |> ignore)
   in
   add parse_mode in_help
     { long= "--"
@@ -837,10 +837,10 @@ let mk_subcommand command ?on_unknown_arg:(on_unknown = `Reject) ~name ?deprecat
         (mk ~long ~default:() ?parse_mode ?in_help ~meta:"" ""
            ~default_to_string:(fun () -> "")
            ~decode_json:(fun ~inferconfig_dir:_ _ ->
-             raise (Arg.Bad ("Bad option in config file: " ^ long)) )
+             raise (Arg.Bad ("Bad option in config file: " ^ long)))
            ~mk_setter:(fun _ _ ->
              warnf "WARNING: '%s' is deprecated. Please use '%s' instead.@\n" (dashdash long) name ;
-             switch () )
+             switch ())
            ~mk_spec:(fun set -> Unit (fun () -> set "")))
   | None ->
       () ) ;
@@ -908,7 +908,7 @@ let decode_inferconfig_to_argv path =
           ~f:(fun {long; short} ->
             String.equal key long || String.equal key short
             (* for deprecated options *)
-            || (* for deprecated options that start with "-" *) String.equal ("-" ^ key) short )
+            || (* for deprecated options that start with "-" *) String.equal ("-" ^ key) short)
           !desc_list
       in
       decode_json ~inferconfig_dir json_val @ result
@@ -935,7 +935,7 @@ let encode_argv_to_env argv =
          ||
          ( warnf "WARNING: Ignoring unsupported option containing '%c' character: %s@\n" env_var_sep
              arg ;
-           false ) )
+           false ))
        argv)
 
 
@@ -970,7 +970,7 @@ let parse_args ~usage initial_action ?initial_command args =
       let switch =
         List.Assoc.find_exn !subcommand_actions ~equal:String.equal (string_of_command command)
       in
-      switch () ) ;
+      switch ()) ;
   (* tests if msg indicates an unknown option, as opposed to a known option with bad argument *)
   let is_unknown msg = String.is_substring msg ~substring:": unknown option" in
   let rec parse_loop () =
@@ -1150,7 +1150,7 @@ let show_manual ?(scrub_defaults = false) ?internal_section format default_doc c
                 `S section
                 :: (if String.equal section Cmdliner.Manpage.s_options then blocks else [])
                 @ List.concat_map ~f:block_of_desc (normalize_desc_list descs)
-                @ result )
+                @ result)
               !sections hidden
         | None ->
             (`S Cmdliner.Manpage.s_options :: blocks)

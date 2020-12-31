@@ -37,6 +37,6 @@ module Set = struct
         | Path path ->
             join acc (eval_func_ptr path)
         | Closure _ ->
-            add func_ptr acc )
+            add func_ptr acc)
       x empty
 end

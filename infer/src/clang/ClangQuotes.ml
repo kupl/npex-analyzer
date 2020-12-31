@@ -33,7 +33,7 @@ let mk_arg_file prefix style args =
     List.iter
       ~f:(fun arg ->
         quote style arg |> Out_channel.output_string outc ;
-        Out_channel.newline outc )
+        Out_channel.newline outc)
       args
   in
   Utils.with_file_out file ~f:write_args ;

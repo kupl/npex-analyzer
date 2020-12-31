@@ -76,7 +76,7 @@ let report_matching_get proc_desc err_log tenv pvar loop_nodes : unit =
                         let loc = Procdesc.Node.get_loc node in
                         let ltr = [Errlog.make_trace_element 0 loc exp_desc []] in
                         Reporting.log_issue proc_desc err_log ~loc ~ltr InefficientKeysetIterator
-                          IssueType.inefficient_keyset_iterator exp_desc ) ) )
+                          IssueType.inefficient_keyset_iterator exp_desc)))
     loop_nodes
 
 
@@ -117,5 +117,5 @@ let checker {IntraproceduralAnalysis.proc_desc; tenv; err_log} =
           ~class_name_f:(PatternMatch.Java.implements_set tenv) ~f:(fun itr_node _ ->
             when_dominating_preds_satisfy idom itr_node ~fun_name:"keySet"
               ~class_name_f:(implements_map tenv) ~f:(fun _keySet_node get_pvar ->
-                report_matching_get proc_desc err_log tenv get_pvar loop_nodes ) ) )
+                report_matching_get proc_desc err_log tenv get_pvar loop_nodes)))
     loop_head_to_loop_nodes

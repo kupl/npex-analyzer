@@ -376,7 +376,7 @@ module OwnershipDomain = struct
       List.nth actuals formal_index
       (* simply skip formal if we cannot find its actual, as opposed to assuming non-ownership *)
       |> Option.fold ~init ~f:(fun acc expr ->
-             OwnershipAbstractValue.join acc (ownership_of_expr expr ownership) )
+             OwnershipAbstractValue.join acc (ownership_of_expr expr ownership))
     in
     let ret_ownership_wrt_actuals =
       match return_ownership with
@@ -577,7 +577,7 @@ let astate_to_summary proc_desc formals {threads; locks; accesses; ownership; at
     if Procname.is_java_class_initializer proc_name || Procname.is_constructor proc_name then
       AttributeMapDomain.filter
         (fun exp attribute ->
-          match attribute with Synchronized -> should_keep_exp formals exp | _ -> false )
+          match attribute with Synchronized -> should_keep_exp formals exp | _ -> false)
         attribute_map
     else AttributeMapDomain.top
   in

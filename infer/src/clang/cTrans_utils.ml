@@ -231,7 +231,7 @@ module PriorityNode = struct
         ~exn:[] ;
       List.iter
         ~f:(fun leaf ->
-          Procdesc.node_set_succs trans_state.context.procdesc leaf ~normal:[node] ~exn:[] )
+          Procdesc.node_set_succs trans_state.context.procdesc leaf ~normal:[node] ~exn:[])
         res_state.leaf_nodes ;
       (* Invariant: if root_nodes is empty then the params have not created a node.*)
       let root_nodes =

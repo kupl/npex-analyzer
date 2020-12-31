@@ -60,4 +60,4 @@ let write_from_json ~json_path ~out_path cost_issues_tests_fields =
       let cost_report = Atdgen_runtime.Util.Json.from_file Jsonbug_j.read_costs_report json_path in
       let sorted_cost_report = List.sort ~compare:cost_tests_jsonbug_compare cost_report in
       pp_custom_of_cost_report (F.formatter_of_out_channel outf) sorted_cost_report
-        cost_issues_tests_fields )
+        cost_issues_tests_fields)

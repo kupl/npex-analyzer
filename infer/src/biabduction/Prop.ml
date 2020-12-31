@@ -131,7 +131,7 @@ let pp_hpred_stackvar =
             (pp_texp_simple pe') te
       | Hpointsto _ | Hlseg _ | Hdllseg _ ->
           assert false
-      (* should not happen *) )
+      (* should not happen *))
 
 
 (** Pretty print a substitution. *)
@@ -148,7 +148,7 @@ let d_sub (sub : Predicates.subst) = L.d_pp_with_pe pp_sub sub
 let pp_sub_entry =
   Pp.color_wrapper ~f:(fun pe f entry ->
       let x, e = entry in
-      F.fprintf f "%a = %a" Ident.pp x (Exp.pp_diff pe) e )
+      F.fprintf f "%a = %a" Ident.pp x (Exp.pp_diff pe) e)
 
 
 (** Pretty print a substitution as a list of (ident,exp) pairs *)
@@ -240,7 +240,7 @@ let get_pure_extended p =
           when Ident.is_primed id1 && not (Ident.is_primed id0) ->
             extend_atoms id0 id1
         | _ ->
-            acc )
+            acc)
   in
   primed_atoms @ base
 
@@ -1329,7 +1329,7 @@ module Normalize = struct
             IList.map_changed fld_cnts ~equal:[%compare.equal: Fieldname.t * Predicates.strexp]
               ~f:(fun ((fld, cnt) as x) ->
                 let cnt' = strexp_normalize tenv sub cnt in
-                if phys_equal cnt cnt' then x else (fld, cnt') )
+                if phys_equal cnt cnt' then x else (fld, cnt'))
           in
           if
             phys_equal fld_cnts fld_cnts'
@@ -1351,7 +1351,7 @@ module Normalize = struct
                 ~f:(fun ((idx, cnt) as x) ->
                   let idx' = exp_normalize tenv sub idx in
                   let cnt' = strexp_normalize tenv sub cnt in
-                  if phys_equal idx idx' && phys_equal cnt cnt' then x else (idx', cnt') )
+                  if phys_equal idx idx' && phys_equal cnt cnt' then x else (idx', cnt'))
             in
             if
               phys_equal idx_cnts idx_cnts'
@@ -1407,7 +1407,7 @@ module Normalize = struct
                     else if Pvar.equal var var_captured then (Exp.Var id, var_captured, t, mode)
                     else captured_item
                 | _ ->
-                    captured_item )
+                    captured_item)
               captured'
         | _ ->
             captured'
@@ -1433,7 +1433,7 @@ module Normalize = struct
             IList.map_changed ~equal:phys_equal
               ~f:(fun ((field, se) as fse) ->
                 let se' = process_closures_in_se se in
-                if phys_equal se se' then fse else (field, se') )
+                if phys_equal se se' then fse else (field, se'))
               fields
           in
           if phys_equal fields new_fields then se else Estruct (new_fields, inst)
@@ -1616,7 +1616,7 @@ module Normalize = struct
                       ~f:(fun (n', e') -> Exp.equal e e' && IntLit.leq n n')
                       lt_list_tightened)
           | _ ->
-              true )
+              true)
         nonineq_list
     in
     (ineq_list', nonineq_list')
@@ -1784,7 +1784,7 @@ let lexp_normalize_prop tenv p lexp =
         | Off_fld _ ->
             n
         | Off_index e ->
-            Predicates.Off_index (exp_normalize_prop tenv p e) )
+            Predicates.Off_index (exp_normalize_prop tenv p e))
       offsets
   in
   Predicates.exp_add_offsets nroot noffsets

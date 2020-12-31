@@ -133,7 +133,7 @@ let report_call_stack end_of_stack lookup_next_calls report call_site sink_map =
               let loc = CallSite.loc call_site in
               if Procname.Set.mem p visited then accu
               else ((p, loc) :: unseen, Procname.Set.add p visited)
-            with Caml.Not_found -> accu )
+            with Caml.Not_found -> accu)
           next_calls ([], visited_pnames)
       in
       List.iter ~f:(loop fst_call_loc updated_callees new_trace) unseen_callees
@@ -146,7 +146,7 @@ let report_call_stack end_of_stack lookup_next_calls report call_site sink_map =
         let fst_call_loc = CallSite.loc fst_call_site in
         let start_trace = update_trace (CallSite.loc call_site) [] in
         loop fst_call_loc Procname.Set.empty start_trace (fst_callee_pname, fst_call_loc)
-      with Caml.Not_found -> () )
+      with Caml.Not_found -> ())
     sink_map
 
 
@@ -260,7 +260,7 @@ module CxxAnnotationSpecs = struct
       let symbol_regexps =
         U.yojson_lookup entry "symbol_regexps" ~src ~default:None ~f:(fun json ~src ->
             U.string_list_of_yojson json ~src |> String.concat ~sep:"\\|" |> Str.regexp
-            |> Option.some )
+            |> Option.some)
       in
       let paths = U.yojson_lookup entry "paths" ~src ~f:U.string_list_of_yojson ~default:[] in
       at_least_one_nonempty ~src symbols symbol_regexps paths ;
@@ -371,7 +371,7 @@ module CxxAnnotationSpecs = struct
       ~f:(fun (spec_name, spec_cfg) ->
         let src = option_name ^ " -> " ^ spec_name in
         spec_from_config spec_name (U.assoc_of_yojson spec_cfg ~src)
-          annotation_reachability_cxx_sources )
+          annotation_reachability_cxx_sources)
       annotation_reachability_cxx
 end
 
@@ -390,7 +390,7 @@ module NoAllocationAnnotationSpec = struct
     ; sink_annotation= constructor_annot
     ; report=
         (fun proc_data annot_map ->
-          report_src_snk_paths proc_data annot_map [no_allocation_annot] constructor_annot ) }
+          report_src_snk_paths proc_data annot_map [no_allocation_annot] constructor_annot) }
 end
 
 module ExpensiveAnnotationSpec = struct
@@ -424,7 +424,7 @@ module ExpensiveAnnotationSpec = struct
     ; sink_predicate=
         (fun tenv pname ->
           let has_annot ia = Annotations.ia_ends_with ia expensive_annot.class_name in
-          check_attributes has_annot tenv pname || is_modeled_expensive tenv pname )
+          check_attributes has_annot tenv pname || is_modeled_expensive tenv pname)
     ; sanitizer_predicate= default_sanitizer
     ; sink_annotation= expensive_annot
     ; report=
@@ -434,8 +434,7 @@ module ExpensiveAnnotationSpec = struct
             PatternMatch.override_iter
               (check_expensive_subtyping_rules analysis_data)
               tenv proc_name ;
-          report_src_snk_paths analysis_data astate [performance_critical_annot] expensive_annot )
-    }
+          report_src_snk_paths analysis_data astate [performance_critical_annot] expensive_annot) }
 end
 
 (* parse user-defined specs from .inferconfig *)
@@ -456,7 +455,7 @@ let annot_specs =
   let user_defined_specs =
     parse_user_defined_specs Config.annotation_reachability_custom_pairs
     |> List.map ~f:(fun (str_src_annots, str_snk_annot) ->
-           StandardAnnotationSpec.from_annotations str_src_annots str_snk_annot )
+           StandardAnnotationSpec.from_annotations str_src_annots str_snk_annot)
   in
   let open Annotations in
   let cannot_call_ui_annots = [any_thread; worker_thread] in
@@ -502,7 +501,7 @@ module MakeTransferFunctions (CFG : ProcCfg.S) = struct
           L.d_printfln "%s: Adding sink call `%a -> %a`" spec.description Procname.pp caller_pname
             Procname.pp callee_pname ;
           Domain.add_call_site spec.sink_annotation callee_pname call_site astate )
-        else astate )
+        else astate)
 
 
   let merge_callee_map {analysis_data= {proc_desc; tenv; analyze_dependency}; specs} call_site
@@ -526,7 +525,7 @@ module MakeTransferFunctions (CFG : ProcCfg.S) = struct
                     spec.description Procname.pp callee_pname Procname.pp caller_pname Procname.pp
                     sink ;
                   Domain.add_call_site annot sink call_site astate )
-                else astate )
+                else astate)
         in
         Domain.fold
           (fun annot sink_map astate -> Domain.SinkMap.fold (add_call_site annot) sink_map astate)
@@ -556,5 +555,5 @@ let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) : Domain.t op
   let proc_data = {TransferFunctions.analysis_data; specs} in
   let post = Analyzer.compute_post proc_data ~initial proc_desc in
   Option.iter post ~f:(fun annot_map ->
-      List.iter specs ~f:(fun spec -> spec.AnnotationSpec.report analysis_data annot_map) ) ;
+      List.iter specs ~f:(fun spec -> spec.AnnotationSpec.report analysis_data annot_map)) ;
   post

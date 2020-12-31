@@ -305,7 +305,7 @@ let make_dangling_boxes pe allocated_nodes (sigma_lambda : (Predicates.hpred * i
             | Dotdllseg (_, e', _, _, _, _, _, _) ->
                 Exp.equal e e'
             | _ ->
-                false )
+                false)
           allocated_nodes
     | _ ->
         false
@@ -591,8 +591,7 @@ let rec dotty_mk_set_links dotnodes sigma p f cycle =
             ~f:(fun (k, lab_src, m, lab_trg) ->
               mk_link k
                 (mk_coordinate (n + 1) lambda)
-                (strip_special_chars lab_src) (mk_coordinate m lambda) (strip_special_chars lab_trg)
-              )
+                (strip_special_chars lab_src) (mk_coordinate m lambda) (strip_special_chars lab_trg))
             target_list
         in
         let links_from_elements = List.concat_map ~f:ff (n :: nl) in
@@ -618,7 +617,7 @@ let rec dotty_mk_set_links dotnodes sigma p f cycle =
           let ff n =
             List.map
               ~f:(fun (k, lab_src, m, lab_trg) ->
-                mk_link k (mk_coordinate n lambda) lab_src (mk_coordinate m lambda) lab_trg )
+                mk_link k (mk_coordinate n lambda) lab_src (mk_coordinate m lambda) lab_trg)
               target_list
           in
           let nodes_e = select_nodes_exp_lambda dotnodes e lambda in
@@ -652,7 +651,7 @@ let rec dotty_mk_set_links dotnodes sigma p f cycle =
               List.map
                 ~f:(fun (k, m, lab_target) ->
                   mk_link k (mk_coordinate n lambda) "" (mk_coordinate m lambda)
-                    (strip_special_chars lab_target) )
+                    (strip_special_chars lab_target))
                 target_list
             in
             let ll = List.concat_map ~f:ff nl in
@@ -772,7 +771,7 @@ let filter_useless_spec_dollar_box (nodes : dotty_node list) (links : link list)
   let remove_node n ns =
     List.filter
       ~f:(fun n' ->
-        match n' with Dotpointsto _ -> get_coordinate_id n' <> get_coordinate_id n | _ -> true )
+        match n' with Dotpointsto _ -> get_coordinate_id n' <> get_coordinate_id n | _ -> true)
       ns
   in
   let rec boxes_pointed_by n lns =
@@ -1052,7 +1051,7 @@ let pp_dotty_one_spec f pre posts =
       for j = 1 to 4 do
         F.fprintf f "  inv_%i%i%i%i -> state_pi_%i [style=invis]@\n" !spec_counter j j j
           !target_invisible_arrow_pre
-      done )
+      done)
     posts ;
   F.fprintf f "@\n } @\n"
 
@@ -1068,7 +1067,7 @@ let pp_speclist_dotty f (splist : Prop.normal BiabductionSummary.spec list) =
     ~f:(fun s ->
       pp_dotty_one_spec f
         (BiabductionSummary.Jprop.to_prop s.BiabductionSummary.pre)
-        s.BiabductionSummary.posts )
+        s.BiabductionSummary.posts)
     splist ;
   F.fprintf f "@\n}"
 

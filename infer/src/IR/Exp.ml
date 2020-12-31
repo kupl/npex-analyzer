@@ -287,7 +287,7 @@ let pp_diff ?(print_types = false) =
             e0
       in
       if not (equal e0 e) then match e with Lvar pvar -> Pvar.pp_value f pvar | _ -> assert false
-      else pp_printenv ~print_types pe f e )
+      else pp_printenv ~print_types pe f e)
 
 
 (** dump an expression. *)

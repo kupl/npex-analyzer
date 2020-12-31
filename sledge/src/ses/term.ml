@@ -129,13 +129,13 @@ end
 let assert_conjunction = function
   | And cs ->
       Set.iter cs ~f:(fun c ->
-          assert (match c with And _ -> false | _ -> true) )
+          assert (match c with And _ -> false | _ -> true))
   | _ -> assert false
 
 let assert_disjunction = function
   | Or cs ->
       Set.iter cs ~f:(fun c ->
-          assert (match c with Or _ -> false | _ -> true) )
+          assert (match c with Or _ -> false | _ -> true))
   | _ -> assert false
 
 (* an indeterminate (factor of a monomial) is any
@@ -154,7 +154,7 @@ let assert_monomial mono =
       Qset.iter args ~f:(fun factor exponent ->
           assert (Z.equal (Q.den exponent) Z.one) ;
           assert (Q.sign exponent > 0) ;
-          assert_indeterminate factor |> Fn.id )
+          assert_indeterminate factor |> Fn.id)
   | _ -> assert_indeterminate mono |> Fn.id
 
 (* a polynomial term is a monomial multiplied by a non-zero coefficient
@@ -317,13 +317,13 @@ and pp_record strength fs elts =
           String.init (IArray.length elts) ~f:(fun i ->
               match IArray.get elts i with
               | Integer {data} -> Char.of_int_exn (Z.to_int data)
-              | _ -> raise (Invalid_argument "not a string") )
+              | _ -> raise (Invalid_argument "not a string"))
         with
         | s -> Format.fprintf fs "@[<h>%s@]" (String.escaped s)
         | exception _ ->
             Format.fprintf fs "@[<h>%a@]"
               (IArray.pp ",@ " (ppx strength))
-              elts )
+              elts)
       elts]
 
 let pp = ppx (fun _ -> None)
@@ -477,7 +477,7 @@ and simp_mul2 e f =
         (Sum.map sum ~f:(function
           | Mul args -> Prod.to_term (Prod.union prod args)
           | (Integer _ | Rational _) as c -> simp_mul2 c m
-          | mono -> Prod.to_term (Prod.add mono prod) ))
+          | mono -> Prod.to_term (Prod.add mono prod)))
   (* x₀ × (∏ᵢ₌₁ⁿ xᵢ) ==> ∏ᵢ₌₀ⁿ xᵢ *)
   | Mul xs1, x | x, Mul xs1 -> Prod.to_term (Prod.add x xs1)
   (* e × (∑ᵤ cᵤ × ∏ⱼ yᵤⱼ) ==> ∑ᵤ e × cᵤ × ∏ⱼ yᵤⱼ *)
@@ -540,7 +540,7 @@ let simp_mul es =
   in
   Qset.fold es ~init:one ~f:(fun bas pwr term ->
       if Q.sign pwr >= 0 then mul_pwr bas pwr term
-      else simp_div term (mul_pwr bas (Q.neg pwr) one) )
+      else simp_div term (mul_pwr bas (Q.neg pwr) one))
 
 (* if-then-else *)
 
@@ -612,7 +612,7 @@ let rec seq_size_exn = function
   | Ap2 (Sized, n, _) | Ap3 (Extract, _, _, n) -> n
   | ApN (Concat, a0U) ->
       IArray.fold a0U ~init:zero ~f:(fun a0I aJ ->
-          simp_add2 a0I (seq_size_exn aJ) )
+          simp_add2 a0I (seq_size_exn aJ))
   | _ -> invalid_arg "seq_size_exn"
 
 let seq_size e = try Some (seq_size_exn e) with Invalid_argument _ -> None
@@ -693,7 +693,7 @@ let rec simp_extract seq off len =
                     let lI = Z.(max zero (min l (neg data))) in
                     let l = Z.(l - lI) in
                     Continue ((l, oJ), simp_extract naI oI (integer lI))
-                | _ -> Stop (Ap3 (Extract, seq, off, len)) )
+                | _ -> Stop (Ap3 (Extract, seq, off, len)))
             ~finish:(fun (_, e1N) -> simp_concat e1N)
       | _ -> Ap3 (Extract, seq, off, len) )
     (* α[o,l) *)
@@ -714,7 +714,7 @@ and simp_concat xs =
         (IArray.fold_right xs ~init:[] ~f:(fun x s ->
              match x with
              | ApN (Concat, ys) -> ys :: s
-             | x -> IArray.of_array [|x|] :: s ))
+             | x -> IArray.of_array [|x|] :: s))
     in
     if exists_sub_Concat xs then concat_sub_Concat xs else xs
   in
@@ -1105,7 +1105,7 @@ let disjuncts e =
     | Or es ->
         let e0, e1N = Set.pop_exn es in
         Set.fold e1N ~init:(disjuncts_ e0) ~f:(fun cs e ->
-            Set.union cs (disjuncts_ e) )
+            Set.union cs (disjuncts_ e))
     | Ap3 (Conditional, cnd, thn, els) ->
         Set.add
           (Set.of_ (and_ (orN (disjuncts_ cnd)) (orN (disjuncts_ thn))))
@@ -1206,7 +1206,7 @@ let iter_vars e ~f =
 let exists_vars e ~f =
   with_return (fun {return} ->
       iter_vars e ~f:(fun v -> if f v then return true) ;
-      false )
+      false)
 
 let fold_vars e ~init ~f =
   fold_terms ~f:(fun s e -> Option.fold ~f ~init:s (Var.of_term e)) ~init e
@@ -1276,7 +1276,7 @@ let solve_zero_eq ?for_ e =
   [%Trace.retn fun {pf} s ->
     pf "%a"
       (Option.pp "%a" (fun fs (c, r) ->
-           Format.fprintf fs "%a ↦ %a" pp c pp r ))
+           Format.fprintf fs "%a ↦ %a" pp c pp r))
       s ;
     match (for_, s) with
     | Some f, Some (c, _) -> assert (equal f c)

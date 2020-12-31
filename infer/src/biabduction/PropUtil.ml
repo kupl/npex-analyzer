@@ -108,7 +108,7 @@ let remove_abduced_retvars tenv p =
           | Predicates.Aeq (lhs, rhs) | Predicates.Aneq (lhs, rhs) ->
               exp_contains lhs || exp_contains rhs
           | Predicates.Apred (_, es) | Predicates.Anpred (_, es) ->
-              List.exists ~f:exp_contains es )
+              List.exists ~f:exp_contains es)
         pi
     in
     (Predicates.HpredSet.elements reach_hpreds, reach_pi)
@@ -123,7 +123,7 @@ let remove_abduced_retvars tenv p =
             if Pvar.is_abduced pvar then (pvar :: abduceds, normal_pvars)
             else (abduceds, pvar :: normal_pvars)
         | _ ->
-            pvars )
+            pvars)
       ~init:([], []) p.Prop.sigma
   in
   let _, p' = Attribute.deallocate_stack_vars tenv p abduceds in

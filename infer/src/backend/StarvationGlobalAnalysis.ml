@@ -35,7 +35,7 @@ let iter_summary ~f exe_env (summary : Summary.t) =
          then f pname critical_pairs ;
          ScheduledWorkDomain.iter
            (fun work -> get_summary_of_scheduled_work work |> Option.iter ~f:(f pname))
-           scheduled_work )
+           scheduled_work)
 
 
 module WorkHashSet = struct
@@ -71,7 +71,7 @@ let report exe_env work_set =
                  Ondemand.analyze_proc_name ~caller_summary:summary pname
                  |> Option.bind ~f:(fun summary ->
                         Option.map summary.Summary.payloads.starvation ~f:(fun starvation ->
-                            (Summary.get_proc_desc summary, starvation) ) ) )
+                            (Summary.get_proc_desc summary, starvation))))
                tenv pattrs pair acc
            in
            match pair.elem.event with
@@ -83,10 +83,10 @@ let report exe_env work_set =
                    WorkHashSet.fold
                      (fun (other_procname, (other_pair : CriticalPair.t)) () acc ->
                        Starvation.report_on_parallel_composition ~should_report_starvation tenv
-                         pattrs pair lock other_procname other_pair acc )
-                     work_set acc )
+                         pattrs pair lock other_procname other_pair acc)
+                     work_set acc)
            | _ ->
-               acc )
+               acc)
   in
   WorkHashSet.fold wrap_report work_set Starvation.ReportMap.empty
   |> Starvation.ReportMap.store_multi_file

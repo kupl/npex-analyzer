@@ -158,7 +158,7 @@ let parse_target_string =
   fun s ->
     parse_with_retry s ~retry:(fun s ->
         parse_with_retry ("//" ^ s) ~retry:(fun s ->
-            L.(die InternalError) "Do not know how to parse buck command line argument '%s'" s ) )
+            L.(die InternalError) "Do not know how to parse buck command line argument '%s'" s))
 
 
 module Query = struct

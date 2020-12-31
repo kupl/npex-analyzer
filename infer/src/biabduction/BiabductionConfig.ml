@@ -16,7 +16,7 @@ let set_reference_and_call_function reference value f x =
   Utils.try_finally_swallow_timeout
     ~f:(fun () ->
       reference := value ;
-      f x )
+      f x)
     ~finally:restore
 
 

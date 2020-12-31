@@ -50,7 +50,7 @@ module Initial = struct
               let flist =
                 List.fold
                   ~f:(fun acc' (fn, _, _) ->
-                    HilExp.AccessExpression.field_offset base_access_expr fn :: acc' )
+                    HilExp.AccessExpression.field_offset base_access_expr fn :: acc')
                   ~init:acc fields
               in
               base_access_expr :: flist
@@ -63,7 +63,7 @@ module Initial = struct
         | Typ.Tptr _ ->
             base_access_expr :: HilExp.AccessExpression.dereference base_access_expr :: acc
         | _ ->
-            base_access_expr :: acc )
+            base_access_expr :: acc)
 end
 
 module TransferFunctions (CFG : ProcCfg.S) = struct
@@ -138,10 +138,10 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               && (not (Typ.is_pointer t))
               && not
                    (Option.exists callee_formals_opt ~f:(fun callee_formals ->
-                        is_struct_field_passed_by_ref callee_formals t access_expr idx ))
+                        is_struct_field_passed_by_ref callee_formals t access_expr idx))
             then report_intra access_expr loc analysis_data
         | _ ->
-            () )
+            ())
 
 
   let is_dummy_constructor_of_a_struct call =
@@ -175,7 +175,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
           D.exists
             (fun access_expr ->
               let base = HilExp.AccessExpression.get_base access_expr in
-              AccessPath.equal_base base (var_fparam, t) )
+              AccessPath.equal_base base (var_fparam, t))
             init_formal_params
         then Some var_fparam
         else None
@@ -318,9 +318,9 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
               | HilExp.Closure (_, apl) ->
                   (* remove the captured variables of a block/lambda *)
                   List.fold apl ~init:acc ~f:(fun acc (base, _) ->
-                      MaybeUninitVars.remove (HilExp.AccessExpression.base base) acc )
+                      MaybeUninitVars.remove (HilExp.AccessExpression.base base) acc)
               | _ ->
-                  acc )
+                  acc)
         in
         ( match call with
         | Direct _ ->

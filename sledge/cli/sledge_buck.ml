@@ -78,7 +78,7 @@ let expand_thin_archive ~context archive_name rev_modules =
   eval ~context
     ( run (Lazy.force llvm_bin ^ "llvm-ar") ["t"; archive_name]
     |- fold_lines ~init:rev_modules ~f:(fun rev_modules line ->
-           return (add_module ~archive_name ~context line rev_modules) ) )
+           return (add_module ~archive_name ~context line rev_modules)) )
 
 (* Use llvm-ar to check if the archive contains any bitcode files; if it
    does, fail for now as it doesn't seem to happen. *)
@@ -103,7 +103,7 @@ let expand_arch_archive ~context archive_name =
                 if String.equal is_bc "BC" then (
                   warn "found bc file %s in %s" name archive_name () ;
                   acc + 1 )
-                else acc ) ) )
+                else acc)) )
   in
   number_of_bitcode_files = 0
   || fail "found %d bitcode files in archive %s" number_of_bitcode_files

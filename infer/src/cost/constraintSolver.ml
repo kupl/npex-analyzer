@@ -91,7 +91,7 @@ module Equalities = struct
   let normalize_sums equalities =
     let normalizer = normalizer equalities in
     Container.iter ~fold:fold_sets equalities ~f:(fun (_repr, set) ->
-        ControlFlowCost.Set.normalize_sums ~normalizer set )
+        ControlFlowCost.Set.normalize_sums ~normalizer set)
 
 
   let union ~debug equalities e1 e2 =
@@ -102,7 +102,7 @@ module Equalities = struct
   let init_costs bound_map equalities =
     let of_node node_id = BoundMap.lookup_upperbound bound_map node_id in
     Container.iter equalities ~fold:fold_sets ~f:(fun (_repr, set) ->
-        ControlFlowCost.Set.init_cost ~of_node set )
+        ControlFlowCost.Set.init_cost ~of_node set)
 
 
   (** From sums: if A = B + C, do cost(A) = min(cost(A), cost(B) + cost(C))

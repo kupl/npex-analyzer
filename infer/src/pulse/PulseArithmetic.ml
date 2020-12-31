@@ -31,7 +31,7 @@ type operand = PathCondition.operand =
 
 let eval_binop binop_addr binop op_lhs op_rhs astate =
   map_path_condition astate ~f:(fun phi ->
-      PathCondition.eval_binop binop_addr binop op_lhs op_rhs phi )
+      PathCondition.eval_binop binop_addr binop op_lhs op_rhs phi)
 
 
 let eval_unop unop_addr unop addr astate =

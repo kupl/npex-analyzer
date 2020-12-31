@@ -166,7 +166,7 @@ let search_classes path =
       if Filename.check_suffix p "class" then add_class paths classes p
       else if Filename.check_suffix p "jar" then
         (add_root_path p paths, collect_classnames classes p)
-      else accu )
+      else accu)
     (String.Set.empty, JBasics.ClassSet.empty)
     path
 

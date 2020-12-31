@@ -89,7 +89,7 @@ let callback1 ({IntraproceduralAnalysis.proc_desc= curr_pdesc; _} as analysis_da
           let normal_flow_typestates =
             Option.value_map normal_flow_typestate ~f:(fun a -> [a]) ~default:[]
           in
-          (normal_flow_typestates, exception_flow_typestates) )
+          (normal_flow_typestates, exception_flow_typestates))
 
 
     let proc_throws _ = DataFlow.DontKnow
@@ -127,7 +127,7 @@ let analyze_one_procedure ~java_pname
             Option.value_map callee_class
               ~f:(fun class_name ->
                 Typ.Name.Java.get_java_class_name_exn class_name
-                |> NullsafeMode.is_in_trust_list caller_nullsafe_mode )
+                |> NullsafeMode.is_in_trust_list caller_nullsafe_mode)
               ~default:false
           in
           let ann_sig =

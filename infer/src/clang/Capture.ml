@@ -97,7 +97,7 @@ let run_clang_frontend ast_source =
 let run_clang_frontend ast_source =
   PerfEvent.(
     log (fun logger ->
-        PerfEvent.log_begin_event logger ~categories:["frontend"] ~name:"clang frontend" () )) ;
+        PerfEvent.log_begin_event logger ~categories:["frontend"] ~name:"clang frontend" ())) ;
   run_clang_frontend ast_source ;
   PerfEvent.(log (fun logger -> PerfEvent.log_end_event logger ()))
 

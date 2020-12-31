@@ -104,7 +104,7 @@ open struct
       | Some scope ->
           let next, void_tbl =
             Hashtbl.find_or_add scope_tbl scope ~default:(fun () ->
-                (ref 0, Hashtbl.Poly.create ()) )
+                (ref 0, Hashtbl.Poly.create ()))
           in
           let name =
             match Llvm.classify_type (Llvm.type_of llv) with
@@ -196,7 +196,7 @@ let struct_name : Llvm.lltype -> string =
   | Some name -> name
   | None ->
       Hashtbl.find_or_add anon_struct_name llt ~default:(fun () ->
-          Int.to_string (Hashtbl.length anon_struct_name) )
+          Int.to_string (Hashtbl.length anon_struct_name))
 
 type x = {llcontext: Llvm.llcontext; lldatalayout: Llvm_target.DataLayout.t}
 
@@ -282,7 +282,7 @@ let rec xlate_type : x -> Llvm.lltype -> Typ.t =
       ;
       xlate_type_ llt
       |>
-      [%Trace.retn fun {pf} -> pf "%a" Typ.pp_defn] )
+      [%Trace.retn fun {pf} -> pf "%a" Typ.pp_defn])
 
 and xlate_type_opt : x -> Llvm.lltype -> Typ.t option =
  fun x llt ->
@@ -391,7 +391,7 @@ let rec xlate_intrinsic_exp stk :
           let rand = Llvm.operand llv 0 in
           let pre, arg = xlate_value stk x rand in
           let src = xlate_type x (Llvm.type_of rand) in
-          (pre, xlate_llvm_eh_typeid_for x src arg) )
+          (pre, xlate_llvm_eh_typeid_for x src arg))
   | _ -> None
 
 and xlate_values stk x len val_i =
@@ -490,7 +490,7 @@ and xlate_value ?(inline = false) stk :
       ;
       xlate_value_ llv
       |>
-      [%Trace.retn fun {pf} -> pf "%a" pp_prefix_exp] )
+      [%Trace.retn fun {pf} -> pf "%a" pp_prefix_exp])
 
 and xlate_opcode stk :
     x -> Llvm.llvalue -> Llvm.Opcode.t -> Inst.t list * Exp.t =
@@ -525,7 +525,7 @@ and xlate_opcode stk :
   in
   let unordered_or mk =
     binary (fun ?typ e f ->
-        Exp.or_ ~typ:Typ.bool (Exp.uno ?typ e f) (mk ?typ e f) )
+        Exp.or_ ~typ:Typ.bool (Exp.uno ?typ e f) (mk ?typ e f))
   in
   ( match opcode with
   | Trunc | ZExt | SExt | FPToUI | FPToSI | UIToFP | SIToFP | FPTrunc
@@ -728,12 +728,12 @@ and xlate_global stk : x -> Llvm.llvalue -> Global.t =
                 let is_nondet = function Nondet _ -> true | _ -> false in
                 if not (List.for_all ~f:is_nondet pre) then
                   todo "global initializer instructions" () ;
-                (init, size_of x (Llvm.type_of llv)) )
+                (init, size_of x (Llvm.type_of llv)))
         | _ -> None
       in
       Global.mk ?init g loc
       |>
-      [%Trace.retn fun {pf} -> pf "%a" Global.pp_defn] )
+      [%Trace.retn fun {pf} -> pf "%a" Global.pp_defn])
 
 let xlate_intrinsic_exp = xlate_intrinsic_exp []
 let xlate_value ?inline = xlate_value ?inline []
@@ -751,7 +751,7 @@ let pop_stack_frame_of_function :
       (fun instr regs ->
         match Llvm.instr_opcode instr with
         | Alloca -> xlate_name x instr :: regs
-        | _ -> regs )
+        | _ -> regs)
       blk regs
   in
   let entry_regs = append_stack_regs entry_blk [] in
@@ -764,12 +764,12 @@ let pop_stack_frame_of_function :
             | Alloca ->
                 warn "stack allocation after function entry:@ %a" Loc.pp
                   (find_loc instr) ()
-            | _ -> () )
-          blk )
+            | _ -> ())
+          blk)
     func ;
   let pop retn_loc =
     List.map entry_regs ~f:(fun reg ->
-        Inst.free ~ptr:(Exp.reg reg) ~loc:retn_loc )
+        Inst.free ~ptr:(Exp.reg reg) ~loc:retn_loc)
   in
   pop
 
@@ -832,7 +832,7 @@ let xlate_jump :
               ~f:(fun (arg, pred) ->
                 if Poly.equal pred src then
                   Some (xlate_name x dst_instr, xlate_value x arg)
-                else None )
+                else None)
           in
           xlate_jump_ (reg_exp :: reg_exps) (Llvm.instr_succ dst_instr)
       | _ -> reg_exps )
@@ -846,7 +846,7 @@ let xlate_jump :
       let rev_pre, rev_reg_exps =
         List.fold_map rev_reg_pre_exps ~init:[]
           ~f:(fun rev_pre (reg, (pre, exp)) ->
-            (List.rev_append pre rev_pre, (reg, exp)) )
+            (List.rev_append pre rev_pre, (reg, exp)))
       in
       let mov =
         Inst.move ~reg_exps:(IArray.of_list_rev rev_reg_exps) ~loc
@@ -881,8 +881,8 @@ let pp_code fs (insts, term, blocks) =
       | _ ->
           Format.fprintf fs "%t%a"
             (fun fs ->
-              if List.is_empty insts then () else Format.fprintf fs "@ " )
-            Term.pp term )
+              if List.is_empty insts then () else Format.fprintf fs "@ ")
+            Term.pp term)
     (fun fs -> if List.is_empty blocks then () else Format.fprintf fs "@\n")
     (List.pp "@ " Block.pp) blocks
 
@@ -1091,7 +1091,7 @@ let xlate_instr :
             in
             continue (fun (insts, term) ->
                 let cmnd = IArray.of_list insts in
-                (pre0 @ pre, call, [Block.mk ~lbl ~cmnd ~term]) ) ) )
+                (pre0 @ pre, call, [Block.mk ~lbl ~cmnd ~term])) ) )
   | Invoke -> (
       let llfunc = Llvm.operand instr (Llvm.num_operands instr - 3) in
       let lltyp = Llvm.type_of llfunc in
@@ -1333,7 +1333,7 @@ let xlate_instr :
           ( load_ti :: pre
           , term_unwind
           , List.rev_append rev_blocks
-              [Block.mk ~lbl ~cmnd:(IArray.of_list insts) ~term] ) )
+              [Block.mk ~lbl ~cmnd:(IArray.of_list insts) ~term] ))
   | Resume ->
       let llrcd = Llvm.operand instr 0 in
       let typ = xlate_type x (Llvm.type_of llrcd) in
@@ -1377,7 +1377,7 @@ let rec xlate_instrs : pop_thunk -> x -> _ Llvm.llpos -> code =
           let instrJ = Llvm.instr_succ instrI in
           let instsJ, termJ, blocksJN = xlate_instrs pop x instrJ in
           let instsI, termI, blocksI = xlate_instrI (instsJ, termJ) in
-          (instsI, termI, blocksI @ blocksJN) )
+          (instsI, termI, blocksI @ blocksJN))
   | At_end blk -> fail "xlate_instrs: %a" pp_llblock blk ()
 
 let xlate_block : pop_thunk -> x -> Llvm.llbasicblock -> Llair.block list =
@@ -1448,7 +1448,7 @@ let transform ~internalize : Llvm.llmodule -> unit =
   let entry_points = Config.find_list "entry-points" in
   if internalize then
     Llvm_ipo.add_internalize_predicate pm (fun fn ->
-        List.exists entry_points ~f:(String.equal fn) ) ;
+        List.exists entry_points ~f:(String.equal fn)) ;
   Llvm_ipo.add_global_dce pm ;
   Llvm_ipo.add_global_optimizer pm ;
   Llvm_ipo.add_merge_functions pm ;
@@ -1559,7 +1559,7 @@ let translate ~models ~fuzzer ~internalize : string list -> Llair.program =
           Poly.equal (Llvm.linkage llg) Appending
           && Llvm.(array_length (element_type (type_of llg))) = 0
         then globals
-        else xlate_global x llg :: globals )
+        else xlate_global x llg :: globals)
       [] llmodule
   in
   let functions =
@@ -1570,7 +1570,7 @@ let translate ~models ~fuzzer ~internalize : string list -> Llair.program =
           String.is_prefix name ~prefix:"__llair_"
           || String.is_prefix name ~prefix:"llvm."
         then functions
-        else xlate_function x llf :: functions )
+        else xlate_function x llf :: functions)
       [] llmodule
   in
   cleanup llmodule llcontext ;

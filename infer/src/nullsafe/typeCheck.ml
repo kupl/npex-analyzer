@@ -142,12 +142,12 @@ let rec typecheck_expr ({IntraproceduralAnalysis.tenv; _} as analysis_data) ~nul
           TypeState.lookup_pvar pvar typestate
           |> IOption.if_none_eval ~f:(fun () ->
                  L.d_strln "WARNING: could not lookup Pvar in typestate: fallback to default" ;
-                 tr_default )
+                 tr_default)
       | Exp.Var id ->
           TypeState.lookup_id id typestate
           |> IOption.if_none_eval ~f:(fun () ->
                  L.d_strln "WARNING: could not lookup Id in typestate: fallback to default" ;
-                 tr_default )
+                 tr_default)
       | Exp.Exn e1 ->
           typecheck_expr analysis_data ~nullsafe_mode find_canonical_duplicate visited checks node
             instr_ref typestate e1 tr_default loc
@@ -193,7 +193,7 @@ let rec typecheck_expr ({IntraproceduralAnalysis.tenv; _} as analysis_data) ~nul
           (typ, InferredNullability.create TypeOrigin.ArrayAccess)
       | _ ->
           L.d_strln "WARNING: unknown expression: fallback to default" ;
-          tr_default )
+          tr_default)
 
 
 (* Handle the case where a field access X.f happens via a temporary variable $Txxx.
@@ -279,7 +279,7 @@ let convert_complex_exp_to_pvar_and_register_field_in_typestate tenv idenv curr_
     ~is_assignment exp_ typestate loc =
   L.d_with_indent ~name:"convert_complex_exp_to_pvar_and_register_field_in_typestate"
     ~pp_result:(fun f (exp, typestate) ->
-      F.fprintf f "Exp: %a;@\nTypestate: @\n%a" Exp.pp exp TypeState.pp typestate )
+      F.fprintf f "Exp: %a;@\nTypestate: @\n%a" Exp.pp exp TypeState.pp typestate)
     (fun () ->
       let exp =
         handle_field_access_via_temporary idenv curr_pname typestate (IDEnv.expand_expr idenv exp_)
@@ -363,7 +363,7 @@ let convert_complex_exp_to_pvar_and_register_field_in_typestate tenv idenv curr_
           in
           res
       | _ ->
-          default )
+          default)
 
 
 (* Tries to find (or create a synthetic) pvar variable name that originated the given expression.
@@ -388,7 +388,7 @@ let convert_complex_exp_to_pvar tenv idenv curr_pname ~is_assignment
           curr_annotated_signature ~is_assignment ~node ~original_node exp typestate loc
       in
       L.d_printfln "Disregarding updated typestate" ;
-      exp )
+      exp)
 
 
 let constructor_check_calls_this curr_pname calls_this pn =
@@ -462,7 +462,7 @@ let pvar_apply instr_ref idenv tenv curr_pname curr_annotated_signature loc hand
           | Exp.Lvar pvar' ->
               handle_pvar typestate' pvar'
           | _ ->
-              typestate' ) )
+              typestate' ))
 
 
 (* typecheck_expr with fewer parameters, using a common template for typestate range  *)
@@ -722,7 +722,7 @@ let handle_assignment_in_condition_for_sil_prune idenv node pvar =
           L.d_printfln "Found non-empty unique predecessor node: #%a" Procdesc.Node.pp prev_node ;
           find_aliased_var prev_node
       | _ ->
-          None )
+          None)
 
 
 let pp_normalized_cond fmt (_, exp) = Exp.pp fmt exp
@@ -761,7 +761,7 @@ let rec normalize_cond_for_sil_prune_rec idenv ~node ~original_node cond =
               (node, e2) )
       | c ->
           L.d_printfln "other" ;
-          (node, c) )
+          (node, c))
 
 
 (* Normalize the condition by resolving temp variables. *)
@@ -904,7 +904,7 @@ let rec check_condition_for_sil_prune
         List.fold ~init:typestate
           ~f:(fun accumulated_typestate argument ->
             set_original_pvar_to_nonnull_in_typestate ~with_cond_redundant_check:false argument
-              accumulated_typestate ~descr:"@TrueOnNull-proc argument in false branch" )
+              accumulated_typestate ~descr:"@TrueOnNull-proc argument in false branch")
           arguments
     | None ->
         typestate
@@ -923,7 +923,7 @@ let rec check_condition_for_sil_prune
         List.fold ~init:typestate
           ~f:(fun accumulated_typestate argument ->
             set_original_pvar_to_nonnull_in_typestate ~with_cond_redundant_check:false argument
-              accumulated_typestate ~descr:"@FalseOnNull-proc argument in false branch" )
+              accumulated_typestate ~descr:"@FalseOnNull-proc argument in false branch")
           arguments
     | None -> (
       match extract_first_argument_from_instanceof expr with
@@ -983,7 +983,7 @@ let clarify_ret_by_propagates_nullable ret (resolved_params : EradicateChecks.re
   let nullability_of_propagates_nullable_params =
     List.filter_map resolved_params
       ~f:(fun EradicateChecks.{is_formal_propagates_nullable; actual= _, inferred_nullability} ->
-        Option.some_if is_formal_propagates_nullable inferred_nullability )
+        Option.some_if is_formal_propagates_nullable inferred_nullability)
   in
   match nullability_of_propagates_nullable_params with
   | [] ->
@@ -994,7 +994,7 @@ let clarify_ret_by_propagates_nullable ret (resolved_params : EradicateChecks.re
          Joining their nullability will give us the least upper bound of nullability of the result *)
       let upper_bound_nullability =
         List.fold tail ~init:head ~f:(fun acc nullability ->
-            InferredNullability.join acc nullability )
+            InferredNullability.join acc nullability)
       in
       let _, ret_typ = ret in
       (upper_bound_nullability, ret_typ)
@@ -1051,7 +1051,7 @@ let calc_typestate_after_call
           Mangled.is_this sparam.mangled
           || String.is_prefix ~prefix:"this$" (Mangled.to_string sparam.mangled)
         in
-        not param_is_this )
+        not param_is_this)
       (List.zip_exn sig_slice call_slice)
   in
   let resolved_params = List.mapi ~f:resolve_param sig_call_params in
@@ -1116,7 +1116,7 @@ let typecheck_sil_call_function
                       Mangled.this
                     else Printf.sprintf "arg%d" i |> Mangled.from_string
                   in
-                  (arg, typ) )
+                  (arg, typ))
                 etl_
             in
             let ret_type = Procname.Java.get_return_typ callee_pname_java in
@@ -1157,7 +1157,7 @@ let typecheck_sil_call_function
               Option.value_map callee_class
                 ~f:(fun class_name ->
                   Typ.Name.Java.get_java_class_name_exn class_name
-                  |> NullsafeMode.is_in_trust_list caller_nullsafe_mode )
+                  |> NullsafeMode.is_in_trust_list caller_nullsafe_mode)
                 ~default:false
             in
             Models.get_modelled_annotated_signature ~is_callee_in_trust_list tenv callee_attributes
@@ -1183,7 +1183,7 @@ let typecheck_sil_call_function
           ~callee_annotated_signature ~callee_attributes ~callee_pname:callee_pname_java
           ~curr_annotated_signature ~nullsafe_mode ~typestate ~typestate1 loc node
       in
-      do_return finally_resolved_ret typestate_after_call )
+      do_return finally_resolved_ret typestate_after_call)
 
 
 (** Typecheck an instruction. *)
@@ -1203,7 +1203,7 @@ let typecheck_instr ({IntraproceduralAnalysis.proc_desc= curr_pdesc; tenv; _} as
           | Var.LogicalVar id ->
               TypeState.remove_id id astate ~descr:"ExitScope"
           | Var.ProgramVar _ ->
-              astate )
+              astate)
   | Sil.Metadata (Abstract _ | Nullify _ | Skip | VariableLifetimeBegins _) ->
       typestate
   | Sil.Load {id; e; typ; loc} ->

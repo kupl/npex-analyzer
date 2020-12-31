@@ -129,7 +129,7 @@ module Expander (TraceElem : TaintTraceElem.S) = struct
         List.filter
           ~f:(fun callee_elem ->
             TraceElem.Kind.matches ~caller:caller_elem_kind ~callee:(TraceElem.kind callee_elem)
-            && not (is_recursive callee_elem seen_acc') )
+            && not (is_recursive callee_elem seen_acc'))
           elems
       in
       (* arbitrarily pick one elem and explore it further *)
@@ -223,7 +223,7 @@ module Make (Spec : Spec) = struct
           | Some footprint_index ->
               IntSet.add footprint_index acc
           | None ->
-              acc )
+              acc)
         footprint IntSet.empty
   end
 
@@ -375,7 +375,7 @@ module Make (Spec : Spec) = struct
           let source_site = Source.call_site path_source in
           filter_passthroughs_ Top_level source_site (Sink.call_site path_sink) path_passthroughs
         in
-        (filtered_passthroughs, sources_passthroughs, sinks_passthroughs) )
+        (filtered_passthroughs, sources_passthroughs, sinks_passthroughs))
       (get_reports ?cur_site t)
 
 
@@ -402,7 +402,7 @@ module Make (Spec : Spec) = struct
           ~compare:(fun passthrough1 passthrough2 ->
             let loc1 = CallSite.loc (Passthrough.site passthrough1) in
             let loc2 = CallSite.loc (Passthrough.site passthrough2) in
-            Int.compare loc1.Location.line loc2.Location.line )
+            Int.compare loc1.Location.line loc2.Location.line)
           (Passthroughs.elements passthroughs)
       in
       List.fold_right ~f:trace_elem_of_passthrough sorted_passthroughs ~init:acc0
@@ -508,12 +508,12 @@ module Make (Spec : Spec) = struct
           let footprint_indices =
             Sources.Footprint.BaseMap.fold
               (fun (vname, _) _ s ->
-                match Var.get_footprint_index vname with Some ind -> IntSet.add ind s | None -> s )
+                match Var.get_footprint_index vname with Some ind -> IntSet.add ind s | None -> s)
               callee_trace.sources.footprint IntSet.empty
           in
           List.map
             ~f:(fun sink ->
-              Sink.with_indexes (Sink.with_callsite sink callee_site) footprint_indices )
+              Sink.with_indexes (Sink.with_callsite sink callee_site) footprint_indices)
             (Sinks.elements callee_trace.sinks)
           |> Sinks.of_list |> Sinks.union caller_trace.sinks
       in

@@ -308,7 +308,7 @@ let decl_list_has_objc_method decl_list method_name is_instance_method =
           Bool.equal omdi.omdi_is_instance_method is_instance_method
           && String.equal ni.ni_name method_name
       | _ ->
-          false )
+          false)
     decl_list
 
 
@@ -343,7 +343,7 @@ let is_objc_method_exposed context an =
                          String.equal ni.ni_name ""
                          && decl_list_has_objc_method decl_list method_name is_instance_method
                      | _ ->
-                         false )
+                         false)
                    otdi.otdi_known_categories
           | _ ->
               false )
@@ -373,7 +373,7 @@ let receiver_objc_type_name an =
     ->
       Clang_ast_proj.get_expr_tuple receiver
       |> Option.bind ~f:(fun (_, _, expr_info) ->
-             CAst_utils.name_opt_of_typedef_qual_type expr_info.Clang_ast_t.ei_qual_type )
+             CAst_utils.name_opt_of_typedef_qual_type expr_info.Clang_ast_t.ei_qual_type)
       |> Option.map ~f:QualifiedCppName.to_qual_string
   | _ ->
       None
@@ -1380,7 +1380,7 @@ let has_visibility_attribute an visibility =
       | `VisibilityAttr (_attr_info, visibility) ->
           visibility_matches param visibility
       | _ ->
-          false )
+          false)
   in
   let attributes = get_decl_attributes an in
   match visibility with ALVar.Const vis -> has_visibility_attr attributes vis | _ -> false
@@ -1471,7 +1471,7 @@ let is_cxx_method_overriding an qual_name_re =
                 qnre
               || overrides_named mdi.xmdi_overriden_methods qnre
           | _ ->
-              false ) )
+              false ))
       decl_refs
   in
   match an with
@@ -1510,7 +1510,7 @@ let call_cxx_method an name =
 let source_file_matches src_file path_re =
   Option.value_map
     ~f:(fun sf ->
-      ALVar.compare_str_with_alexp (SourceFile.to_rel_path (SourceFile.create sf)) path_re )
+      ALVar.compare_str_with_alexp (SourceFile.to_rel_path (SourceFile.create sf)) path_re)
     ~default:false src_file
 
 

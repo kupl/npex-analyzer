@@ -104,7 +104,7 @@ let ast_node_cxx_fully_qualified_name an =
       Option.value_map
         ~f:(fun (_, _, _, xcei) ->
           Option.value_map ~f:decl_cxx_fully_qualified_name ~default:""
-            (CAst_utils.get_decl xcei.xcei_decl_ref.dr_decl_pointer) )
+            (CAst_utils.get_decl xcei.xcei_decl_ref.dr_decl_pointer))
         ~default:""
         (Clang_ast_proj.get_cxx_construct_expr_tuple stmt)
 
@@ -231,11 +231,11 @@ let rec is_node_successor_of ~is_successor:succ_node node =
   | Stmt _ ->
       let node_succ_stmts = get_successor_stmts node in
       List.exists node_succ_stmts ~f:(fun (s : Clang_ast_t.stmt) ->
-          ast_node_equal (Stmt s) succ_node || is_node_successor_of ~is_successor:succ_node (Stmt s) )
+          ast_node_equal (Stmt s) succ_node || is_node_successor_of ~is_successor:succ_node (Stmt s))
   | Decl _ ->
       let node_succ_decls = get_successor_decls node in
       List.exists node_succ_decls ~f:(fun (d : Clang_ast_t.decl) ->
-          ast_node_equal (Decl d) succ_node || is_node_successor_of ~is_successor:succ_node (Decl d) )
+          ast_node_equal (Decl d) succ_node || is_node_successor_of ~is_successor:succ_node (Decl d))
 
 
 let get_direct_successor_nodes an =

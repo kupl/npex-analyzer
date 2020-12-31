@@ -218,7 +218,7 @@ let register_gc_stats logger =
       List.iter !alarms ~f:(fun timestamp ->
           log_instant_event logger ~timestamp ~name:"gc_major" Process ;
           JsonFragment.pp logger ListItemSeparator ;
-          F.fprintf logger "%!" ) )
+          F.fprintf logger "%!"))
 
 
 let logger =
@@ -241,11 +241,11 @@ let logger =
            log_instant_event logger ~name:"end" Global ;
            JsonFragment.pp logger ListEnd ;
            F.fprintf logger "@." ;
-           Out_channel.close out_channel ) )
+           Out_channel.close out_channel) )
      else
        (* assume the trace file is here and is ready to accept list elements *)
        JsonFragment.(pp_state := InList :: !pp_state) ) ;
-     logger )
+     logger)
 
 
 (* export logging functions that output a list element at a time and flushes so that multiple

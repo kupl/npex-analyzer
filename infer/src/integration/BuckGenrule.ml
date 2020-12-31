@@ -143,7 +143,7 @@ let infer_deps_of_build_report build_report =
       in
       let infer_deps = ResultsDir.get_path CaptureDependencies in
       Utils.with_file_out infer_deps ~f:(fun out_channel ->
-          Out_channel.output_lines out_channel infer_deps_lines )
+          Out_channel.output_lines out_channel infer_deps_lines)
 
 
 let run_buck_capture cmd =

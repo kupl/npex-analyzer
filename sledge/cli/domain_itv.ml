@@ -37,7 +37,7 @@ let sexp_of_t (itv : t) =
           [ Sexp.Atom (Var.to_string v)
           ; Sexp.Atom (Scalar.to_string inf)
           ; Sexp.Atom (Scalar.to_string sup) ]
-        :: acc )
+        :: acc)
   in
   Sexp.List sexps
 
@@ -95,7 +95,7 @@ let rec texpr_of_nary_term subtms typ q op =
       List.fold tl ~init:(term_to_texpr hd) ~f:(fun acc curr ->
           let* c = term_to_texpr curr in
           let+ a = acc in
-          Texpr1.Binop (op, c, a, typ, Texpr0.Rnd) )
+          Texpr1.Binop (op, c, a, typ, Texpr0.Rnd))
   | _ -> assert false
 
 and apron_texpr_of_llair_term tm q typ =
@@ -220,7 +220,7 @@ let exec_move q move_vec =
     IArray.fold move_vec ~init:(Llair.Reg.Set.empty, Llair.Reg.Set.empty)
       ~f:(fun (defs, uses) (r, e) ->
         ( Llair.Reg.Set.add defs r
-        , Llair.Exp.fold_regs e ~init:uses ~f:Llair.Reg.Set.add ) )
+        , Llair.Exp.fold_regs e ~init:uses ~f:Llair.Reg.Set.add ))
   in
   assert (Llair.Reg.Set.disjoint defs uses) ;
   IArray.fold move_vec ~init:q ~f:(fun a (r, e) -> assign r e a)
@@ -278,7 +278,7 @@ let post locals _ (q : t) =
   let locals =
     Llair.Reg.Set.fold locals ~init:[] ~f:(fun a r ->
         let v = apron_var_of_reg r in
-        if Environment.mem_var q.env v then v :: a else a )
+        if Environment.mem_var q.env v then v :: a else a)
     |> Array.of_list
   in
   Abstract1.forget_array (Lazy.force man) q locals false
@@ -329,7 +329,7 @@ let call ~summaries ~globals:_ ~actuals ~areturn ~formals ~freturn:_
           match apron_typ_of_llair_typ (Llair.Reg.typ f) with
           | None -> (is, fs)
           | Some Texpr1.Int -> (apron_var_of_reg (mangle f) :: is, fs)
-          | _ -> (is, apron_var_of_reg (mangle f) :: fs) )
+          | _ -> (is, apron_var_of_reg (mangle f) :: fs))
       |> fun (is, fs) ->
       Environment.make (Array.of_list is) (Array.of_list fs)
     in

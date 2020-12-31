@@ -66,7 +66,7 @@ let get_exit_nodes_in_loop loop_nodes =
   let succs_of_loop_nodes =
     Control.GuardNodes.fold
       (fun n acc ->
-        Procdesc.Node.get_succs n |> Control.GuardNodes.of_list |> Control.GuardNodes.union acc )
+        Procdesc.Node.get_succs n |> Control.GuardNodes.of_list |> Control.GuardNodes.union acc)
       loop_nodes Control.GuardNodes.empty
   in
   Control.GuardNodes.diff succs_of_loop_nodes loop_nodes |> Control.GuardNodes.elements
@@ -102,7 +102,7 @@ let remove_prune_node_pairs exit_nodes guard_nodes =
          is_prune node
          && Procdesc.Node.get_siblings node |> Sequence.hd
             |> Option.value_map ~default:false ~f:(fun sibling ->
-                   not (Control.GuardNodes.mem sibling except_exit_nodes) ) )
+                   not (Control.GuardNodes.mem sibling except_exit_nodes)))
   |> Control.GuardNodes.union exit_nodes
 
 
@@ -113,7 +113,7 @@ let get_loop_head_to_source_nodes cfg =
   |> List.fold ~init:Procdesc.NodeMap.empty ~f:(fun loop_head_to_source_list {source; target} ->
          Procdesc.NodeMap.update target
            (function Some source_list -> Some (source :: source_list) | None -> Some [source])
-           loop_head_to_source_list )
+           loop_head_to_source_list)
 
 
 (** Get a pair of maps (exit_map, loop_head_to_guard_map) where exit_map : exit_node -> loop_head
@@ -144,8 +144,8 @@ let get_control_maps pdesc loop_head_to_source_nodes_map =
                  | Some existing_loop_heads ->
                      Some (Control.LoopHeads.add loop_head existing_loop_heads)
                  | None ->
-                     Some (Control.LoopHeads.singleton loop_head) )
-               exit_map_acc ))
+                     Some (Control.LoopHeads.singleton loop_head))
+               exit_map_acc))
           exit_nodes
       in
       let loop_head_to_guard_nodes' =
@@ -154,7 +154,7 @@ let get_control_maps pdesc loop_head_to_source_nodes_map =
             | Some existing_guard_nodes ->
                 Some (Control.GuardNodes.union existing_guard_nodes guard_prune_nodes)
             | None ->
-                Some guard_prune_nodes )
+                Some guard_prune_nodes)
           loop_head_to_guard_nodes
       in
       let loop_head_to_loop_nodes' =
@@ -163,12 +163,12 @@ let get_control_maps pdesc loop_head_to_source_nodes_map =
             | Some existing_loop_nodes ->
                 Some (LoopInvariant.LoopNodes.union existing_loop_nodes loop_nodes)
             | None ->
-                Some loop_nodes )
+                Some loop_nodes)
           loop_head_to_loop_nodes
       in
       let open Control in
       ( {exit_map= exit_map'; loop_head_to_guard_nodes= loop_head_to_guard_nodes'; nodes}
-      , loop_head_to_loop_nodes' ) )
+      , loop_head_to_loop_nodes' ))
     loop_head_to_source_nodes_map
     ( Control.
         { exit_map= Control.ExitNodeToLoopHeads.empty

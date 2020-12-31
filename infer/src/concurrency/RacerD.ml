@@ -57,7 +57,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     in
     List.fold (HilExp.get_access_exprs exp) ~init:access_domain ~f:(fun acc access_expr ->
         let base, accesses = AccessExpression.to_accesses access_expr in
-        add_field_accesses base acc accesses )
+        add_field_accesses base acc accesses)
 
 
   let make_container_access {interproc= {tenv}; formals} ret_base callee_pname ~is_write receiver_ap
@@ -122,7 +122,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     let actuals_ownership =
       (* precompute array holding ownership of each actual for fast random access *)
       Array.of_list_map actuals ~f:(fun actual_exp ->
-          OwnershipDomain.ownership_of_expr actual_exp caller_astate.ownership )
+          OwnershipDomain.ownership_of_expr actual_exp caller_astate.ownership)
     in
     let update_ownership_precondition actual_index (acc : OwnershipAbstractValue.t) =
       if actual_index >= Array.length actuals_ownership then
@@ -154,7 +154,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     if RacerDModels.is_synchronized_container_constructor tenv callee_pname actuals then
       apply_to_first_actual astate actuals ~f:(fun receiver ->
           let attribute_map = AttributeMapDomain.add receiver Synchronized astate.attribute_map in
-          {astate with attribute_map} )
+          {astate with attribute_map})
     else if RacerDModels.is_converter_to_synchronized_container tenv callee_pname actuals then
       let attribute_map =
         AttributeMapDomain.add (AccessExpression.base ret_base) Synchronized astate.attribute_map
@@ -169,7 +169,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 astate.attribute_map
             in
             {astate with attribute_map}
-          else astate )
+          else astate)
     else
       let ownership =
         OwnershipDomain.add (AccessExpression.base ret_base) OwnershipAbstractValue.owned
@@ -259,7 +259,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                      let rebased_accesses =
                        expand_actuals formals actuals summary.accesses callee_proc_desc
                      in
-                     {summary with accesses= rebased_accesses} )
+                     {summary with accesses= rebased_accesses})
             in
             match rebased_summary_opt with
             | Some {threads; locks; accesses; return_ownership; return_attribute} ->
@@ -366,7 +366,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                  (* prune (prune_exp) can only evaluate to true if the choice is [bool_value].
                     add the constraint that the choice must be [bool_value] to the state *)
                  AttributeMapDomain.get access_expr astate.attribute_map
-                 |> apply_choice bool_value astate )
+                 |> apply_choice bool_value astate)
       | _ ->
           astate
     in
@@ -511,7 +511,7 @@ let analyze_procedure ({InterproceduralAnalysis.proc_desc; tenv} as interproc) =
              else if is_initializer && Int.equal 0 index then
                (* express that the constructor owns [this] *)
                add_owned_formal acc base
-             else add_conditionally_owned_formal acc base index )
+             else add_conditionally_owned_formal acc base index)
     in
     let initial = set_initial_attributes interproc {bottom with ownership; threads; locks} in
     let formals = FormalMap.make proc_desc in
@@ -863,7 +863,7 @@ let should_report_on_proc tenv procdesc =
   | ObjC_Cpp {kind= ObjCClassMethod | ObjCInstanceMethod | ObjCInternalMethod; class_name} ->
       Tenv.lookup tenv class_name
       |> Option.exists ~f:(fun {Struct.exported_objc_methods} ->
-             List.mem ~equal:Procname.equal exported_objc_methods proc_name )
+             List.mem ~equal:Procname.equal exported_objc_methods proc_name)
   | _ ->
       false
 
@@ -885,7 +885,7 @@ let should_report_guardedby_violation classname ({snapshot; tenv; procname} : re
            | [param] ->
                not (Annot.has_matching_str_value ~pred:is_uitthread param.value)
            | _ ->
-               false )
+               false)
   in
   (not snapshot.elem.lock)
   && RacerDDomain.AccessSnapshot.is_write snapshot
@@ -905,7 +905,7 @@ let should_report_guardedby_violation classname ({snapshot; tenv; procname} : re
         && Tenv.lookup tenv base_name
            |> Option.exists ~f:(fun ({fields; statics} : Struct.t) ->
                   let f fld = field_is_annotated_guardedby field_name fld in
-                  List.exists fields ~f || List.exists statics ~f )
+                  List.exists fields ~f || List.exists statics ~f)
     | _ ->
         false )
   | _ ->
@@ -974,7 +974,7 @@ let report_unsafe_accesses ~issue_log classname (aggregated_access_map : ReportM
             List.find_map accesses ~f:(fun {snapshot= other_snapshot; threads= other_threads} ->
                 if AccessSnapshot.is_write other_snapshot && ThreadsDomain.is_any other_threads then
                   Some other_snapshot
-                else None )
+                else None)
         in
         if
           AccessSnapshot.is_unprotected snapshot
@@ -1002,7 +1002,7 @@ let report_unsafe_accesses ~issue_log classname (aggregated_access_map : ReportM
                  make_read_write_race_description ~read_is_sync:false conflict
                in
                let report_kind = ReadWriteRace conflict.snapshot in
-               report_thread_safety_violation ~acc ~make_description ~report_kind reported_access )
+               report_thread_safety_violation ~acc ~make_description ~report_kind reported_access)
     | (Read _ | ContainerRead _) when Procname.is_java pname ->
         (* protected read. report unprotected writes and opposite protected writes as conflicts *)
         let can_conflict (snapshot1 : AccessSnapshot.t) (snapshot2 : AccessSnapshot.t) =
@@ -1021,7 +1021,7 @@ let report_unsafe_accesses ~issue_log classname (aggregated_access_map : ReportM
                  make_read_write_race_description ~read_is_sync:true conflict
                in
                let report_kind = ReadWriteRace conflict.snapshot in
-               report_thread_safety_violation ~acc ~make_description ~report_kind reported_access )
+               report_thread_safety_violation ~acc ~make_description ~report_kind reported_access)
     | Read _ | ContainerRead _ ->
         (* Do not report protected reads for ObjC_Cpp *)
         acc
@@ -1030,7 +1030,7 @@ let report_unsafe_accesses ~issue_log classname (aggregated_access_map : ReportM
     (* Don't report on location if all accesses are on non-concurrent contexts *)
     if
       List.for_all reportable_accesses ~f:(fun ({threads} : reported_access) ->
-          ThreadsDomain.is_any threads |> not )
+          ThreadsDomain.is_any threads |> not)
     then init
     else List.fold reportable_accesses ~init ~f:(report_unsafe_access reportable_accesses)
   in
@@ -1040,7 +1040,7 @@ let report_unsafe_accesses ~issue_log classname (aggregated_access_map : ReportM
           if should_report_guardedby_violation classname r then
             report_thread_safety_violation ~acc ~report_kind:GuardedByViolation
               ~make_description:make_guardedby_violation_description r
-          else acc )
+          else acc)
     else init
   in
   let report grouped_accesses acc =
@@ -1067,7 +1067,7 @@ let make_results_table exe_env summaries =
   List.fold summaries ~init:ReportMap.empty ~f:(fun acc (proc_desc, summary) ->
       let procname = Procdesc.get_proc_name proc_desc in
       let tenv = Exe_env.get_tenv exe_env procname in
-      aggregate_post tenv procname acc summary )
+      aggregate_post tenv procname acc summary)
 
 
 let class_has_concurrent_method class_summaries =
@@ -1099,16 +1099,16 @@ let aggregate_by_class {InterproceduralAnalysis.procedures; file_exe_env; analyz
              analyze_file_dependency procname
              |> Option.filter ~f:(fun (pdesc, _) ->
                     let tenv = Exe_env.get_tenv file_exe_env procname in
-                    should_report_on_proc tenv pdesc )
+                    should_report_on_proc tenv pdesc)
              |> Option.map ~f:(fun summary_proc_desc ->
                     Typ.Name.Map.update classname
                       (function
                         | None ->
                             Some [summary_proc_desc]
                         | Some summaries ->
-                            Some (summary_proc_desc :: summaries) )
-                      acc ) )
-      |> Option.value ~default:acc )
+                            Some (summary_proc_desc :: summaries))
+                      acc))
+      |> Option.value ~default:acc)
   |> filter_reportable_classes
 
 
@@ -1118,5 +1118,5 @@ let file_analysis ({InterproceduralAnalysis.file_exe_env} as file_t) =
   let class_map = aggregate_by_class file_t in
   Typ.Name.Map.fold
     (fun classname methods issue_log ->
-      make_results_table file_exe_env methods |> report_unsafe_accesses ~issue_log classname )
+      make_results_table file_exe_env methods |> report_unsafe_accesses ~issue_log classname)
     class_map IssueLog.empty

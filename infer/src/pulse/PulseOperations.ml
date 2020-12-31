@@ -22,7 +22,7 @@ let check_addr_access location (address, history) astate =
   |> Result.map_error ~f:(fun (invalidation, invalidation_trace) ->
          ( Diagnostic.AccessToInvalidAddress
              {calling_context= []; invalidation; invalidation_trace; access_trace}
-         , astate ) )
+         , astate ))
 
 
 module Closures = struct
@@ -47,7 +47,7 @@ module Closures = struct
 
   let mk_capture_edges captured =
     List.foldi captured ~init:Memory.Edges.empty ~f:(fun id edges captured_addr_trace ->
-        Memory.Edges.add (HilExp.Access.FieldAccess (mk_fake_field ~id)) captured_addr_trace edges )
+        Memory.Edges.add (HilExp.Access.FieldAccess (mk_fake_field ~id)) captured_addr_trace edges)
 
 
   let check_captured_addresses action lambda_addr (astate : t) =
@@ -62,9 +62,9 @@ module Closures = struct
                     if is_captured_fake_access access then
                       let+ _ = check_addr_access action addr_trace astate in
                       ()
-                    else Ok () )
+                    else Ok ())
             | _ ->
-                Ok () )
+                Ok ())
         in
         astate
 
@@ -73,7 +73,7 @@ module Closures = struct
     let captured_addresses =
       List.filter_map captured ~f:(fun (captured_as, (address_captured, trace_captured), mode) ->
           let new_trace = ValueHistory.Capture {captured_as; mode; location} :: trace_captured in
-          Some (address_captured, new_trace) )
+          Some (address_captured, new_trace))
     in
     let closure_addr_hist = (AbstractValue.mk_fresh (), [ValueHistory.Assignment location]) in
     let fake_capture_edges = mk_capture_edges captured_addresses in
@@ -113,7 +113,7 @@ let eval location exp0 astate =
           List.fold_result captured_vars ~init:(astate, [])
             ~f:(fun (astate, rev_captured) (capt_exp, captured_as, _, mode) ->
               let+ astate, addr_trace = eval capt_exp astate in
-              (astate, (captured_as, addr_trace, mode) :: rev_captured) )
+              (astate, (captured_as, addr_trace, mode) :: rev_captured))
         in
         Closures.record location name (List.rev rev_captured) astate
     | Cast (_, exp') ->
@@ -238,7 +238,7 @@ let invalidate_array_elements location cause addr_trace astate =
           | ArrayAccess _ ->
               AddressAttributes.invalidate dest_addr_trace cause location astate
           | _ ->
-              astate )
+              astate)
 
 
 let shallow_copy location addr_hist astate =
@@ -278,7 +278,7 @@ let check_address_escape escape_location proc_desc address history astate =
                          {variable; location= escape_location; history}
                      , astate )
                | _ ->
-                   Ok () ) )
+                   Ok ()))
   in
   let check_address_of_stack_variable () =
     let proc_name = Procdesc.get_proc_name proc_desc in
@@ -295,7 +295,7 @@ let check_address_escape escape_location proc_desc address history astate =
           Error
             ( Diagnostic.StackVariableAddressEscape {variable; location= escape_location; history}
             , astate ) )
-        else Ok () )
+        else Ok ())
   in
   let+ () = check_address_of_cpp_temporary () >>= check_address_of_stack_variable in
   astate
@@ -320,7 +320,7 @@ let check_memory_leak_unreachable unreachable_addrs location astate =
           | Invalid (CFree, _) ->
               (fst acc, true)
           | _ ->
-              acc )
+              acc)
     in
     match allocated_not_freed_opt with
     | Some (procname, trace), false ->
@@ -334,7 +334,7 @@ let check_memory_leak_unreachable unreachable_addrs location astate =
       | Some unreachable_attrs ->
           check_memory_leak res unreachable_attrs
       | None ->
-          res )
+          res)
 
 
 let get_dynamic_type_unreachable_values vars astate =
@@ -343,7 +343,7 @@ let get_dynamic_type_unreachable_values vars astate =
   let find_var_opt astate addr =
     Stack.fold
       (fun var (var_addr, _) var_opt ->
-        if AbstractValue.equal addr var_addr then Some var else var_opt )
+        if AbstractValue.equal addr var_addr then Some var else var_opt)
       astate None
   in
   let astate' = Stack.remove_vars vars astate in
@@ -355,7 +355,7 @@ let get_dynamic_type_unreachable_values vars astate =
         let* typ = Attributes.get_dynamic_type attrs in
         let+ var = find_var_opt astate addr in
         (var, addr, typ) :: res)
-        |> Option.value ~default:res )
+        |> Option.value ~default:res)
   in
   List.map ~f:(fun (var, _, typ) -> (var, typ)) res
 
@@ -374,7 +374,7 @@ let remove_vars vars location orig_astate =
               mark_address_of_cpp_temporary history var address astate
             else astate
         | _ ->
-            astate )
+            astate)
   in
   let astate' = Stack.remove_vars vars astate in
   if phys_equal astate' astate then Ok astate
@@ -386,7 +386,7 @@ let remove_vars vars location orig_astate =
 
 let is_ptr_to_const formal_typ_opt =
   Option.value_map formal_typ_opt ~default:false ~f:(fun (formal_typ : Typ.t) ->
-      match formal_typ.desc with Typ.Tptr (t, _) -> Typ.is_const t.quals | _ -> false )
+      match formal_typ.desc with Typ.Tptr (t, _) -> Typ.is_const t.quals | _ -> false)
 
 
 let unknown_call call_loc reason ~ret ~actuals ~formals_opt astate =
@@ -425,7 +425,7 @@ let unknown_call call_loc reason ~ret ~actuals ~formals_opt astate =
     match
       List.fold2 actuals formals
         ~f:(fun astate actual_typ (_, formal_typ) ->
-          havoc_actual_if_ptr actual_typ (Some formal_typ) astate )
+          havoc_actual_if_ptr actual_typ (Some formal_typ) astate)
         ~init:astate
     with
     | Unequal_lengths ->
@@ -478,7 +478,7 @@ let apply_callee ~caller_proc_desc callee_pname call_loc callee_exec_state ~ret
             in
             if LatentIssue.should_report astate_summary then
               Error (LatentIssue.to_diagnostic latent_issue, (astate_summary :> AbductiveDomain.t))
-            else Ok (Some (LatentAbortProgram {astate= astate_summary; latent_issue})) )
+            else Ok (Some (LatentAbortProgram {astate= astate_summary; latent_issue})))
 
 
 let get_captured_actuals location ~captured_vars ~actual_closure astate =
@@ -488,7 +488,7 @@ let get_captured_actuals location ~captured_vars ~actual_closure astate =
         let+ astate, captured_actual =
           eval_access location this_value_addr (FieldAccess (Closures.mk_fake_field ~id)) astate
         in
-        (id + 1, astate, (var, captured_actual) :: captured) )
+        (id + 1, astate, (var, captured_actual) :: captured))
   in
   (astate, captured_vars_with_actuals)
 
@@ -506,7 +506,7 @@ let call ~caller_proc_desc ~(callee_data : (Procdesc.t * PulseSummary.t) option)
         Procdesc.get_captured callee_proc_desc
         |> List.map ~f:(fun (mangled, _, _) ->
                let pvar = Pvar.mk mangled callee_pname in
-               Var.of_pvar pvar )
+               Var.of_pvar pvar)
       in
       let* astate, captured_vars_with_actuals =
         match actuals with
@@ -519,7 +519,7 @@ let call ~caller_proc_desc ~(callee_data : (Procdesc.t * PulseSummary.t) option)
       in
       let is_blacklist =
         Option.exists Config.pulse_cut_to_one_path_procedures_pattern ~f:(fun regex ->
-            Str.string_match regex (Procname.to_string callee_pname) 0 )
+            Str.string_match regex (Procname.to_string callee_pname) 0)
       in
       (* call {!AbductiveDomain.PrePost.apply} on each pre/post pair in the summary. *)
       IContainer.fold_result_until
@@ -541,7 +541,7 @@ let call ~caller_proc_desc ~(callee_data : (Procdesc.t * PulseSummary.t) option)
           | Ok (Some post) ->
               Continue (Ok (post :: posts))
           | Error _ as x ->
-              Continue x )
+              Continue x)
         ~finish:(fun x -> x)
   | None ->
       (* no spec found for some reason (unknown function, ...) *)

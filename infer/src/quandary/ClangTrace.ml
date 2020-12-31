@@ -50,7 +50,7 @@ module SourceKind = struct
   let external_sources =
     List.filter_map
       ~f:(fun {QuandaryConfig.Source.procedure; kinds; index} ->
-        parse_clang_procedure procedure kinds index )
+        parse_clang_procedure procedure kinds index)
       (QuandaryConfig.Source.of_json Config.quandary_sources)
 
 
@@ -61,7 +61,7 @@ module SourceKind = struct
         if QualifiedCppName.Match.match_qualifiers qualifiers qualified_pname then
           let source_index = try Some (int_of_string index) with Failure _ -> return in
           List.rev_map kinds ~f:(fun kind -> (of_string kind, source_index))
-        else [] )
+        else [])
 
 
   let get ~caller_pname:_ pname actuals tenv =
@@ -136,7 +136,7 @@ module SourceKind = struct
                 in
                 res
             | _ ->
-                false )
+                false)
           tenv pname
       in
       (* taint all formals except for [this] *)
@@ -152,7 +152,7 @@ module SourceKind = struct
               | _ ->
                   Some (make_source name typ.Typ.desc)
             in
-            (name, typ, taint) )
+            (name, typ, taint))
           (Procdesc.get_formals pdesc)
       in
       match Procdesc.get_proc_name pdesc with
@@ -164,7 +164,7 @@ module SourceKind = struct
           in
           if QuandaryConfig.is_endpoint qualified_pname then
             taint_all_but_this_and_return ~make_source:(fun name desc ->
-                UserControlledEndpoint (name, desc) )
+                UserControlledEndpoint (name, desc))
           else if overrides_service_method pname tenv then
             taint_all_but_this_and_return ~make_source:(fun name desc -> Endpoint (name, desc))
           else Source.all_formals_untainted pdesc
@@ -234,7 +234,7 @@ module SinkKind = struct
   let external_sinks =
     List.filter_map
       ~f:(fun {QuandaryConfig.Sink.procedure; kinds; index} ->
-        parse_clang_procedure procedure kinds index )
+        parse_clang_procedure procedure kinds index)
       (QuandaryConfig.Sink.of_json Config.quandary_sinks)
 
 
@@ -277,7 +277,7 @@ module SinkKind = struct
           with Failure _ ->
             (* couldn't parse the index, just taint everything *)
             Some (taint_all kinds actuals)
-        else None )
+        else None)
       external_sinks
     |> Option.value ~default:[]
 
@@ -337,7 +337,7 @@ module SinkKind = struct
                 (* check if the data kind might be CURLOPT_URL *)
                 IntLit.to_int i
                 |> Option.value_map ~default:[] ~f:(fun n ->
-                       if controls_request n then taint_after_nth 1 [URL] actuals else [] )
+                       if controls_request n then taint_after_nth 1 [URL] actuals else [])
             | _ ->
                 (* can't statically resolve data kind; taint it just in case *)
                 taint_after_nth 1 [URL] actuals )
@@ -423,7 +423,7 @@ module CppSanitizer = struct
   let external_sanitizers =
     List.map
       ~f:(fun {QuandaryConfig.Sanitizer.procedure; kind} ->
-        (QualifiedCppName.Match.of_fuzzy_qual_names [procedure], of_string kind) )
+        (QualifiedCppName.Match.of_fuzzy_qual_names [procedure], of_string kind))
       (QuandaryConfig.Sanitizer.of_json Config.quandary_sanitizers)
 
 
@@ -432,7 +432,7 @@ module CppSanitizer = struct
     List.find_map
       ~f:(fun (qualifiers, kind) ->
         if QualifiedCppName.Match.match_qualifiers qualifiers qualified_pname then Some kind
-        else None )
+        else None)
       external_sanitizers
 
 

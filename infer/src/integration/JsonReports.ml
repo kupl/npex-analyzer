@@ -314,17 +314,17 @@ let process_all_summaries_and_issues ~issues_outf ~costs_outf =
   let filters = Inferconfig.create_filters () in
   let all_issues = ref [] in
   Summary.OnDisk.iter_report_summaries_from_config ~f:(fun proc_name loc cost_opt err_log ->
-      all_issues := process_summary ~costs_outf proc_name loc cost_opt err_log !all_issues ) ;
+      all_issues := process_summary ~costs_outf proc_name loc cost_opt err_log !all_issues) ;
   all_issues := Issue.sort_filter_issues !all_issues ;
   List.iter
     ~f:(fun {Issue.proc_name; proc_location; err_key; err_data} ->
       let error_filter = mk_error_filter filters proc_name in
       IssuesJson.pp issues_outf.Utils.fmt
-        {error_filter; proc_name; proc_loc_opt= Some proc_location; err_key; err_data} )
+        {error_filter; proc_name; proc_loc_opt= Some proc_location; err_key; err_data})
     !all_issues ;
   (* Issues that are generated and stored outside of summaries by linter and checkers *)
   List.iter (ResultsDirEntryName.get_issues_directories ()) ~f:(fun dir_name ->
-      IssueLog.load dir_name |> IssueLog.iter ~f:(write_lint_issues filters issues_outf linereader) ) ;
+      IssueLog.load dir_name |> IssueLog.iter ~f:(write_lint_issues filters issues_outf linereader)) ;
   ()
 
 

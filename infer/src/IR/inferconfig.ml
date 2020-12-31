@@ -39,7 +39,7 @@ let is_matching patterns source_file =
   let path = SourceFile.to_rel_path source_file in
   List.exists
     ~f:(fun pattern ->
-      try Int.equal (Str.search_forward pattern path 0) 0 with Caml.Not_found -> false )
+      try Int.equal (Str.search_forward pattern path 0) 0 with Caml.Not_found -> false)
     patterns
 
 
@@ -106,7 +106,7 @@ module FileOrProcMatcher = struct
               try String.Map.find_exn map pattern.class_name
               with Not_found_s _ | Caml.Not_found -> []
             in
-            String.Map.set ~key:pattern.class_name ~data:(pattern :: previous) map )
+            String.Map.set ~key:pattern.class_name ~data:(pattern :: previous) map)
           ~init:String.Map.empty m_patterns
       in
       let do_java pname_java =
@@ -116,7 +116,7 @@ module FileOrProcMatcher = struct
           let class_patterns = String.Map.find_exn pattern_map class_name in
           List.exists
             ~f:(fun p ->
-              match p.method_name with None -> true | Some m -> String.equal m method_name )
+              match p.method_name with None -> true | Some m -> String.equal m method_name)
             class_patterns
         with Not_found_s _ | Caml.Not_found -> false
       in
@@ -336,4 +336,4 @@ let test () =
          if DB.is_source_file path then
            let source_file = SourceFile.from_abs_path path in
            let matching = matches source_file in
-           L.result "%s -> %b@." (SourceFile.to_rel_path source_file) matching )
+           L.result "%s -> %b@." (SourceFile.to_rel_path source_file) matching)

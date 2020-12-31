@@ -75,7 +75,7 @@ module VariantCostMap = struct
           | None ->
               Some cost_to_add
           | Some existing ->
-              Some (BasicCostWithReason.plus cost_to_add existing) )
+              Some (BasicCostWithReason.plus cost_to_add existing))
         record
 
 
@@ -126,7 +126,7 @@ let plus cost_record1 cost_record2 =
       | (OperationCost | AllocationCost | AutoreleasepoolSize), _, _ ->
           let cost1 = Option.value cost1 ~default:BasicCostWithReason.zero in
           let cost2 = Option.value cost2 ~default:BasicCostWithReason.zero in
-          Some (BasicCostWithReason.plus cost1 cost2) )
+          Some (BasicCostWithReason.plus cost1 cost2))
     cost_record1 cost_record2
 
 

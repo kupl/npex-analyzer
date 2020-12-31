@@ -21,7 +21,7 @@ let mk_interprocedural_t ~f_analyze_dep ~f_analyze_pdesc_dep ~get_payload exe_en
   let analyze_dependency proc_name =
     let summary = Ondemand.analyze_proc_name ~caller_summary:summary proc_name in
     Option.bind summary ~f:(fun {Summary.payloads; proc_desc; _} ->
-        f_analyze_dep proc_desc (get_payload payloads) )
+        f_analyze_dep proc_desc (get_payload payloads))
   in
   let analyze_pdesc_dependency proc_desc =
     let summary = Ondemand.analyze_proc_desc ~caller_summary:summary proc_desc in
@@ -44,7 +44,7 @@ let mk_interprocedural_t ~f_analyze_dep ~f_analyze_pdesc_dep ~get_payload exe_en
 let mk_interprocedural_field_t payload_field exe_env summary =
   mk_interprocedural_t
     ~f_analyze_dep:(fun pdesc payload_opt ->
-      Option.map payload_opt ~f:(fun payload -> (pdesc, payload)) )
+      Option.map payload_opt ~f:(fun payload -> (pdesc, payload)))
     ~f_analyze_pdesc_dep:Fn.id ~get_payload:(Field.get payload_field) exe_env summary
 
 
@@ -67,7 +67,7 @@ let interprocedural_file payload_field checker {Callbacks.procedures; exe_env; s
   let analyze_file_dependency proc_name =
     let summary = Ondemand.analyze_proc_name_no_caller proc_name in
     Option.bind summary ~f:(fun {Summary.payloads; proc_desc; _} ->
-        Field.get payload_field payloads |> Option.map ~f:(fun payload -> (proc_desc, payload)) )
+        Field.get payload_field payloads |> Option.map ~f:(fun payload -> (proc_desc, payload)))
   in
   checker
     {InterproceduralAnalysis.procedures; source_file; file_exe_env= exe_env; analyze_file_dependency}

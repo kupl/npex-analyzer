@@ -17,7 +17,7 @@ let iter_captured_procs_and_callees f =
   SqliteUtils.result_fold_rows db ~log:"loading captured procs" stmt ~init:() ~f:(fun () stmt ->
       let proc_name = Sqlite3.column stmt 0 |> Procname.SQLite.deserialize in
       let callees : Procname.t list = Sqlite3.column stmt 1 |> Procname.SQLiteList.deserialize in
-      f proc_name callees )
+      f proc_name callees)
 
 
 type hashconsed_procname_info =
@@ -50,7 +50,7 @@ let pname_info_from_captured_procs () =
   let n_captured = ref 0 in
   iter_captured_procs_and_callees (fun pname callees ->
       incr n_captured ;
-      hashcons_and_update_pname pname_info pname callees ) ;
+      hashcons_and_update_pname pname_info pname callees) ;
   (pname_info, !n_captured)
 
 
@@ -62,7 +62,7 @@ let queue_from_sources pname_info sources =
   let q = Procname.HashQueue.create () in
   List.iter sources ~f:(fun sf ->
       SourceFiles.proc_names_of_source sf
-      |> List.iter ~f:(fun pname -> hashcons_pname pname_info pname |> enqueue q) ) ;
+      |> List.iter ~f:(fun pname -> hashcons_pname pname_info pname |> enqueue q)) ;
   q
 
 
@@ -73,7 +73,7 @@ let rec bfs pname_info g q =
       | Some {defined= true; callees} ->
           CallGraph.create_node g pname callees ;
           List.iter callees ~f:(fun pname ->
-              if not (CallGraph.mem_procname g pname) then enqueue q pname )
+              if not (CallGraph.mem_procname g pname) then enqueue q pname)
       | _ ->
           () ) ;
       bfs pname_info g q

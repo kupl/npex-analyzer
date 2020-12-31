@@ -80,7 +80,7 @@ let get tenv prop exp category =
       | Predicates.Apred (att, _) | Anpred (att, _) ->
           PredSymb.equal_category (PredSymb.to_category att) category
       | _ ->
-          false )
+          false)
     atts
 
 
@@ -300,7 +300,7 @@ let deallocate_stack_vars tenv (p : 'a Prop.t) pvars =
             fresh_address_vars := (v, freshv) :: !fresh_address_vars ;
             (Exp.Lvar v, Exp.Var freshv)
         | _ ->
-            assert false )
+            assert false)
       sigma_stack
   in
   let pi1 =
@@ -330,7 +330,7 @@ let deallocate_stack_vars tenv (p : 'a Prop.t) pvars =
   (* Filter out local addresses in p'' *)
   let filtered_pi, changed =
     List.fold_right p''.pi ~init:([], false) ~f:(fun a (filtered, changed) ->
-        if Predicates.atom_has_local_addr a then (filtered, true) else (a :: filtered, changed) )
+        if Predicates.atom_has_local_addr a then (filtered, true) else (a :: filtered, changed))
   in
   (* Avoid normalization when p'' does not change *)
   let p''' = if changed then Prop.normalize tenv (Prop.set p'' ~pi:filtered_pi) else p'' in
@@ -369,10 +369,10 @@ let find_equal_formal_path tenv e prop =
                         | None ->
                             None )
                       | _ ->
-                          None ) )
+                          None ))
                   fields ~init:None
             | _ ->
-                None ) )
+                None ))
       prop.Prop.sigma ~init:None
   in
   match find_in_sigma e [] with

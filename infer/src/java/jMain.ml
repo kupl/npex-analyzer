@@ -100,8 +100,8 @@ let do_all_files sources program =
       | JClasspath.Duplicate source_files ->
           List.iter
             ~f:(fun (package, source_file) ->
-              translate_source_file basename (Some package) source_file )
-            source_files )
+              translate_source_file basename (Some package) source_file)
+            source_files)
     sources ;
   if Config.dependency_mode then capture_libs program tenv ;
   store_callee_attributes tenv program ;
@@ -123,7 +123,7 @@ let main load_sources_and_classes =
   JBasics.set_permissive true ;
   JClasspath.with_classpath load_sources_and_classes ~f:(fun classpath ->
       let program = JProgramDesc.load classpath in
-      do_all_files classpath.sources program )
+      do_all_files classpath.sources program)
 
 
 let from_arguments path = main (JClasspath.FromArguments {path})

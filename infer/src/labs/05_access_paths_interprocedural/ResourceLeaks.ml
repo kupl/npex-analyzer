@@ -113,4 +113,4 @@ let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
   Option.map result ~f:(fun post ->
       let formal_map = FormalMap.make proc_desc in
       report_if_leak analysis_data formal_map post ;
-      ResourceLeakDomain.Summary.make formal_map post )
+      ResourceLeakDomain.Summary.make formal_map post)

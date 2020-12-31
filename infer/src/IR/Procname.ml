@@ -673,7 +673,7 @@ let rec replace_parameters new_parameters procname =
             par
         | _ ->
             Logging.(die InternalError)
-              "Expected Java parameters in Java procname, but got Clang parameters" params )
+              "Expected Java parameters in Java procname, but got Clang parameters" params)
       params
   in
   let params_to_clang_params params =
@@ -684,7 +684,7 @@ let rec replace_parameters new_parameters procname =
             par
         | _ ->
             Logging.(die InternalError)
-              "Expected Clang parameters in Clang procname, but got Java parameters" params )
+              "Expected Clang parameters in Clang procname, but got Java parameters" params)
       params
   in
   match procname with

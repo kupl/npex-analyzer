@@ -152,7 +152,7 @@ let process summary tenv =
                 Logging.debug Capture Verbose "unchanged\n" ;
                 instr )
         | _ ->
-            instr )
+            instr)
   in
   let update_context = eval_instr in
   let context_at_node node = analyze_at_node map node in

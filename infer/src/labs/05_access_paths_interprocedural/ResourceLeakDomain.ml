@@ -139,7 +139,7 @@ module Summary = struct
         | Some interface_access_path ->
             ResourcesFromFormals.add interface_access_path count acquired
         | None ->
-            acquired )
+            acquired)
       held ResourcesFromFormals.empty
 
 

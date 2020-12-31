@@ -51,7 +51,7 @@ let get_hoistable_calls inv_vars loop_nodes source_nodes idom =
       let instr_in_node = Procdesc.Node.get_instrs node in
       Instrs.fold ~init:hoist_calls
         ~f:(fun acc instr -> add_if_hoistable inv_vars instr node source_nodes idom acc)
-        instr_in_node )
+        instr_in_node)
     loop_nodes HoistCalls.empty
 
 
@@ -66,7 +66,7 @@ let get_hoist_inv_map tenv ~get_callee_purity reaching_defs_invariant_map loop_h
           ~is_pure_by_default:Config.pure_by_default ~get_callee_purity
       in
       let hoist_instrs = get_hoistable_calls inv_vars_in_loop loop_nodes source_nodes idom in
-      LoopHeadToHoistInstrs.add loop_head hoist_instrs inv_map )
+      LoopHeadToHoistInstrs.add loop_head hoist_instrs inv_map)
     loop_head_to_source_nodes LoopHeadToHoistInstrs.empty
 
 
@@ -120,7 +120,7 @@ let get_cost_if_expensive tenv integer_type_widths get_callee_cost_summary_and_f
     | None ->
         let fun_arg_list =
           List.map params ~f:(fun (exp, typ) ->
-              ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()} )
+              ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()})
         in
         CostModels.Call.dispatch tenv pname fun_arg_list
         |> Option.map ~f:(fun model ->
@@ -129,7 +129,7 @@ let get_cost_if_expensive tenv integer_type_widths get_callee_cost_summary_and_f
                  BufferOverrunUtils.ModelEnv.mk_model_env pname ~node_hash loc tenv
                    integer_type_widths inferbo_get_summary
                in
-               model model_env ~ret inferbo_mem )
+               model model_env ~ret inferbo_mem)
   in
   Option.filter cost_opt ~f:CostDomain.BasicCost.is_symbolic
 
@@ -151,7 +151,7 @@ let report_errors proc_desc tenv err_log get_callee_purity reaching_defs_invaria
       let loop_head_loc = Procdesc.Node.get_loc loop_head in
       HoistCalls.iter
         (fun call -> do_report extract_cost_if_expensive proc_desc err_log call loop_head_loc)
-        inv_instrs )
+        inv_instrs)
     loop_head_to_inv_instrs
 
 

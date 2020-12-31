@@ -258,7 +258,7 @@ end = struct
     Invariant.compute_stats false
       (fun node ->
         acc := f !acc node ;
-        true )
+        true)
       path ;
     Invariant.reset_stats path ;
     !acc
@@ -375,7 +375,7 @@ end = struct
       Procdesc.NodeMap.fold
         (fun node num max_rep_opt ->
           if num > Option.value_map max_rep_opt ~default:0 ~f:fst then Some (num, node)
-          else max_rep_opt )
+          else max_rep_opt)
         !map None
     in
     Option.value_exn max_rep_opt
@@ -472,7 +472,7 @@ end = struct
                     (Procname.pp_simplified_string ~withclass:false)
                     pname
                 in
-                trace := Errlog.make_trace_element (level + 1) loc definition_descr [] :: !trace )
+                trace := Errlog.make_trace_element (level + 1) loc definition_descr [] :: !trace)
             loc_opt
       | _, Some curr_node -> (
           let curr_loc = Procdesc.Node.get_loc curr_node in
@@ -658,7 +658,7 @@ end = struct
   let path_nodes_subset p1 p2 =
     let get_nodes p =
       Path.fold_all_nodes_nocalls p ~init:Procdesc.NodeSet.empty ~f:(fun s n ->
-          Procdesc.NodeSet.add n s )
+          Procdesc.NodeSet.add n s)
     in
     Procdesc.NodeSet.subset (get_nodes p1) (get_nodes p2)
 

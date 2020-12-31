@@ -25,7 +25,7 @@ let init globals =
         let len = Term.integer (Z.of_int siz) in
         let seq = Term_of_Llair.exp seq in
         Sh.star q (Sh.seg {loc; bas= loc; len; siz= len; seq})
-    | _ -> q )
+    | _ -> q)
 
 let join p q =
   [%Trace.call fun {pf} -> pf "%a@ %a" pp p pp q]
@@ -45,7 +45,7 @@ let exec_kill q r = Exec.kill q (Var_of_Llair.reg r) |> simplify
 let exec_move q res =
   Exec.move q
     (IArray.map res ~f:(fun (r, e) ->
-         (Var_of_Llair.reg r, Term_of_Llair.exp e) ))
+         (Var_of_Llair.reg r, Term_of_Llair.exp e)))
   |> simplify
 
 let exec_inst pre inst =
@@ -54,7 +54,7 @@ let exec_inst pre inst =
       Some
         (Exec.move pre
            (IArray.map reg_exps ~f:(fun (r, e) ->
-                (Var_of_Llair.reg r, Term_of_Llair.exp e) )))
+                (Var_of_Llair.reg r, Term_of_Llair.exp e))))
   | Load {reg; ptr; len; _} ->
       Exec.load pre ~reg:(Var_of_Llair.reg reg) ~ptr:(Term_of_Llair.exp ptr)
         ~len:(Term_of_Llair.exp len)
@@ -112,13 +112,13 @@ let garbage_collect (q : t) ~wrt =
             if term_eq_class_has_only_vars_in current q.ctx seg.loc then
               List.fold (Context.class_of q.ctx seg.seq) ~init:current
                 ~f:(fun c e -> Var.Set.union c (Term.fv e))
-            else current )
+            else current)
       in
       all_reachable_vars current new_set q
   in
   let r_vars = all_reachable_vars Var.Set.empty wrt q in
   Sh.filter_heap q ~f:(fun seg ->
-      term_eq_class_has_only_vars_in r_vars q.ctx seg.loc )
+      term_eq_class_has_only_vars_in r_vars q.ctx seg.loc)
   |>
   [%Trace.retn fun {pf} -> pf "%a" pp]
 
@@ -280,7 +280,7 @@ let create_summary ~locals ~formals ~entry ~current:(post : Sh.t) =
     Var.Set.fold formals ~init:q ~f:(fun q var ->
         let var = Term.var var in
         let renamed_var = Term.rename subst var in
-        Sh.and_ (Formula.eq renamed_var var) q )
+        Sh.and_ (Formula.eq renamed_var var) q)
   in
   (* Add back the original formals name *)
   let post = Sh.rename subst post in

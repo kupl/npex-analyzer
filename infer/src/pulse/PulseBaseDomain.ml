@@ -115,7 +115,7 @@ module GraphComparison = struct
           |> Option.filter ~f:(fun (edges, attrs) ->
                  not (Memory.Edges.is_empty edges && Attributes.is_empty attrs)
                  (* this can happen because of [register_address] or because we don't care to delete empty
-                    edges when removing edges *) )
+                    edges when removing edges *))
         in
         let lhs_cell_opt = get_non_empty_cell addr_lhs lhs in
         let rhs_cell_opt = get_non_empty_cell addr_rhs rhs in
@@ -237,7 +237,7 @@ end = struct
         | Continue _ as cont ->
             cont
         | Stop fin ->
-            Stop (Stop fin) )
+            Stop (Stop fin))
 
 
   let fold ~var_filter astate ~init ~f ~finish =
@@ -246,7 +246,7 @@ end = struct
     Container.fold_until astate.stack ~fold:(IContainer.fold_of_pervasives_map_fold Stack.fold)
       ~init ~finish ~f:(fun visited_accum (var, (address, _loc)) ->
         if var_filter var then visit_address var ~f [] astate address visited_accum
-        else Continue visited_accum )
+        else Continue visited_accum)
 end
 
 include GraphComparison

@@ -187,7 +187,7 @@ let pp_instr ~print_types pe0 f instr =
             (Pp.comma_seq (pp_exp_typ pe))
             arg_ts CallFlags.pp cf Location.pp loc
       | Metadata metadata ->
-          pp_instr_metadata pe0 f metadata )
+          pp_instr_metadata pe0 f metadata)
 
 
 (** Dump an instruction. *)

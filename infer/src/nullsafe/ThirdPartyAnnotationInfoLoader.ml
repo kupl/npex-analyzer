@@ -25,4 +25,4 @@ let load ~path_to_repo_dir =
   |> List.filter ~f:(String.is_suffix ~suffix:".sig")
   |> List.fold_result ~init:(ThirdPartyAnnotationInfo.create_storage ())
        ~f:(fun accumulated_storage sig_file ->
-         add_from_file accumulated_storage ~path_to_repo_dir ~sig_file )
+         add_from_file accumulated_storage ~path_to_repo_dir ~sig_file)

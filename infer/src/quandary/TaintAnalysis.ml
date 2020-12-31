@@ -183,13 +183,13 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                   List.find
                     ~f:(fun source ->
                       [%compare.equal: Source.Kind.t] kind (Source.kind source)
-                      && not (is_recursive source) )
+                      && not (is_recursive source))
                     (Sources.Known.elements (sources trace).Sources.known)
                 with
                 | Some matching_source ->
                     (Some access_path, matching_source) :: acc
                 | None ->
-                    acc )
+                    acc)
               (get_summary (CallSite.pname call_site))
               []
           in
@@ -210,8 +210,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                 match
                   List.find
                     ~f:(fun sink ->
-                      [%compare.equal: Sink.Kind.t] kind (Sink.kind sink) && not (is_recursive sink)
-                      )
+                      [%compare.equal: Sink.Kind.t] kind (Sink.kind sink) && not (is_recursive sink))
                     (Sinks.elements (sinks trace))
                 with
                 | Some matching_sink ->
@@ -220,7 +219,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                     in
                     (matching_sink, indexes_match) :: acc
                 | None ->
-                    acc )
+                    acc)
               (get_summary (CallSite.pname call_site))
               []
           in
@@ -265,7 +264,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                     pp_access_path_opt access_path_opt
                 , CallSite.loc call_site )
               in
-              Errlog.make_trace_element 0 loc desc [] )
+              Errlog.make_trace_element 0 loc desc [])
             expanded_sources
         in
         let sink_trace =
@@ -287,7 +286,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
               let desc =
                 Format.asprintf "Call to %a%s" Procname.pp (CallSite.pname call_site) indexes_str
               in
-              Errlog.make_trace_element 0 (CallSite.loc call_site) desc [] )
+              Errlog.make_trace_element 0 (CallSite.loc call_site) desc [])
             expanded_sinks
         in
         let _, initial_source = List.hd_exn expanded_sources in
@@ -448,7 +447,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
             let sinks = TraceDomain.Sink.get dummy_call_site dummy_actuals CallFlags.default tenv in
             let astate_acc_result =
               List.fold sinks ~init:astate_acc ~f:(fun astate sink ->
-                  add_sink analysis_data sink dummy_actuals astate dummy_call_site )
+                  add_sink analysis_data sink dummy_actuals astate dummy_call_site)
             in
             add_sinks_for_access astate_acc_result ae
       in
@@ -472,7 +471,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
             let trace, subtree =
               Option.value ~default:TaintDomain.empty_node (TaintDomain.get_node access_path astate)
             in
-            TaintDomain.add_node access_path (TraceDomain.add_source source trace, subtree) astate )
+            TaintDomain.add_node access_path (TraceDomain.add_source source trace, subtree) astate)
       else astate
 
 
@@ -532,7 +531,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                        (AccessPath.get_typ (AccessPath.Abs.extract access_path) tenv)
                        ~f:should_taint_typ
                 then TraceDomain.Sources.Footprint.add_trace access_path true acc
-                else acc )
+                else acc)
               sources.footprint TraceDomain.Sources.Footprint.bottom
           in
           let filtered_sources = {sources with footprint= filtered_footprint} in
@@ -623,7 +622,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
         else
           let sinks = TraceDomain.Sink.get call_site actuals call_flags tenv in
           List.fold sinks ~init:astate ~f:(fun astate sink ->
-              add_sink analysis_data sink actuals astate call_site )
+              add_sink analysis_data sink actuals astate call_site)
       in
       let astate_with_direct_sources =
         let sources =
@@ -635,9 +634,9 @@ module Make (TaintSpecification : TaintSpec.S) = struct
             match index with
             | None ->
                 Option.value_map dummy_ret_opt ~default:astate ~f:(fun ret_base ->
-                    add_return_source source ret_base astate )
+                    add_return_source source ret_base astate)
             | Some index ->
-                add_actual_source source index actuals astate_with_sink formal_map )
+                add_actual_source source index actuals astate_with_sink formal_map)
       in
       let astate_with_summary =
         match analyze_dependency callee_pname with
@@ -745,12 +744,12 @@ module Make (TaintSpecification : TaintSpec.S) = struct
           && Sources.Footprint.mem access_path footprint_sources
           && Sources.Footprint.exists
                (fun footprint_access_path (is_mem, _) ->
-                 is_mem && AccessPath.Abs.equal access_path footprint_access_path )
+                 is_mem && AccessPath.Abs.equal access_path footprint_access_path)
                footprint_sources
         then
           Logging.die InternalError
             "The trace associated with %a consists only of its footprint source: %a"
-            AccessPath.Abs.pp access_path pp trace )
+            AccessPath.Abs.pp access_path pp trace)
       access_tree
 
 
@@ -775,8 +774,8 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                         node
                   in
                   TaintDomain.add_node footprint_access_path node' acc
-                else acc )
-              (TraceDomain.sources trace).TraceDomain.Sources.footprint access_tree_acc )
+                else acc)
+              (TraceDomain.sources trace).TraceDomain.Sources.footprint access_tree_acc)
         access_tree access_tree
     in
     (* should only be used on nodes associated with a footprint base *)
@@ -822,7 +821,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
                 else AccessPath.BaseMap.add base' joined_node acc
             | None ->
                 (* base is a local var *)
-                acc )
+                acc)
         access_tree' TaintDomain.bottom
     in
     if Config.developer_mode then check_invariants with_footprint_vars ;
@@ -842,7 +841,7 @@ module Make (TaintSpecification : TaintSpec.S) = struct
               in
               TaintDomain.add_trace base_ap (TraceDomain.of_source source) acc
           | None ->
-              acc )
+              acc)
         ~init:TaintDomain.bottom
         (TraceDomain.Source.get_tainted_formals pdesc tenv)
     in

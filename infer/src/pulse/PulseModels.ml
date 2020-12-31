@@ -81,7 +81,7 @@ module Misc = struct
    fun _ ~callee_procname location ~ret astate ->
     let actuals =
       List.map args ~f:(fun {ProcnameDispatcher.Call.FuncArg.arg_payload= actual; typ} ->
-          (actual, typ) )
+          (actual, typ))
     in
     let formals_opt =
       AnalysisCallbacks.proc_resolve_attributes callee_procname
@@ -473,7 +473,7 @@ module StdFunction = struct
         let actuals =
           (lambda_ptr_hist, typ)
           :: List.map actuals ~f:(fun ProcnameDispatcher.Call.FuncArg.{arg_payload; typ} ->
-                 (arg_payload, typ) )
+                 (arg_payload, typ))
         in
         PulseOperations.call ~caller_proc_desc:proc_desc
           ~callee_data:(analyze_dependency callee_proc_name)
@@ -851,7 +851,7 @@ module ProcNameDispatcher = struct
       let transfer_ownership_namespace_matchers =
         List.map
           ~f:(fun (namespace, m) ->
-            -namespace &:: m $ capt_arg_payload $+...$--> ObjCCoreFoundation.cf_bridging_release )
+            -namespace &:: m $ capt_arg_payload $+...$--> ObjCCoreFoundation.cf_bridging_release)
           Config.pulse_model_transfer_ownership_namespace
       in
       let transfer_ownership_name_matchers =
@@ -869,7 +869,7 @@ module ProcNameDispatcher = struct
           | [] ->
               None
           | first :: rest ->
-              Some (List.fold rest ~f:( &:: ) ~init:(-first) &--> model m) )
+              Some (List.fold rest ~f:( &:: ) ~init:(-first) &--> model m))
         config
     in
     let abort_matchers =
@@ -884,7 +884,7 @@ module ProcNameDispatcher = struct
       Option.value_map ~default:false r_opt ~f:(fun r ->
           let s = Procname.to_string proc_name in
           let r = Str.string_match r s 0 in
-          r )
+          r)
     in
     let map_context_tenv f (x, _) = f x in
     make_dispatcher

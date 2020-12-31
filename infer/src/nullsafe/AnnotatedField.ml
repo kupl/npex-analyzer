@@ -46,7 +46,7 @@ let get tenv field_name class_typ =
     Typ.name class_typ
     |> Option.value_map
          ~f:(fun class_name ->
-           Typ.Name.Java.get_java_class_name_exn class_name |> NullsafeMode.of_class tenv )
+           Typ.Name.Java.get_java_class_name_exn class_name |> NullsafeMode.of_class tenv)
          ~default:NullsafeMode.Default
   in
   let is_third_party =

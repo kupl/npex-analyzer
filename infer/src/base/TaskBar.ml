@@ -64,7 +64,9 @@ let draw_top_bar fmt ~term_width ~total ~finished ~elapsed =
     ("%*d", bar_tasks_num_size (* finished *))
     +++ "/"
     ++ ("%s", bar_tasks_num_size (* total *))
-    +++ " [" ++ ("%a%a", 0 (* progress bar *)) +++ "] "
+    +++ " ["
+    ++ ("%a%a", 0 (* progress bar *))
+    +++ "] "
     ++ ("%d%%", 3 (* "xxx%", even though sometimes it's just "x%" *))
     +++ " "
     ++ ( "%s"
@@ -117,7 +119,7 @@ let refresh_multiline task_bar =
   in
   let now = Mtime_clock.now () in
   Array.iter2_exn task_bar.jobs_statuses task_bar.jobs_start_times ~f:(fun status t0 ->
-      draw_job_status F.err_formatter ~term_width ~draw_time now ~status ~t0 ) ;
+      draw_job_status F.err_formatter ~term_width ~draw_time now ~status ~t0) ;
   let lines_printed =
     let progress_bar = if should_draw_progress_bar then 1 else 0 in
     task_bar.jobs + progress_bar

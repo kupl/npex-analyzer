@@ -26,14 +26,14 @@ let compile compiler build_prog build_args =
     let args = "-verbose" :: "-g" :: "-d" :: Config.javac_classes_out :: build_args in
     List.partition_tf args ~f:(fun arg ->
         (* As mandated by javac, argument files must not contain certain arguments. *)
-        String.is_prefix ~prefix:"-J" arg || String.is_prefix ~prefix:"@" arg )
+        String.is_prefix ~prefix:"-J" arg || String.is_prefix ~prefix:"@" arg)
   in
   (* Pass non-special args via a file to avoid exceeding the command line size limit. *)
   let args_file =
     let file = Filename.temp_file ~in_dir:(ResultsDir.get_path Temporary) "javac_args" "" in
     let quoted_file_args =
       List.map file_args ~f:(fun arg ->
-          if String.contains arg '\'' then arg else F.sprintf "'%s'" arg )
+          if String.contains arg '\'' then arg else F.sprintf "'%s'" arg)
     in
     Out_channel.with_file file ~f:(fun oc -> Out_channel.output_lines oc quoted_file_args) ;
     file
@@ -76,7 +76,7 @@ let compile compiler build_prog build_args =
                 k () ;
                 false
             | None ->
-                true )
+                true)
     | log, Ok () ->
         L.(debug Capture Quiet) "*** Success. Logs:@\n%s" log
   in
@@ -96,7 +96,7 @@ let no_source_file args =
       | None ->
           not_source_file arg
       | Some arg_file ->
-          List.for_all ~f:not_source_file (In_channel.read_lines arg_file) )
+          List.for_all ~f:not_source_file (In_channel.read_lines arg_file))
 
 
 let call_infer_javac_capture ~javac_args =
@@ -106,7 +106,7 @@ let call_infer_javac_capture ~javac_args =
     :: List.filter_map javac_args ~f:(fun arg ->
            if String.equal "-Werror" arg then None
            else if String.is_substring arg ~substring:"-g:" then Some "-g"
-           else Some arg )
+           else Some arg)
   in
   L.debug Capture Verbose "%s %s@." prog (String.concat ~sep:" " args) ;
   Process.create_process_and_wait ~prog ~args

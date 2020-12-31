@@ -27,7 +27,7 @@ module Trust = struct
                   Typ.name class_typ
                   |> Option.map ~f:(fun name -> Typ.Name.Java.get_java_class_name_exn name)
               | _ ->
-                  None )
+                  None)
         in
         Option.map trust_list ~f:JavaClassName.Set.of_list
     | _ ->
@@ -236,7 +236,7 @@ let check_problematic_class_annotation tenv user_defined_class =
           | _ ->
               if is_stricter_than ~stricter:outer_mode ~weaker:nested_mode then
                 Error (NestedModeIsWeaker Other)
-              else Ok () )
+              else Ok ())
     ~default:(Ok ())
 
 

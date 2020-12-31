@@ -181,12 +181,12 @@ let pp_term fs term =
     | _ ->
         pf "@[<2>switch %a@ @[%a@ else: %a@]@]\t%a" Exp.pp key
           (IArray.pp "@ " (fun fs (case, jmp) ->
-               Format.fprintf fs "%a: %a" Exp.pp case pp_goto jmp ))
+               Format.fprintf fs "%a: %a" Exp.pp case pp_goto jmp))
           tbl pp_goto els Loc.pp loc )
   | Iswitch {ptr; tbl; loc} ->
       pf "@[<2>iswitch %a@ @[<hv>%a@]@]\t%a" Exp.pp ptr
         (IArray.pp "@ " (fun fs jmp ->
-             Format.fprintf fs "%s: %a" jmp.dst.lbl pp_goto jmp ))
+             Format.fprintf fs "%s: %a" jmp.dst.lbl pp_goto jmp))
         tbl Loc.pp loc
   | Call {callee; actuals; areturn; return; throw; recursive; loc; _} ->
       pf "@[<2>@[<7>%acall @[<2>%s%a%a@]@]@ @[returnto %a%a;@]@]\t%a"
@@ -459,7 +459,7 @@ module Func = struct
             sort_index Loc.pp name.loc pp_cmnd cmnd Term.pp term
             (pp_if (not (List.is_empty cfg)) "@ @   ")
             (List.pp "@\n@\n  " Block.pp)
-            cfg )
+            cfg)
 
   let invariant func =
     assert (func == func.entry.parent) ;
@@ -469,7 +469,7 @@ module Func = struct
         assert (
           not
             (List.contains_dup (entry_cfg func) ~compare:(fun b1 b2 ->
-                 String.compare b1.lbl b2.lbl )) ) ;
+                 String.compare b1.lbl b2.lbl)) ) ;
         assert (Bool.(Option.is_some return = Option.is_some func.freturn)) ;
         iter_term func ~f:(fun term -> Term.invariant ~parent:func term)
     | _ -> assert false
@@ -522,7 +522,7 @@ let set_derived_metadata functions =
   let compute_roots functions =
     let roots = FuncQ.create () in
     String.Map.iter functions ~f:(fun func ->
-        FuncQ.enqueue_back_exn roots func.name.reg func ) ;
+        FuncQ.enqueue_back_exn roots func.name.reg func) ;
     String.Map.iter functions ~f:(fun func ->
         Func.fold_term func ~init:() ~f:(fun () -> function
           | Call {callee; _} -> (
@@ -530,7 +530,7 @@ let set_derived_metadata functions =
             | Some callee ->
                 FuncQ.remove roots callee |> (ignore : [> ] -> unit)
             | None -> () )
-          | _ -> () ) ) ;
+          | _ -> ())) ;
     roots
   in
   let topsort functions roots =
@@ -567,18 +567,18 @@ let set_derived_metadata functions =
         BlockQ.enqueue_back_exn tips_to_roots src ()
     in
     FuncQ.iter roots ~f:(fun root ->
-        visit Block_label.Set.empty root root.entry ) ;
+        visit Block_label.Set.empty root root.entry) ;
     tips_to_roots
   in
   let set_sort_indices tips_to_roots =
     let index = ref (BlockQ.length tips_to_roots) in
     BlockQ.iteri tips_to_roots ~f:(fun ~key:block ~data:_ ->
         block.sort_index <- !index ;
-        index := !index - 1 )
+        index := !index - 1)
   in
   let functions =
     List.fold functions ~init:String.Map.empty ~f:(fun m func ->
-        String.Map.add_exn m ~key:(Reg.name func.name.reg) ~data:func )
+        String.Map.add_exn m ~key:(Reg.name func.name.reg) ~data:func)
   in
   let roots = compute_roots functions in
   let tips_to_roots = topsort functions roots in
@@ -593,7 +593,7 @@ module Program = struct
     assert (
       not
         (IArray.contains_dup pgm.globals ~compare:(fun g1 g2 ->
-             Reg.compare g1.Global.reg g2.Global.reg )) )
+             Reg.compare g1.Global.reg g2.Global.reg)) )
 
   let mk ~globals ~functions =
     { globals= IArray.of_list_rev globals

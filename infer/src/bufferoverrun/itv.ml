@@ -328,7 +328,7 @@ module ItvPure = struct
         | n ->
             if n < 0 then x else mult_const Z.(one lsl n) x
         | exception Z.Overflow ->
-            top )
+            top)
 
 
   (* x >> [-1,-1] does nothing. *)

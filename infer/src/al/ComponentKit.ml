@@ -201,7 +201,7 @@ let component_with_multiple_factory_methods_advice context an =
                 Some
                   "Instead, always expose all parameters in a single designated initializer and \
                    document which are optional."
-            ; loc= ALUtils.location_from_decl context meth_decl } )
+            ; loc= ALUtils.location_from_decl context meth_decl })
           (IList.drop factory_methods 1)
     | _ ->
         assert false

@@ -132,7 +132,7 @@ module Make
     let acc = List.fold map.new_ ~init ~f in
     (* this is quadratic time but the lists are at most [Config.limit] long, assumed small *)
     List.fold map.old ~init:acc ~f:(fun acc binding ->
-        if List.Assoc.mem ~equal:Key.equal map.new_ (fst binding) then acc else f acc binding )
+        if List.Assoc.mem ~equal:Key.equal map.new_ (fst binding) then acc else f acc binding)
 
 
   let bindings map = fold ~init:[] ~f:(fun bindings binding -> binding :: bindings) map
@@ -161,7 +161,7 @@ module Make
           if List.Assoc.mem ~equal:Key.equal m.new_ key then binding
           else
             let value' = f value in
-            if phys_equal value value' then binding else (key, value') )
+            if phys_equal value value' then binding else (key, value'))
     in
     {m with new_; old}
 
@@ -172,7 +172,7 @@ module Make
       map m ~f:(fun value ->
           let acc, value' = f !acc_ref value in
           acc_ref := acc ;
-          value' )
+          value')
     in
     (!acc_ref, m')
 
@@ -189,7 +189,7 @@ module Make
           ~f:(fun ((l2_rev, count_l2, rest_rev) as acc) ((key2, _) as binding) ->
             if count_l2 + count1 >= Config.limit then (l2_rev, count_l2, binding :: rest_rev)
             else if List.Assoc.mem ~equal:Key.equal l1 key2 then acc
-            else (binding :: l2_rev, count_l2 + 1, rest_rev) )
+            else (binding :: l2_rev, count_l2 + 1, rest_rev))
       in
       (l1 @ List.rev l2_rev, count1 + count_l2, List.rev rest_rev)
 

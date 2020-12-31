@@ -18,7 +18,7 @@ let main ~input ~output =
       | filename ->
           Out_channel.with_file filename ~f:(fun oc ->
               let ff = Format.formatter_of_out_channel oc in
-              Format.fprintf ff "%a@." Llair.fmt program ) ) ;
+              Format.fprintf ff "%a@." Llair.fmt program)) ;
     Format.printf "@\nRESULT: Success@."
   with exn ->
     let bt = Caml.Printexc.get_raw_backtrace () in

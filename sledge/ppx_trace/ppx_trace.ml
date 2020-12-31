@@ -63,7 +63,7 @@ Driver.Cookies.add_simple_handler "ppx_trace_enabled" Ast_pattern.__
   ~f:(function
   | Some {pexp_desc= Pexp_constant (Pconst_string (("1" | "true"), _))} ->
       debug := true
-  | _ -> () )
+  | _ -> ())
 
 let expand_debug ~ctxt =
   let loc = Expansion_context.Extension.extension_point_loc ctxt in
@@ -88,7 +88,7 @@ let rec get_fun_name pat =
         "Unexpected pattern in binding containing [%%Trace]: %a"
         (fun f p ->
           Ocaml_common.Pprintast.pattern f
-            (Selected_ast.To_ocaml.copy_pattern p) )
+            (Selected_ast.To_ocaml.copy_pattern p))
         pat
 
 let vb_stack_with, vb_stack_top =

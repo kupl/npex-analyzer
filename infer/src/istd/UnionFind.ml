@@ -118,7 +118,7 @@ module Make (X : Element) (XSet : Caml.Set.S with type elt = X.t) = struct
       Pp.collection ~sep:" ∧ " ~fold:fold_congruences fmt uf
         ~pp_item:(fun fmt ((repr : repr), ts) ->
           is_empty := false ;
-          F.fprintf fmt "%a=%a" pp_item (repr :> X.t) (pp_ts_or_repr (repr :> X.t)) ts ) ;
+          F.fprintf fmt "%a=%a" pp_item (repr :> X.t) (pp_ts_or_repr (repr :> X.t)) ts) ;
       if !is_empty then pp_empty fmt
     in
     F.fprintf fmt "@[<hv>%a@]" pp_aux uf
@@ -131,7 +131,7 @@ module Make (X : Element) (XSet : Caml.Set.S with type elt = X.t) = struct
           (* here we take advantage of the fact [keep] is transitively closed already to drop
              entire classes at once iff their representative is not in [keep]: if the class
              contains *one* item in [keep] then *all* of its items are in [keep] *)
-          XSet.mem (x :> X.t) keep )
+          XSet.mem (x :> X.t) keep)
         uf.classes
     in
     (* rebuild [reprs] directly from [classes]: does path compression and garbage collection on the

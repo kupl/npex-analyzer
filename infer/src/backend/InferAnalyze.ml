@@ -40,7 +40,7 @@ let proc_name_of_uid =
         | Some proc_name ->
             proc_name
         | None ->
-            L.die InternalError "Requested non-existent proc_uid: %s@." proc_uid )
+            L.die InternalError "Requested non-existent proc_uid: %s@." proc_uid)
 
 
 let analyze_target : (TaskSchedulerTypes.target, string) Tasks.doer =
@@ -55,7 +55,7 @@ let analyze_target : (TaskSchedulerTypes.target, string) Tasks.doer =
           if Config.write_html then Printer.write_all_html_files source_file ;
           None
         with TaskSchedulerTypes.ProcnameAlreadyLocked {dependency_filename} ->
-          Some dependency_filename )
+          Some dependency_filename)
   in
   (* In call-graph scheduling, log progress every [per_procedure_logging_granularity] procedures.
      The default roughly reflects the average number of procedures in a C++ file. *)
@@ -196,7 +196,7 @@ let analyze source_files_to_analyze =
               stats_list
           | Some (backend_stats, gc_stats_opt) ->
               ( backend_stats :: backend_stats_list
-              , Option.fold ~init:gc_stats_list ~f:(fun l x -> x :: l) gc_stats_opt ) )
+              , Option.fold ~init:gc_stats_list ~f:(fun l x -> x :: l) gc_stats_opt ))
     in
     collected_stats )
 
@@ -217,7 +217,7 @@ let invalidate_changed_procedures changed_files =
     SourceFile.Set.iter
       (fun sf ->
         SourceFiles.proc_names_of_source sf
-        |> List.iter ~f:(CallGraph.flag_reachable reverse_callgraph) )
+        |> List.iter ~f:(CallGraph.flag_reachable reverse_callgraph))
       changed_files ;
     if Config.debug_level_analysis > 0 then
       CallGraph.to_dotty reverse_callgraph "reverse_analysis_callgraph.dot" ;
@@ -226,7 +226,7 @@ let invalidate_changed_procedures changed_files =
         ~f:(fun node acc ->
           Ondemand.LocalCache.remove node.pname ;
           Summary.OnDisk.delete node.pname ;
-          acc + 1 )
+          acc + 1)
         0
     in
     L.progress

@@ -98,7 +98,7 @@ module Lock = struct
         FormalMap.get_formal_base 0 formals
         |> Option.bind ~f:(fun base ->
                let hilexp = HilExp.(AccessExpression (AccessExpression.base base)) in
-               make formals hilexp )
+               make formals hilexp)
     | _ ->
         L.die InternalError "Non-Java methods cannot be synchronized.@\n"
 
@@ -163,9 +163,9 @@ module VarDomain = struct
                 false
             | NonTop acc_exp ->
                 let var, _ = HilExp.AccessExpression.get_base acc_exp in
-                not (Var.equal var deadvar) )
+                not (Var.equal var deadvar))
           acc
-        |> remove deadvar )
+        |> remove deadvar)
 
 
   let get var astate =
@@ -283,7 +283,7 @@ module Acquisitions = struct
   let apply_subst subst acqs =
     fold
       (fun acq acc ->
-        match Acquisition.apply_subst subst acq with None -> acc | Some acq' -> add acq' acc )
+        match Acquisition.apply_subst subst acq with None -> acc | Some acq' -> add acq' acc)
       acqs empty
 end
 
@@ -343,7 +343,7 @@ end = struct
               should_add_acquisition := true ;
               Some LockCount.(increment top)
           | Some count ->
-              Some (LockCount.increment count) )
+              Some (LockCount.increment count))
         map
     in
     let acquisitions =
@@ -368,7 +368,7 @@ end = struct
                 (* lock was held, but now it is not, so remove from [aqcuisitions] *)
                 should_remove_acquisition := true ;
                 None )
-              else Some new_count )
+              else Some new_count)
         map
     in
     let acquisitions =
@@ -411,7 +411,7 @@ let is_recursive_lock event tenv =
   match (event : Event.t) with
   | LockAcquire {locks} ->
       List.exists locks ~f:(fun lock_path ->
-          Lock.get_typ tenv lock_path |> Option.exists ~f:is_class_and_recursive_lock )
+          Lock.get_typ tenv lock_path |> Option.exists ~f:is_class_and_recursive_lock)
   | _ ->
       false
 
@@ -434,7 +434,7 @@ module CriticalPair = struct
              && Acquisitions.lock_is_held_in_other_thread tenv rhs_lock lhs.elem.acquisitions
              && Acquisitions.lock_is_held_in_other_thread tenv lhs_lock rhs.elem.acquisitions
              && Acquisitions.no_locks_common_across_threads tenv lhs.elem.acquisitions
-                  rhs.elem.acquisitions )
+                  rhs.elem.acquisitions)
     else None
 
 
@@ -454,7 +454,7 @@ module CriticalPair = struct
         let filtered_locks =
           IList.filter_changed locks ~f:(fun lock ->
               (not (Acquisitions.lock_is_held lock held_locks))
-              || not (is_recursive_lock pair.elem.event tenv) )
+              || not (is_recursive_lock pair.elem.event tenv))
         in
         match filtered_locks with
         | [] ->
@@ -481,7 +481,7 @@ module CriticalPair = struct
                     let acquisitions = Acquisitions.union existing_acquisitions elem.acquisitions in
                     ({elem with acquisitions; thread} : elem_t)
                   in
-                  with_callsite (map ~f callee_pair) call_site ) )
+                  with_callsite (map ~f callee_pair) call_site))
 
 
   let get_earliest_lock_or_call_loc ~procname ({elem= {acquisitions}} as t) =
@@ -490,7 +490,7 @@ module CriticalPair = struct
       (fun {procname= acq_procname; loc= acq_loc} acc ->
         if Procname.equal procname acq_procname && Int.is_negative (Location.compare acq_loc acc)
         then acq_loc
-        else acc )
+        else acc)
       acquisitions initial_loc
 
 
@@ -502,7 +502,7 @@ module CriticalPair = struct
           (fun ({procname} as acq : Acquisition.t) acc ->
             Procname.Map.update procname
               (function None -> Some [acq] | Some acqs -> Some (acq :: acqs))
-              acc )
+              acc)
           acquisitions Procname.Map.empty
       else Procname.Map.empty
     in
@@ -556,7 +556,7 @@ module CriticalPairs = struct
         CriticalPair.integrate_summary_opt ?subst ?tenv existing_acquisitions call_site thread
           critical_pair
         |> Option.bind ~f:(CriticalPair.filter_out_reentrant_relocks tenv existing_acquisitions)
-        |> Option.value_map ~default:acc ~f:(fun new_pair -> add new_pair acc) )
+        |> Option.value_map ~default:acc ~f:(fun new_pair -> add new_pair acc))
       astate empty
 end
 
@@ -707,10 +707,10 @@ let acquire ?tenv ({lock_state; critical_pairs} as astate) ~procname ~loc locks 
   { astate with
     critical_pairs=
       (let event = Event.make_acquire locks in
-       add_critical_pair ?tenv lock_state event astate.thread ~loc critical_pairs )
+       add_critical_pair ?tenv lock_state event astate.thread ~loc critical_pairs)
   ; lock_state=
       List.fold locks ~init:lock_state ~f:(fun acc lock ->
-          LockState.acquire ~procname ~loc lock acc ) }
+          LockState.acquire ~procname ~loc lock acc) }
 
 
 let make_call_with_event new_event ~loc astate =
@@ -730,7 +730,7 @@ let wait_on_monitor ~loc formals actuals astate =
       Lock.make formals exp
       |> Option.value_map ~default:astate ~f:(fun lock ->
              let new_event = Event.make_object_wait lock in
-             make_call_with_event new_event ~loc astate )
+             make_call_with_event new_event ~loc astate)
   | _ ->
       astate
 
@@ -768,19 +768,19 @@ let remove_guard astate guard =
   |> Option.value_map ~default:astate ~f:(fun lock_opt ->
          let locks = FlatLock.get lock_opt |> Option.to_list in
          let astate = release astate locks in
-         {astate with guard_map= GuardToLockMap.remove_guard astate.guard_map guard} )
+         {astate with guard_map= GuardToLockMap.remove_guard astate.guard_map guard})
 
 
 let unlock_guard astate guard =
   GuardToLockMap.find_opt guard astate.guard_map
   |> Option.value_map ~default:astate ~f:(fun lock_opt ->
-         FlatLock.get lock_opt |> Option.to_list |> release astate )
+         FlatLock.get lock_opt |> Option.to_list |> release astate)
 
 
 let lock_guard ~procname ~loc tenv astate guard =
   GuardToLockMap.find_opt guard astate.guard_map
   |> Option.value_map ~default:astate ~f:(fun lock_opt ->
-         FlatLock.get lock_opt |> Option.to_list |> acquire ~tenv astate ~procname ~loc )
+         FlatLock.get lock_opt |> Option.to_list |> acquire ~tenv astate ~procname ~loc)
 
 
 let filter_blocking_calls ({critical_pairs} as astate) =
@@ -836,7 +836,7 @@ let integrate_summary ?tenv ?lhs ?subst callsite (astate : t) (summary : summary
   ; thread= ThreadDomain.integrate_summary ~caller:astate.thread ~callee:summary.thread
   ; attributes=
       Option.value_map lhs ~default:astate.attributes ~f:(fun lhs_exp ->
-          AttributeDomain.add lhs_exp summary.return_attribute astate.attributes ) }
+          AttributeDomain.add lhs_exp summary.return_attribute astate.attributes) }
 
 
 let summary_of_astate : Procdesc.t -> t -> summary =
@@ -880,7 +880,7 @@ let remove_dead_vars (astate : t) deadvars =
        last use. This is bad for attributes that need to live until the end of the method,
        so we restrict to SSA variables. *)
     List.rev_filter deadvars ~f:(fun (v : Var.t) ->
-        match v with LogicalVar _ -> true | ProgramVar pvar -> Pvar.is_ssa_frontend_tmp pvar )
+        match v with LogicalVar _ -> true | ProgramVar pvar -> Pvar.is_ssa_frontend_tmp pvar)
   in
   let var_state = VarDomain.exit_scope astate.var_state deadvars in
   let attributes = AttributeDomain.exit_scope deadvars astate.attributes in

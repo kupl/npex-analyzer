@@ -191,20 +191,20 @@ let get_path ~results_dir id = path_of_entry ~results_dir (of_id id)
 let get_filtered_paths ~results_dir ~f =
   List.filter_map all_of_id ~f:(fun id ->
       let entry = of_id id in
-      if f entry then Some (path_of_entry ~results_dir entry) else None )
+      if f entry then Some (path_of_entry ~results_dir entry) else None)
 
 
 let to_delete_before_incremental_capture_and_analysis ~results_dir =
   get_filtered_paths ~results_dir ~f:(fun {before_incremental_analysis; _} ->
-      equal_cleanup_action before_incremental_analysis Delete )
+      equal_cleanup_action before_incremental_analysis Delete)
 
 
 let to_delete_before_caching_capture ~results_dir =
   get_filtered_paths ~results_dir ~f:(fun {before_caching_capture; _} ->
-      equal_cleanup_action before_caching_capture Delete )
+      equal_cleanup_action before_caching_capture Delete)
 
 
 let get_issues_directories () =
   List.filter all_of_id ~f:(fun id ->
       let entry = of_id id in
-      equal_entry_kind entry.kind IssuesDirectory )
+      equal_entry_kind entry.kind IssuesDirectory)

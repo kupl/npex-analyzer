@@ -586,7 +586,7 @@ end = struct
           ~f:(fun ~key ~data (domain, range) ->
             (* substs are injective *)
             assert (not (Set.mem range data)) ;
-            (Set.add domain key, Set.add range data) )
+            (Set.add domain key, Set.add range data))
       in
       assert (Set.disjoint domain range)
 
@@ -605,7 +605,7 @@ end = struct
               let x', wrt = fresh (name x) ~wrt in
               let sub = Map.add_exn sub ~key:x ~data:x' in
               let rng = Set.add rng x' in
-              (sub, rng, wrt) )
+              (sub, rng, wrt))
         in
         ({sub; dom; rng}, wrt) )
       |> check (fun ({sub; _}, _) -> invariant sub)
@@ -615,15 +615,15 @@ end = struct
 
     let domain sub =
       Map.fold sub ~init:Set.empty ~f:(fun ~key ~data:_ domain ->
-          Set.add domain key )
+          Set.add domain key)
 
     let range sub =
       Map.fold sub ~init:Set.empty ~f:(fun ~key:_ ~data range ->
-          Set.add range data )
+          Set.add range data)
 
     let invert sub =
       Map.fold sub ~init:empty ~f:(fun ~key ~data sub' ->
-          Map.add_exn sub' ~key:data ~data:key )
+          Map.add_exn sub' ~key:data ~data:key)
       |> check invariant
 
     let restrict sub vs =
@@ -637,10 +637,10 @@ end = struct
                  only one that can cause [data] to be in [rng] *)
               (not (Set.mem (range (Map.remove sub key)) data))
               || violates invariant sub ) ;
-            {z with sub= Map.remove z.sub key} ) )
+            {z with sub= Map.remove z.sub key} ))
       |> check (fun {sub; dom; rng} ->
              assert (Set.equal dom (domain sub)) ;
-             assert (Set.equal rng (range sub)) )
+             assert (Set.equal rng (range sub)))
 
     let apply sub v = Map.find sub v |> Option.value ~default:v
   end
@@ -711,13 +711,13 @@ and pp_record strength fs elts =
           String.of_char_list
             (List.map elts ~f:(function
               | Z c -> Char.of_int_exn (Z.to_int c)
-              | _ -> raise Not_a_string ))
+              | _ -> raise Not_a_string))
         with
         | s -> Format.fprintf fs "%S" s
         | exception (Not_a_string | Z.Overflow | Failure _) ->
             Format.fprintf fs "@[<h>%a@]"
               (List.pp ",@ " (ppx_t strength))
-              elts )
+              elts)
       elts]
 
 let pp_t = ppx_t (fun _ -> None)
@@ -996,8 +996,7 @@ let map3_cnd :
  fun f_ite f_trm x y z ->
   map_cnd f_ite
     (fun x' ->
-      map_cnd f_ite (fun y' -> map_cnd f_ite (fun z' -> f_trm x' y' z') z) y
-      )
+      map_cnd f_ite (fun y' -> map_cnd f_ite (fun z' -> f_trm x' y' z') z) y)
     x
 
 (** Map a ternary function on terms over expressions. *)
@@ -1084,7 +1083,7 @@ module Term = struct
           | _ ->
               ap2t
                 (fun x y -> Apply (Mul, Tuple [|x; y|]))
-                (`Trm x) (`Trm y) ) )
+                (`Trm x) (`Trm y) ))
 
   (* sequences *)
 
@@ -1292,7 +1291,7 @@ let v_to_ses : var -> Ses.Var.t =
 let vs_to_ses : Var.Set.t -> Ses.Var.Set.t =
  fun vs ->
   Var.Set.fold vs ~init:Ses.Var.Set.empty ~f:(fun vs v ->
-      Ses.Var.Set.add vs (v_to_ses v) )
+      Ses.Var.Set.add vs (v_to_ses v))
 
 let to_int e =
   match Ses.Term.d_int e with
@@ -1390,7 +1389,7 @@ let v_of_ses : Ses.Var.t -> var =
 let vs_of_ses : Ses.Var.Set.t -> Var.Set.t =
  fun vs ->
   Ses.Var.Set.fold vs ~init:Var.Set.empty ~f:(fun vs v ->
-      Var.Set.add vs (v_of_ses v) )
+      Var.Set.add vs (v_of_ses v))
 
 let uap0 f = `Trm (Apply (f, Tuple [||]))
 let uap1 f = ap1t (fun x -> Apply (f, Tuple [|x|]))
@@ -1415,7 +1414,7 @@ and apN mk_f mk_t mk_unit es =
         match of_ses e with
         | `Fml f ->
             (Some (match fs with None -> f | Some g -> mk_f f g), ts)
-        | t -> (fs, Some (match ts with None -> t | Some u -> mk_t t u)) )
+        | t -> (fs, Some (match ts with None -> t | Some u -> mk_t t u)))
   with
   | Some f, Some t -> mk_t t (Formula.inject f)
   | Some f, None -> `Fml f
@@ -1454,7 +1453,7 @@ and of_ses : Ses.Term.t -> exp =
             | t -> mulq q t
         in
         Ses.Term.Qset.fold sum ~init:(mul e q) ~f:(fun e q s ->
-            add (mul e q) s ) )
+            add (mul e q) s) )
   | Mul prod -> (
     match Ses.Term.Qset.pop_min_elt prod with
     | None -> one
@@ -1471,7 +1470,7 @@ and of_ses : Ses.Term.t -> exp =
           else uap2 Div one (expn (of_ses e) (Z.neg n))
         in
         Ses.Term.Qset.fold prod ~init:(exp e q) ~f:(fun e q s ->
-            uap2 Mul (exp e q) s ) )
+            uap2 Mul (exp e q) s) )
   | Ap2 (Div, d, e) -> uap_ttt Div d e
   | Ap2 (Rem, d, e) -> uap_ttt Rem d e
   | And es -> apN and_ (uap2 BitAnd) tt es
@@ -1500,7 +1499,7 @@ and of_ses : Ses.Term.t -> exp =
   | ApN (Record, elts) ->
       let init = uap0 EmptyRecord in
       IArray.foldi ~init elts ~f:(fun i rcd e ->
-          update ~rcd ~idx:(integer (Z.of_int i)) ~elt:(of_ses e) )
+          update ~rcd ~idx:(integer (Z.of_int i)) ~elt:(of_ses e))
   | RecRecord i -> uap0 (RecRecord i)
 
 let f_of_ses e = embed_into_fml (of_ses e)
@@ -1550,7 +1549,7 @@ module Context = struct
       ~f:(fun ~key:rep ~data:cls clss ->
         let rep' = of_ses rep in
         let cls' = List.map ~f:of_ses cls in
-        Term.Map.set ~key:rep' ~data:cls' clss )
+        Term.Map.set ~key:rep' ~data:cls' clss)
 
   let classes x = classes_of_ses (Ses.Equality.classes x)
 
@@ -1558,10 +1557,10 @@ module Context = struct
     Term.Map.filter_mapi (classes r) ~f:(fun ~key:rep ~data:cls ->
         match
           List.filter cls ~f:(fun exp ->
-              not (implies s (Formula.eq rep exp)) )
+              not (implies s (Formula.eq rep exp)))
         with
         | [] -> None
-        | cls -> Some cls )
+        | cls -> Some cls)
 
   (* Pretty printing *)
 
@@ -1572,7 +1571,7 @@ module Context = struct
     List.pp "@ @<2>∧ "
       (fun fs (rep, cls) ->
         Format.fprintf fs "@[%a@ = %a@]" (Term.ppx x) rep (ppx_cls x)
-          (List.sort ~compare:Term.compare cls) )
+          (List.sort ~compare:Term.compare cls))
       fs (Term.Map.to_alist clss)
 
   let pp fs r = ppx_classes (fun _ -> None) fs (classes r)
@@ -1636,7 +1635,7 @@ module Context = struct
 
     let fold s ~init ~f =
       Ses.Equality.Subst.fold s ~init ~f:(fun ~key ~data ->
-          f ~key:(of_ses key) ~data:(of_ses data) )
+          f ~key:(of_ses key) ~data:(of_ses data))
 
     let subst s = ses_map (Ses.Equality.Subst.subst s)
 
@@ -1703,7 +1702,7 @@ module Context = struct
           if Float.(elapsed > !dump_threshold) then (
             dump_threshold := 2. *. !dump_threshold ;
             Format.eprintf "@\n%a@\n@." Sexp.pp_hum (sexp_of_call (call ()))
-            ) ) ;
+            )) ;
       r
     in
     if not [%debug] then f ()
@@ -1752,7 +1751,9 @@ module Context = struct
     wrap refutes_tmr (fun () -> refutes r f) (fun () -> Refutes (r, f))
 
   let normalize r e =
-    wrap normalize_tmr (fun () -> normalize r e) (fun () -> Normalize (r, e))
+    wrap normalize_tmr
+      (fun () -> normalize r e)
+      (fun () -> Normalize (r, e))
 
   let apply_subst us s r =
     wrap apply_subst_tmr
@@ -1782,8 +1783,10 @@ module Term_of_Llair = struct
     f (uap1 (Unsigned bits) (exp a)) (uap1 (Unsigned bits) (exp b))
 
   and usap_ttf (f : exp -> exp -> fml) typ a b = `Fml (usap_ttt f typ a b)
+
   and ap_ttt : 'a. (exp -> exp -> 'a) -> _ -> _ -> 'a =
    fun f a b -> f (exp a) (exp b)
+
   and ap_ttf (f : exp -> exp -> fml) a b = `Fml (ap_ttt f a b)
 
   and ap_fff (f : fml -> fml -> fml) a b =
@@ -1873,7 +1876,7 @@ module Term_of_Llair = struct
     | ApN (Record, _, elts) ->
         let init = uap0 EmptyRecord in
         IArray.foldi ~init elts ~f:(fun i rcd e ->
-            update ~rcd ~idx:(integer (Z.of_int i)) ~elt:(exp e) )
+            update ~rcd ~idx:(integer (Z.of_int i)) ~elt:(exp e))
     | RecRecord (i, _) -> uap0 (RecRecord i)
     | Ap1 (Splat, _, byt) -> splat (exp byt)
 end
@@ -1892,5 +1895,5 @@ module Var_of_Llair = struct
 
   let regs =
     Llair.Reg.Set.fold ~init:Var.Set.empty ~f:(fun s r ->
-        Var.Set.add s (reg r) )
+        Var.Set.add s (reg r))
 end

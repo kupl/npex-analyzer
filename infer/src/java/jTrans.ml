@@ -37,7 +37,7 @@ let get_start_location_heuristics =
         let next_char_idx = i + String.length name in
         if next_char_idx < String.length line then
           match line.[next_char_idx] with ' ' | '<' | '(' -> true | _ -> false
-        else false )
+        else false)
   in
   let line_reader = lazy (LineReader.create ()) in
   let rec find_proc_loc_backward name ~lines_to_find loc =
@@ -151,7 +151,7 @@ let translate_locals program tenv formals bytecode jbir_code =
           ~f:(fun accu (_, _, var_name, var_type, _) ->
             let var = Mangled.from_string var_name
             and typ = JTransType.value_type program tenv var_type in
-            collect accu (var, typ) )
+            collect accu (var, typ))
           ~init variable_table
   in
   (* TODO (#4040807): Needs to add the JBir temporary variables since other parts of the
@@ -160,7 +160,7 @@ let translate_locals program tenv formals bytecode jbir_code =
     Array.fold
       ~f:(fun accu jbir_var ->
         let var = Mangled.from_string (JBir.var_name_g jbir_var) in
-        collect accu (var, Typ.void) )
+        collect accu (var, Typ.void))
       ~init:with_bytecode_vars (JBir.vars jbir_code)
   in
   snd with_jbir_vars
@@ -271,7 +271,7 @@ let get_bytecode cm =
             | JCode.OpInvoke (`Dynamic _, ms) ->
                 JCode.OpInvoke (`Static (`Class, JBasics.java_lang_object), ms)
             | opcode ->
-                opcode )
+                opcode)
           bytecode.JCode.c_code
       in
       {bytecode with JCode.c_code}
@@ -436,9 +436,8 @@ let create_cm_procdesc source_file program icfg cm proc_name =
     let formals = translate_formals program tenv cn jbir_code in
     let locals_ = translate_locals program tenv formals bytecode jbir_code in
     let locals =
-      List.map locals_ ~f:(fun (name, typ) ->
-          ( {name; typ; modify_in_block= false; is_constexpr= false; is_declared_unused= false}
-            : ProcAttributes.var_data ) )
+      List.map locals_ ~f:(fun (name, typ) : ProcAttributes.var_data ->
+          {name; typ; modify_in_block= false; is_constexpr= false; is_declared_unused= false})
     in
     let method_annotation = JAnnotation.translate_method cm.Javalib.cm_annotations in
     let proc_attributes =
@@ -686,7 +685,7 @@ let method_invocation (context : JContext.t) loc pc var_opt cn ms sil_obj_opt ex
     List.fold
       ~f:(fun (instrs_accu, args_accu) expr ->
         let instrs, sil_expr, sil_expr_type = expression context pc expr in
-        (instrs_accu @ instrs, args_accu @ [(sil_expr, sil_expr_type)]) )
+        (instrs_accu @ instrs, args_accu @ [(sil_expr, sil_expr_type)]))
       ~init expr_list
   in
   let callee_procname =

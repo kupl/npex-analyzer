@@ -96,7 +96,7 @@ let get_user_defined_class_if_anonymous_inner {package; classname} =
           None
       | list ->
           (* Assemble back all pieces together *)
-          Some {package; classname= String.concat ~sep:"$" list} )
+          Some {package; classname= String.concat ~sep:"$" list})
 
 
 let is_anonymous_inner_class_name t = get_user_defined_class_if_anonymous_inner t |> is_some

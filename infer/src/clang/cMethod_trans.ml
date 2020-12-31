@@ -185,7 +185,7 @@ let find_sentinel_attribute attrs =
     | `SentinelAttr (_attr_info, {Clang_ast_t.sai_sentinel= sentinel; sai_null_pos= null_pos}) ->
         Some (sentinel, null_pos)
     | _ ->
-        None )
+        None)
 
 
 (** Creates a procedure description. *)

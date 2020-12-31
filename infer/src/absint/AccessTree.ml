@@ -186,7 +186,7 @@ module Make (TraceDomain : AbstractDomain.WithBottom) (Config : Config) = struct
               try
                 let rhs_v = AccessMap.find k rhs_subtree in
                 access_tree_lteq lhs_v rhs_v
-              with Caml.Not_found -> false )
+              with Caml.Not_found -> false)
             lhs_subtree
       | _, Star ->
           true
@@ -202,7 +202,7 @@ module Make (TraceDomain : AbstractDomain.WithBottom) (Config : Config) = struct
           try
             let rhs_v = BaseMap.find k rhs in
             access_tree_lteq lhs_v rhs_v
-          with Caml.Not_found -> false )
+          with Caml.Not_found -> false)
         lhs
 
 

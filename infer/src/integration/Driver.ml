@@ -111,7 +111,7 @@ let capture_with_compilation_database db_files =
       | `Escaped fname ->
           `Escaped (Utils.filename_to_absolute ~root fname)
       | `Raw fname ->
-          `Raw (Utils.filename_to_absolute ~root fname) ) ;
+          `Raw (Utils.filename_to_absolute ~root fname)) ;
   let compilation_database = CompilationDatabase.from_json_files !Config.clang_compilation_dbs in
   CaptureCompilationDatabase.capture_files_in_database compilation_database
 
@@ -202,7 +202,7 @@ let report ?(suppress_console = false) () =
   if not Config.buck_cache_mode then (
     (* Create a dummy bugs.txt file for backwards compatibility. TODO: Stop doing that one day. *)
     Utils.with_file_out (Config.results_dir ^/ "bugs.txt") ~f:(fun outc ->
-        Out_channel.output_string outc "The contents of this file have moved to report.txt.\n" ) ;
+        Out_channel.output_string outc "The contents of this file have moved to report.txt.\n") ;
     TextReport.create_from_json
       ~quiet:(Config.quiet || suppress_console)
       ~console_limit:Config.report_console_limit ~report_txt:(ResultsDir.get_path ReportText)
@@ -283,7 +283,7 @@ let analyze_and_report ?suppress_console_report ~changed_files mode =
 
 let analyze_and_report ?suppress_console_report ~changed_files mode =
   ScubaLogging.execute_with_time_logging "analyze_and_report" (fun () ->
-      analyze_and_report ?suppress_console_report ~changed_files mode )
+      analyze_and_report ?suppress_console_report ~changed_files mode)
 
 
 (** as the Config.fail_on_bug flag mandates, exit with error when an issue is reported *)

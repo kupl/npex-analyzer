@@ -64,7 +64,7 @@ let is_def_unique_and_satisfy tenv var (loop_nodes : LoopNodes.t) ~is_pure_by_de
                && (* check if all params are invariant *)
                List.for_all ~f:(fun (exp, _) -> is_exp_invariant exp) args
            | _ ->
-               false )
+               false)
   | _ ->
       false
 
@@ -73,7 +73,7 @@ let is_exp_invariant inv_vars invalidated_vars loop_nodes reaching_defs exp =
   Var.get_all_vars_in_exp exp
   |> Sequence.for_all ~f:(fun var ->
          (not (InvalidatedVars.mem var invalidated_vars))
-         && (InvariantVars.mem var inv_vars || is_defined_outside loop_nodes reaching_defs var) )
+         && (InvariantVars.mem var inv_vars || is_defined_outside loop_nodes reaching_defs var))
 
 
 let get_vars_in_loop loop_nodes =
@@ -97,14 +97,14 @@ let get_vars_in_loop loop_nodes =
                    ~init:(VarsInLoop.add (Var.of_id ret_id) acc)
                    ~f:(fun acc (arg_exp, _) ->
                      Var.get_all_vars_in_exp arg_exp
-                     |> Sequence.fold ~init:acc ~f:(fun acc var -> VarsInLoop.add var acc) )
+                     |> Sequence.fold ~init:acc ~f:(fun acc var -> VarsInLoop.add var acc))
                    args
              | Sil.Prune (exp, _, _, _) ->
                  Var.get_all_vars_in_exp exp
                  |> Sequence.fold ~init:acc ~f:(fun acc var -> VarsInLoop.add var acc)
              | _ ->
-                 acc )
-           ~init:acc )
+                 acc)
+           ~init:acc)
     loop_nodes VarsInLoop.empty
 
 
@@ -129,7 +129,7 @@ let get_ptr_vars_in_defn_path node loop_head var =
         |> Sequence.fold ~init ~f:(fun acc rhs_var ->
                List.fold_left ~init:(InvalidatedVars.add rhs_var acc)
                  ~f:(fun acc node -> InvalidatedVars.union (aux node rhs_var processed_pairs') acc)
-                 node_list )
+                 node_list)
       in
       Procdesc.Node.get_instrs node
       |> Instrs.fold ~init:InvalidatedVars.empty ~f:(fun acc instr ->
@@ -141,7 +141,7 @@ let get_ptr_vars_in_defn_path node loop_head var =
                when Var.equal var (Var.of_pvar pvar) && is_non_primitive typ ->
                  invalidate_exp exp_rhs acc
              | _ ->
-                 acc )
+                 acc)
   in
   aux node var ProcessedPairSet.empty
 
@@ -157,8 +157,8 @@ let get_vars_to_invalidate node loop_head args modified_params invalidated_vars 
                if is_non_primitive typ then
                  let dep_vars = get_ptr_vars_in_defn_path node loop_head var in
                  InvalidatedVars.union dep_vars (InvalidatedVars.add var acc)
-               else acc ) )
-      else acc )
+               else acc) )
+      else acc)
     args
 
 
@@ -182,7 +182,7 @@ let all_unmodeled_modified tenv loop_nodes ~get_callee_purity =
                  debug "Invalidate unmodeled %a \n" Ident.pp id ;
                  InvalidatedVars.add (Var.of_id id) acc
              | _ ->
-                 acc ) )
+                 acc))
     loop_nodes InvalidatedVars.empty
 
 
@@ -217,7 +217,7 @@ let get_invalidated_vars_in_loop tenv loop_head ~is_pure_by_default ~get_callee_
                          get_vars_to_invalidate node loop_head args modified_params
                            (InvalidatedVars.add (Var.of_id id) acc)) )
              | _ ->
-                 acc ) )
+                 acc))
     loop_nodes InvalidatedVars.empty
 
 
@@ -246,9 +246,9 @@ let get_inv_vars_in_loop tenv reaching_defs_invariant_map ~is_pure_by_default ~g
                         ~get_callee_purity
                         (is_exp_invariant inv_vars invalidated_vars loop_nodes reaching_defs)
                     then (InvariantVars.add var inv_vars, true)
-                    else (inv_vars, false) )
+                    else (inv_vars, false))
              |> Option.value (* if a var is not declared, it must be invariant *)
-                  ~default:(inv_vars, false) )
+                  ~default:(inv_vars, false))
       |> Option.value ~default:(inv_vars, false)
   in
   let vars_in_loop = get_vars_in_loop loop_nodes in
@@ -262,7 +262,7 @@ let get_inv_vars_in_loop tenv reaching_defs_invariant_map ~is_pure_by_default ~g
       InvariantVars.fold
         (fun var (inv_vars, is_mod) ->
           let inv_vars', is_mod' = process_var_once var inv_vars invalidated_vars in
-          (inv_vars', is_mod || is_mod') )
+          (inv_vars', is_mod || is_mod'))
         vars_in_loop (inv_vars, false)
     in
     if modified then find_fixpoint inv_vars' else inv_vars'
@@ -288,5 +288,5 @@ let get_loop_inv_var_map tenv get_callee_purity reaching_defs_invariant_map loop
       L.(debug Analysis Medium)
         "@\n>>> loop head: %a --> inv vars: %a @\n" Procdesc.Node.pp loop_head InvariantVars.pp
         inv_vars_in_loop ;
-      LoopHeadToInvVars.add loop_head inv_vars_in_loop inv_map )
+      LoopHeadToInvVars.add loop_head inv_vars_in_loop inv_map)
     loop_head_to_loop_nodes LoopHeadToInvVars.empty

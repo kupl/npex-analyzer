@@ -62,22 +62,22 @@ let formals_actuals_new_set map =
                 {formal_type= (Pvar.build_formal_from_pvar var, typ); formal_annot= Annot.Item.empty}
               in
               let formal_actual = {formal= formal_annot; actual= (exp, typ)} in
-              FormalsActualsSet.add formal_actual set )
+              FormalsActualsSet.add formal_actual set)
       | actual ->
-          FormalsActualsSet.add {formal; actual} set )
+          FormalsActualsSet.add {formal; actual} set)
     map FormalsActualsSet.empty
 
 
 let formals_annots_actuals_lists new_formals_actuals =
   FormalsActualsSet.fold
     (fun {formal; actual} (fs, ans, acts) ->
-      (formal.formal_type :: fs, formal.formal_annot :: ans, actual :: acts) )
+      (formal.formal_type :: fs, formal.formal_annot :: ans, actual :: acts))
     new_formals_actuals ([], [], [])
 
 
 let has_closure actual_params =
   List.exists actual_params ~f:(fun (exp, _) ->
-      match exp with Exp.Closure c -> Procname.is_objc_block c.name | _ -> false )
+      match exp with Exp.Closure c -> Procname.is_objc_block c.name | _ -> false)
 
 
 let should_specialize actual_params call_flags =
@@ -94,7 +94,7 @@ let pname_with_closure_args callee_pname actual_params =
       | Exp.Closure cl, _ when Procname.is_objc_block cl.name ->
           Some (Procname.block_of_procname cl.name)
       | _ ->
-          None )
+          None)
   in
   Procname.with_block_parameters callee_pname block_args
 
@@ -111,7 +111,7 @@ let formals_closures_map map =
           in
           Mangled.Map.add (fst formal.formal_type) (closure.name, captured_as_formals) new_map
       | _ ->
-          new_map )
+          new_map)
     map Mangled.Map.empty
 
 

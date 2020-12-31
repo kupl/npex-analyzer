@@ -50,4 +50,4 @@ let write ~xml_path ~json_path =
   %a
 </pmd>@.|} '<' pp_current_date_and_time
         (Pp.seq ~sep:"\n" pp_xml_issue_filter)
-        report )
+        report)

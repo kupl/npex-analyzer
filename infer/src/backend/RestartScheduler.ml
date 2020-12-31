@@ -41,7 +41,7 @@ let make sources =
   in
   let pname_targets =
     List.fold sources ~init:[] ~f:(fun init source ->
-        SourceFiles.proc_names_of_source source |> List.fold ~init ~f:cons_proc_uid_work )
+        SourceFiles.proc_names_of_source source |> List.fold ~init ~f:cons_proc_uid_work)
   in
   let make_file_work file =
     incr target_count ;
@@ -93,7 +93,7 @@ let unlock_all () =
       | None ->
           add_to_useful_exe_duration callees_useful ;
           add_to_total_time start ) ;
-      ProcLocker.unlock pname )
+      ProcLocker.unlock pname)
 
 
 let lock_exn pname =
@@ -103,7 +103,7 @@ let lock_exn pname =
         unlock_all () ;
         raise
           (TaskSchedulerTypes.ProcnameAlreadyLocked {dependency_filename= Procname.to_filename pname})
-        ) )
+        ))
 
 
 let unlock pname =
@@ -123,7 +123,7 @@ let unlock pname =
           | None ->
               add_to_useful_time start ;
               add_to_total_time start ) ;
-          ProcLocker.unlock pname )
+          ProcLocker.unlock pname)
 
 
 let setup () = if_restart_scheduler ProcLocker.setup

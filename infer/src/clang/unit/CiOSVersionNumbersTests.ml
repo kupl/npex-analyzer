@@ -21,7 +21,7 @@ let test_correct_ios_version =
   ; ("test_correct_ios_version_2", "478.230001", Some "2.0")
   ; ("test_correct_ios_version_smaller", "1.49", None) ]
   |> List.map ~f:(fun (name, test_input, expected_output) ->
-         name >:: create_test test_input expected_output )
+         name >:: create_test test_input expected_output)
 
 
 let tests = "cios_version_numbers_suite" >::: test_correct_ios_version

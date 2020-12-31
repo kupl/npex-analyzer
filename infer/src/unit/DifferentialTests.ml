@@ -35,7 +35,7 @@ let test_diff_keeps_duplicated_hashes =
   let hashes_found =
     List.fold ~init:0
       ~f:(fun acc (i : Jsonbug_t.jsonbug) ->
-        if String.equal i.Jsonbug_t.hash "2" then acc + 1 else acc )
+        if String.equal i.Jsonbug_t.hash "2" then acc + 1 else acc)
       diff.introduced
   in
   let pp_diff fmt (expected, actual) =

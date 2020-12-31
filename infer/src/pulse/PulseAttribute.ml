@@ -109,35 +109,35 @@ module Attributes = struct
     Set.find_rank attrs Attribute.invalid_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.Invalid (invalidation, trace)) = attr in
-           (invalidation, trace) )
+           (invalidation, trace))
 
 
   let get_must_be_valid attrs =
     Set.find_rank attrs Attribute.must_be_valid_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.MustBeValid action) = attr in
-           action )
+           action)
 
 
   let get_written_to attrs =
     Set.find_rank attrs Attribute.written_to_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.WrittenTo action) = attr in
-           action )
+           action)
 
 
   let get_closure_proc_name attrs =
     Set.find_rank attrs Attribute.closure_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.Closure proc_name) = attr in
-           proc_name )
+           proc_name)
 
 
   let get_address_of_stack_variable attrs =
     Set.find_rank attrs Attribute.address_of_stack_variable_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.AddressOfStackVariable (var, loc, history)) = attr in
-           (var, loc, history) )
+           (var, loc, history))
 
 
   let is_end_of_collection attrs =
@@ -157,14 +157,14 @@ module Attributes = struct
     Set.find_rank attrs Attribute.allocated_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.Allocated (procname, trace)) = attr in
-           (procname, trace) )
+           (procname, trace))
 
 
   let get_dynamic_type attrs =
     Set.find_rank attrs Attribute.dynamic_type_rank
     |> Option.map ~f:(fun attr ->
            let[@warning "-8"] (Attribute.DynamicType typ) = attr in
-           typ )
+           typ)
 
 
   include Set

@@ -47,6 +47,6 @@ let protect ~f ~recover ~pp_context =
       let trace = Backtrace.get () in
       IExn.reraise_if exn ~f:(fun () ->
           L.internal_error "%a: %a@\n%!" pp_context () Exn.pp exn ;
-          not Config.keep_going ) ;
+          not Config.keep_going) ;
       log_and_recover ~print:true "Frontend error: %a@\nBacktrace:@\n%s" Exn.pp exn
         (Backtrace.to_string trace)

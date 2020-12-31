@@ -213,7 +213,7 @@ module Trace = struct
       | Call {callee; location; from; callee_trace} ->
           make_err_trace ~depth:(depth + 1) callee_trace acc ~cont:(fun acc ->
               let acc = Errlog.make_trace_element depth location (call_desc callee) [] :: acc in
-              make_err_trace ~depth from acc ~cont )
+              make_err_trace ~depth from acc ~cont)
     in
     make_err_trace ~depth:0 x [] ~cont:Fn.id
 end
@@ -245,7 +245,7 @@ module StartedMarkers = struct
       iter
         (fun marker _trace ->
           if !is_first then is_first := false else F.fprintf f ",@ " ;
-          Marker.pp f marker )
+          Marker.pp f marker)
         x ;
       F.fprintf f " }@]" )
 
@@ -253,7 +253,7 @@ module StartedMarkers = struct
   let add_trace new_trace location x =
     map
       (fun ({trace} as trace_with_reported) ->
-        {trace_with_reported with trace= Trace.add_elem new_trace location trace} )
+        {trace_with_reported with trace= Trace.add_elem new_trace location trace})
       x
 
 
@@ -274,7 +274,7 @@ module StartedMarkers = struct
         | None, Some config_check_trace ->
             add_call {TraceWithReported.trace= config_check_trace; reported= false}
         | Some callee_trace, _ ->
-            add_call callee_trace )
+            add_call callee_trace)
       callee caller
 
 
@@ -453,7 +453,7 @@ module Dom = struct
   let call_marker_start_id id location ({mem} as astate) =
     Mem.get_markers_opt (Loc.of_id id) mem
     |> Option.value_map ~default:astate ~f:(fun markers ->
-           call_marker_start markers location astate )
+           call_marker_start markers location astate)
 
 
   let call_marker_end markers ({context} as astate) =
@@ -505,7 +505,7 @@ module Dom = struct
     let mem =
       Mem.find_opt (Loc.of_ret callee) callee_mem
       |> Option.value_map ~default:caller_mem ~f:(fun ret_v ->
-             Mem.add (Loc.of_id ret_id) ret_v caller_mem )
+             Mem.add (Loc.of_id ret_id) ret_v caller_mem)
     in
     let context =
       Context.instantiate_callee ~callee_pname:callee location ~callee_context ~caller_context
@@ -525,7 +525,7 @@ module Dom = struct
           let trace =
             Trace.add_call callee location ~from:Trace.Empty ~callee_trace:config_check_trace
           in
-          ConfigChecks.weak_add config {context; trace} location acc )
+          ConfigChecks.weak_add config {context; trace} location acc)
         callee_config_checks caller_config_checks
     in
     {mem; context; config_checks}
@@ -593,7 +593,7 @@ module TransferFunctions = struct
     | Call (_, Const (Cfun callee), (Lvar pvar, _) :: (e, _) :: _, _, _)
       when FbGKInteraction.is_config_load callee ->
         Option.value_map (FbGKInteraction.get_config e) ~default:astate ~f:(fun config ->
-            Dom.load_constant_config (Loc.of_pvar pvar) config astate )
+            Dom.load_constant_config (Loc.of_pvar pvar) config astate)
     | Store {e1= Lvar pvar; e2= Exp.Var id} ->
         Dom.store_config pvar id astate
     | Store {e1; e2= Const (Const.Cint marker)} ->
@@ -602,7 +602,7 @@ module TransferFunctions = struct
       when FbGKInteraction.is_marker_start_java tenv callee ->
         get_marker_from_java_param e mem
         |> Option.value_map ~default:astate ~f:(fun markers ->
-               Dom.call_marker_start markers location astate )
+               Dom.call_marker_start markers location astate)
     | Call (_, Const (Cfun callee), _ :: (e, _) :: _, _, _)
       when FbGKInteraction.is_marker_end_java tenv callee ->
         get_marker_from_java_param e mem
@@ -622,8 +622,7 @@ module TransferFunctions = struct
       | None ->
           Option.value_map (analyze_dependency callee) ~default:astate
             ~f:(fun (_, callee_summary) ->
-              Dom.instantiate_callee analysis_data ret_id ~callee ~callee_summary location astate )
-      )
+              Dom.instantiate_callee analysis_data ret_id ~callee ~callee_summary location astate) )
     | _ ->
         astate
 

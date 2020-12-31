@@ -23,7 +23,7 @@ module Reverse = struct
   let add k v rm =
     M.update k
       (function
-        | None -> Some (false, VarSet.singleton v) | Some (_, s) -> Some (false, VarSet.add v s) )
+        | None -> Some (false, VarSet.singleton v) | Some (_, s) -> Some (false, VarSet.add v s))
       rm
 
 
@@ -66,7 +66,7 @@ let add id ap {resolve; reverse} =
   let resolve = IdAccessPathMapDomain.add id ap resolve in
   let reverse =
     HilExp.AccessExpression.fold_vars ap ~init:reverse ~f:(fun acc var_in_ap ->
-        Reverse.add var_in_ap id acc )
+        Reverse.add var_in_ap id acc)
   in
   {resolve; reverse}
 
@@ -86,7 +86,7 @@ let exit_scope id bindings =
           ~f:(fun (reverse, vars) var_in_ap ->
             let reverse, dead = Reverse.remove var_in_ap id reverse in
             let vars = if dead then var_in_ap :: vars else vars in
-            (reverse, vars) )
+            (reverse, vars))
       in
       ({resolve; reverse}, vars)
 

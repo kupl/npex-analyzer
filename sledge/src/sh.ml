@@ -101,7 +101,7 @@ let rec var_strength_ xs m q =
     fold_vars_stem ~ignore_ctx:() q ~init:m ~f:(fun m var ->
         if not (Var.Set.mem xs var) then
           Var.Map.set m ~key:var ~data:`Universal
-        else add m var )
+        else add m var)
   in
   let m =
     List.fold ~init:m_stem q.djns ~f:(fun m djn ->
@@ -111,15 +111,15 @@ let rec var_strength_ xs m q =
                 match (s1, s2) with
                 | `Anonymous, `Anonymous -> `Anonymous
                 | `Universal, _ | _, `Universal -> `Universal
-                | `Existential, _ | _, `Existential -> `Existential ) )
-        |> Option.value ~default:m )
+                | `Existential, _ | _, `Existential -> `Existential))
+        |> Option.value ~default:m)
   in
   (m_stem, m)
 
 let var_strength ?(xs = Var.Set.empty) q =
   let m =
     Var.Set.fold xs ~init:Var.Map.empty ~f:(fun m x ->
-        Var.Map.set m ~key:x ~data:`Existential )
+        Var.Map.set m ~key:x ~data:`Existential)
   in
   var_strength_ xs m q
 
@@ -130,7 +130,7 @@ let pp_seg x fs {loc; bas; len; siz; seq} =
   Format.fprintf fs "@[<2>%a@ @[@[-[%a)->@]@ %a@]@]" term_pp loc
     (fun fs (bas, len) ->
       if (not (Term.equal loc bas)) || not (Term.equal len siz) then
-        Format.fprintf fs " %a, %a " term_pp bas term_pp len )
+        Format.fprintf fs " %a, %a " term_pp bas term_pp len)
     (bas, len) (pp_chunk x) (siz, seq)
 
 let pp_seg_norm ctx fs seg =
@@ -149,7 +149,7 @@ let pp_block x fs segs =
             List.fold segs ~init:(Some Z.zero) ~f:(fun len seg ->
                 match (len, Term.d_int seg.siz) with
                 | Some len, Some data -> Some (Z.add len data)
-                | _ -> None )
+                | _ -> None)
           with
           | Some blk_len -> Z.equal data blk_len
           | _ -> false )
@@ -165,7 +165,7 @@ let pp_block x fs segs =
       Format.fprintf fs "@[<2>%a@ @[@[-[%t)->@]@ @[%a@]@]@]" term_pp loc
         (fun fs ->
           if not (is_full_alloc segs) then
-            Format.fprintf fs " %a, %a " term_pp bas term_pp len )
+            Format.fprintf fs " %a, %a " term_pp bas term_pp len)
         pp_chunks segs
   | [] -> ()
 
@@ -249,7 +249,7 @@ and pp_djn ?var_strength vs xs ctx fs = function
              in
              Format.fprintf fs "@[<hv 1>(%a)@]"
                (pp_ ?var_strength vs (Var.Set.union xs sjn.xs) ctx)
-               sjn ))
+               sjn))
         djn
 
 let pp_diff_eq ?(us = Var.Set.empty) ?(xs = Var.Set.empty) ctx fs q =
@@ -300,7 +300,7 @@ let rec invariant q =
     List.iter djns ~f:(fun djn ->
         List.iter djn ~f:(fun sjn ->
             assert (Var.Set.is_subset sjn.us ~of_:(Var.Set.union us xs)) ;
-            invariant sjn ) )
+            invariant sjn))
   with exc ->
     [%Trace.info "%a" pp q] ;
     raise exc
@@ -314,7 +314,7 @@ let rec apply_subst sub q =
     ~f_ctx:(fun r -> Context.rename r sub)
     ~f_trm:(Term.rename sub) ~f_fml:(Formula.rename sub)
   |> check (fun q' ->
-         assert (Var.Set.disjoint (fv q') (Var.Subst.domain sub)) )
+         assert (Var.Set.disjoint (fv q') (Var.Subst.domain sub)))
 
 and rename_ Var.Subst.{sub; dom; rng} q =
   [%Trace.call fun {pf} ->
@@ -526,7 +526,7 @@ let pure (p : Formula.t) =
     ~f:(fun q (xs, pure, ctx) ->
       let us = Formula.fv pure in
       if Context.is_unsat ctx then extend_us us q
-      else or_ q (exists_fresh xs {emp with us; ctx; pure}) )
+      else or_ q (exists_fresh xs {emp with us; ctx; pure}))
   |>
   [%Trace.retn fun {pf} q ->
     pf "%a" pp q ;
@@ -552,7 +552,7 @@ let subst sub q =
     Var.Subst.fold sub ~init:(Var.Set.empty, Formula.tt)
       ~f:(fun var trm (dom, eqs) ->
         ( Var.Set.add dom var
-        , Formula.and_ (Formula.eq (Term.var var) (Term.var trm)) eqs ) )
+        , Formula.and_ (Formula.eq (Term.var var) (Term.var trm)) eqs ))
   in
   exists dom (and_ eqs q)
   |>
@@ -586,7 +586,7 @@ let rec pure_approx q =
     List.fold ~init q.heap ~f:(fun p seg -> Formula.dq0 seg.loc :: p)
     |> fun init ->
     List.fold ~init q.djns ~f:(fun p djn ->
-        Formula.orN (List.map djn ~f:pure_approx) :: p ) )
+        Formula.orN (List.map djn ~f:pure_approx) :: p) )
 
 let pure_approx q =
   [%Trace.call fun {pf} -> pf "%a" pp q]
@@ -611,7 +611,7 @@ let fold_dnf ~conj ~disj sjn (xs, conjuncts) disjuncts =
     match Iter.pop pending_splits with
     | Some (split, pending_splits) ->
         List.fold split ~init:disjuncts ~f:(fun disjuncts sjn ->
-            add_disjunct pending_splits sjn (xs, conjuncts) disjuncts )
+            add_disjunct pending_splits sjn (xs, conjuncts) disjuncts)
     | None -> disj (xs, conjuncts) disjuncts
   in
   add_disjunct Iter.empty sjn (xs, conjuncts) disjuncts
@@ -668,7 +668,7 @@ let rec freshen_nested_xs q =
               freshen_nested_xs (exists (Var.Set.inter xs_sink dj.us) dj)
             in
             let xs_below' = Var.Set.union xs_below dj'.xs in
-            (xs_below', dj') ) )
+            (xs_below', dj')))
   in
   (* rename xs to miss all xs in subformulas *)
   freshen_xs {q with xs; djns} ~wrt:(Var.Set.union q.us xs_below)
@@ -694,7 +694,7 @@ let rec propagate_context_ ancestor_vs ancestor_ctx q =
          let dj_ctxs, djn =
            List.rev_map_unzip djn ~f:(fun dj ->
                let dj = propagate_context_ ancestor_vs ancestor_ctx dj in
-               (dj.ctx, dj) )
+               (dj.ctx, dj))
          in
          let new_xs, djn_ctx = Context.interN ancestor_vs dj_ctxs in
          (* hoist xs appearing in disjunction's context *)
@@ -702,7 +702,7 @@ let rec propagate_context_ ancestor_vs ancestor_ctx q =
          let djn = List.map ~f:(elim_exists djn_xs) djn in
          let ctx_djn = and_ctx_ djn_ctx (orN djn) in
          assert (is_false ctx_djn || Var.Set.is_subset new_xs ~of_:djn_xs) ;
-         star (exists djn_xs ctx_djn) q' ))
+         star (exists djn_xs ctx_djn) q'))
   |>
   [%Trace.retn fun {pf} q' ->
     pf "%a" pp q' ;
@@ -735,7 +735,7 @@ let remove_absent_xs ks q =
                 { sjn with
                   us= Var.Set.diff sjn.us ks
                 ; ctx= Context.elim ks sjn.ctx
-                ; djns= trim_ks ks sjn.djns } ) )
+                ; djns= trim_ks ks sjn.djns }))
       in
       trim_ks ks q.djns
     in
@@ -751,7 +751,7 @@ let rec simplify_ us rev_xss q =
       (starN
          ( {q with us= Var.Set.union q.us q.xs; xs= emp.xs; djns= []}
          :: List.map q.djns ~f:(fun djn ->
-                orN (List.map djn ~f:(fun sjn -> simplify_ us rev_xss sjn)) )
+                orN (List.map djn ~f:(fun sjn -> simplify_ us rev_xss sjn)))
          ))
   in
   (* try to solve equations in ctx for variables in xss *)

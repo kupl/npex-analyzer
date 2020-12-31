@@ -36,7 +36,7 @@ let string_len_range_itv model_env exp ~from mem =
         BufferOverrunSemantics.eval integer_type_widths start_exp mem
         |> BufferOverrunDomain.Val.get_itv
       in
-      Itv.minus itv start_itv )
+      Itv.minus itv start_itv)
   |> Itv.set_lb_zero
 
 
@@ -95,4 +95,4 @@ let get_nodes_in_autoreleasepool cfg =
       | Some block_exit ->
           get_nodes_in_block ~block_start:node ~block_exit |> Procdesc.NodeSet.union acc )
     | _ ->
-        acc )
+        acc)

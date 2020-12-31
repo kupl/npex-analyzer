@@ -118,7 +118,7 @@ exception Contradiction
 let and_bo_itv_callee bo_itvs subst_ref itv_callee =
   match
     Itv.ItvPure.subst itv_callee (fun symb bound ->
-        AbstractDomain.Types.NonBottom (eval_sym_of_subst bo_itvs subst_ref symb bound) )
+        AbstractDomain.Types.NonBottom (eval_sym_of_subst bo_itvs subst_ref symb bound))
   with
   | NonBottom itv' ->
       itv'
@@ -135,7 +135,7 @@ let and_bo_itvs_callee subst bo_itvs_caller bo_itvs_callee =
         (* TODO: it could be that the same value already had a binding; in that case we want to
            "and" the intervals *)
         let bo_itvs = BoItvs.add v_caller bo_itv bo_itvs in
-        (subst, bo_itvs) )
+        (subst, bo_itvs))
       bo_itvs_callee (subst, BoItvs.empty)
   in
   let subst_ref = ref subst in
@@ -148,7 +148,7 @@ let and_bo_itvs_callee subst bo_itvs_caller bo_itvs_callee =
         | Some _, None ->
             bo_itv
         | _, Some bo_itv_callee ->
-            Some (and_bo_itv_callee bo_itvs_caller subst_ref bo_itv_callee) )
+            Some (and_bo_itv_callee bo_itvs_caller subst_ref bo_itv_callee))
       bo_itvs_caller bo_itvs_callee_renamed
   in
   (!subst_ref, bo_itvs')
@@ -172,7 +172,7 @@ let and_citvs_callee subst citvs_caller citvs_callee =
         (* TODO: it could be that the same value already had a binding if several variables from the
            callee map to the same caller variable; in that case we want to "and" the intervals *)
         let citvs = CItvs.add v_caller citv citvs in
-        (subst, citvs) )
+        (subst, citvs))
       citvs_callee (subst, CItvs.empty)
   in
   let citvs' =
@@ -290,7 +290,7 @@ let prune_bo_with_bop ~negated v_opt arith bop arith' phi =
   match
     Option.both v_opt (if negated then Binop.negate bop else Some bop)
     |> Option.map ~f:(fun (v, positive_bop) ->
-           (v, Itv.ItvPure.prune_binop positive_bop arith arith') )
+           (v, Itv.ItvPure.prune_binop positive_bop arith arith'))
   with
   | None ->
       phi
@@ -348,7 +348,7 @@ let prune_binop ~negated bop lhs_op rhs_op ({is_unsat; bo_itvs= _; citvs; formul
         let+ phi = prune_bo_with_bop ~negated value_lhs_opt bo_itv_lhs bop bo_itv_rhs phi in
         let+ phi =
           Option.value_map (Binop.symmetric bop) ~default:phi ~f:(fun bop' ->
-              prune_bo_with_bop ~negated value_rhs_opt bo_itv_rhs bop' bo_itv_lhs phi )
+              prune_bo_with_bop ~negated value_rhs_opt bo_itv_rhs bop' bo_itv_lhs phi)
         in
         match Formula.prune_binop ~negated bop lhs_op rhs_op formula with
         | Unsat ->

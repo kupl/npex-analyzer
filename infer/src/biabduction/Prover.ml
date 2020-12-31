@@ -424,7 +424,7 @@ end = struct
       | Predicates.Estruct (fsel, _), t ->
           let get_field_type f =
             Option.bind t ~f:(fun t' ->
-                Option.map ~f:fst @@ Struct.get_field_type_and_annotation ~lookup f t' )
+                Option.map ~f:fst @@ Struct.get_field_type_and_annotation ~lookup f t')
           in
           List.iter ~f:(fun (f, se) -> strexp_extract (se, get_field_type f)) fsel
       | Predicates.Earray (len, isel, _), t ->
@@ -433,7 +433,7 @@ end = struct
           List.iter
             ~f:(fun (idx, se) ->
               add_lt_minus1_e idx ;
-              strexp_extract (se, elt_t) )
+              strexp_extract (se, elt_t))
             isel
     in
     let hpred_extract = function
@@ -485,7 +485,7 @@ end = struct
         (* [e <= n' <= n |- e <= n] *)
         List.exists
           ~f:(function
-            | e', Exp.Const (Const.Cint n') -> Exp.equal e e' && IntLit.leq n' n | _, _ -> false )
+            | e', Exp.Const (Const.Cint n') -> Exp.equal e e' && IntLit.leq n' n | _, _ -> false)
           leqs
     | Exp.Const (Const.Cint n), e ->
         (* [ n-1 <= n' < e |- n <= e] *)
@@ -494,7 +494,7 @@ end = struct
             | Exp.Const (Const.Cint n'), e' ->
                 Exp.equal e e' && IntLit.leq (n -- IntLit.one) n'
             | _, _ ->
-                false )
+                false)
           lts
     | _ ->
         Exp.equal e1 e2
@@ -510,7 +510,7 @@ end = struct
         (* [n <= n' < e  |- n < e] *)
         List.exists
           ~f:(function
-            | Exp.Const (Const.Cint n'), e' -> Exp.equal e e' && IntLit.leq n n' | _, _ -> false )
+            | Exp.Const (Const.Cint n'), e' -> Exp.equal e e' && IntLit.leq n n' | _, _ -> false)
           lts
     | e, Exp.Const (Const.Cint n) ->
         (* [e <= n' <= n-1 |- e < n] *)
@@ -519,7 +519,7 @@ end = struct
             | e', Exp.Const (Const.Cint n') ->
                 Exp.equal e e' && IntLit.leq n' (n -- IntLit.one)
             | _, _ ->
-                false )
+                false)
           leqs
     | _ ->
         false
@@ -2013,7 +2013,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
                 decrease_indent_when_exception (fun () ->
                     hpred_imply tenv calc_index_frame calc_missing subs
                       (Prop.prop_iter_to_prop tenv iter1'')
-                      sigma2 hpred2 )
+                      sigma2 hpred2)
               in
               L.d_decrease_indent () ;
               res
@@ -2031,7 +2031,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
                 decrease_indent_when_exception (fun () ->
                     hpred_imply tenv calc_index_frame calc_missing subs
                       (Prop.prop_iter_to_prop tenv iter1'')
-                      sigma2 hpred2 )
+                      sigma2 hpred2)
               in
               L.d_decrease_indent () ;
               res
@@ -2049,7 +2049,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
                 decrease_indent_when_exception (fun () ->
                     hpred_imply tenv calc_index_frame calc_missing subs
                       (Prop.prop_iter_to_prop tenv iter1'')
-                      sigma2 hpred2 )
+                      sigma2 hpred2)
               in
               L.d_decrease_indent () ;
               res
@@ -2083,7 +2083,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
               L.d_increase_indent () ;
               let res =
                 decrease_indent_when_exception (fun () ->
-                    sigma_imply tenv calc_index_frame false subs prop1 para_inst2 )
+                    sigma_imply tenv calc_index_frame false subs prop1 para_inst2)
               in
               (* calc_missing is false as we're checking an instantiation of the original list *)
               L.d_decrease_indent () ;
@@ -2115,7 +2115,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
                         with exn when SymOp.exn_not_failure exn ->
                           L.d_strln ~color:Red "backtracking lseg: trying rhs of length exactly 1" ;
                           let _, para_inst3 = Predicates.hpara_instantiate para2 e2_ f2_ elist2 in
-                          sigma_imply tenv calc_index_frame calc_missing subs prop1 para_inst3 )
+                          sigma_imply tenv calc_index_frame calc_missing subs prop1 para_inst3)
                   in
                   L.d_decrease_indent () ;
                   res
@@ -2164,7 +2164,7 @@ let rec hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2 
             L.d_increase_indent () ;
             let res =
               decrease_indent_when_exception (fun () ->
-                  sigma_imply tenv calc_index_frame false subs prop1 para_inst2 )
+                  sigma_imply tenv calc_index_frame false subs prop1 para_inst2)
             in
             (* calc_missing is false as we're checking an instantiation of the original list *)
             L.d_decrease_indent () ;
@@ -2278,7 +2278,7 @@ and sigma_imply tenv calc_index_frame calc_missing subs prop1 sigma2 : subst2 * 
               L.d_increase_indent () ;
               let res =
                 decrease_indent_when_exception (fun () ->
-                    hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2' )
+                    hpred_imply tenv calc_index_frame calc_missing subs prop1 sigma2 hpred2')
               in
               L.d_decrease_indent () ;
               res
@@ -2312,7 +2312,7 @@ and sigma_imply tenv calc_index_frame calc_missing subs prop1 sigma2 : subst2 * 
           L.d_increase_indent () ;
           let res =
             decrease_indent_when_exception (fun () ->
-                sigma_imply tenv calc_index_frame calc_missing subs' prop1' sigma2' )
+                sigma_imply tenv calc_index_frame calc_missing subs' prop1' sigma2')
           in
           L.d_decrease_indent () ;
           res

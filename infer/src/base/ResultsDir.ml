@@ -29,7 +29,7 @@ module RunState = struct
 
   let store () =
     Utils.with_file_out state_file_path ~f:(fun oc ->
-        Runstate_j.string_of_t !state |> Out_channel.output_string oc )
+        Runstate_j.string_of_t !state |> Out_channel.output_string oc)
 
 
   let load_and_validate () =
@@ -41,7 +41,7 @@ module RunState = struct
                "'%s' already exists but it is not an empty directory and it does not look like an \
                 infer results directory:\n\
                \  %s\n\
-                Was it created using an older version of infer?" Config.results_dir err_msg) )
+                Was it created using an older version of infer?" Config.results_dir err_msg))
         msg
     in
     if PolyVariantEqual.(Sys.file_exists state_file_path <> `Yes) then
@@ -99,7 +99,7 @@ let remove_results_dir () =
       Result.iter_error (is_results_dir ~check_correct_version:false ()) ~f:(fun err ->
           L.(die UserError)
             "ERROR: '%s' exists but does not seem to be an infer results directory: %s@\n\
-             ERROR: Please delete '%s' and try again@." Config.results_dir err Config.results_dir ) ;
+             ERROR: Please delete '%s' and try again@." Config.results_dir err Config.results_dir) ;
     Utils.rmtree Config.results_dir ) ;
   RunState.reset ()
 
@@ -120,7 +120,7 @@ let create_results_dir () =
              L.progress "Deleting results dir because --force-delete-results-dir was passed@." ;
              remove_results_dir () )
            else
-             L.die UserError "ERROR: %s@\nPlease remove '%s' and try again" error Config.results_dir ) ;
+             L.die UserError "ERROR: %s@\nPlease remove '%s' and try again" error Config.results_dir) ;
   Unix.mkdir_p Config.results_dir ;
   Unix.mkdir_p (get_path Temporary) ;
   prepare_logging_and_db () ;
@@ -130,10 +130,10 @@ let create_results_dir () =
 let assert_results_dir advice =
   Result.iter_error (is_results_dir ~check_correct_version:true ()) ~f:(fun err ->
       L.(die UserError)
-        "ERROR: No results directory at '%s': %s@\nERROR: %s@." Config.results_dir err advice ) ;
+        "ERROR: No results directory at '%s': %s@\nERROR: %s@." Config.results_dir err advice) ;
   RunState.load_and_validate ()
   |> Result.iter_error ~f:(fun error ->
-         L.die UserError "%s@\nPlease remove '%s' and try again" error Config.results_dir ) ;
+         L.die UserError "%s@\nPlease remove '%s' and try again" error Config.results_dir) ;
   prepare_logging_and_db () ;
   ()
 

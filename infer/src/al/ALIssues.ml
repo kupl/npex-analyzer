@@ -28,7 +28,7 @@ let filter_parsed_linters_developer parsed_linters =
     | Some lint ->
         List.filter
           ~f:(fun (rule : linter) ->
-            String.equal rule.issue_desc.issue_type.IssueType.unique_id lint )
+            String.equal rule.issue_desc.issue_type.IssueType.unique_id lint)
           parsed_linters
   else parsed_linters
 
@@ -404,7 +404,7 @@ let build_macros_map_ macros init_map =
                 "Macro '%s' has more than one definition." (ALVar.formula_id_to_string key)
             else ALVar.FormulaIdMap.add key (false, params, formula) map'
         | _ ->
-            map' )
+            map')
       ~init:init_map macros
   in
   macros_map
@@ -424,7 +424,7 @@ let build_paths_map paths =
           | path_name, paths ->
               if ALVar.VarMap.mem path_name map' then
                 L.(die ExternalError) "Path '%s' has more than one definition." path_name
-              else ALVar.VarMap.add path_name paths map' )
+              else ALVar.VarMap.add path_name paths map')
         ~init:init_map paths
     in
     paths_map
@@ -449,7 +449,7 @@ let expand_checkers macro_map path_map checkers =
               L.(debug Linters Medium) "  -Expanding path@\n" ;
               CPath (black_or_white_list, expand_path paths path_map) :: defs
           | cl ->
-              cl :: defs )
+              cl :: defs)
         ~init:[] c.definitions
     in
     {c with definitions= exp_defs}
@@ -509,8 +509,8 @@ let invoke_set_of_hard_coded_checkers_an context (an : Ctl_parser_types.ast_node
         ~f:(fun issue_desc ->
           if CIssue.should_run_check issue_desc.CIssue.mode then
             fill_issue_desc_info_and_log context ~witness:an ~current_node:an issue_desc
-              issue_desc.CIssue.loc )
-        issue_desc_list )
+              issue_desc.CIssue.loc)
+        issue_desc_list)
     checkers
 
 
@@ -524,7 +524,7 @@ let invoke_set_of_parsed_checkers_an parsed_linters context (an : Ctl_parser_typ
             ()
         | Some witness ->
             let loc = ALUtils.location_from_an context witness in
-            fill_issue_desc_info_and_log context ~witness ~current_node:an linter.issue_desc loc )
+            fill_issue_desc_info_and_log context ~witness ~current_node:an linter.issue_desc loc)
     parsed_linters
 
 

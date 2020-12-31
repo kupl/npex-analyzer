@@ -13,7 +13,7 @@ let scan_model_proc_names () =
   |> SqliteUtils.result_fold_single_column_rows db ~log:"scan model procnames"
        ~init:String.Set.empty ~f:(fun acc proc_uid_sqlite ->
          let[@warning "-8"] (Sqlite3.Data.TEXT proc_uid) = proc_uid_sqlite in
-         String.Set.add acc proc_uid )
+         String.Set.add acc proc_uid)
 
 
 let models_index =

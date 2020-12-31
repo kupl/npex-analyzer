@@ -96,7 +96,7 @@ let make properties =
     Array.of_list (List.concat_map ~f properties)
   in
   Array.iteri transitions ~f:(fun i {source; target; label} ->
-      tt "transition%d %d -> %d on %a@\n" i source target ToplAstOps.pp_label label ) ;
+      tt "transition%d %d -> %d on %a@\n" i source target ToplAstOps.pp_label label) ;
   let outgoing : tindex list array =
     let vcount = Array.length states in
     let a = Array.create ~len:vcount [] in

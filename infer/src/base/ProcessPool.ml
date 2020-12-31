@@ -115,7 +115,7 @@ type 'a boss_message =
 
 let marshal_to_pipe ?file_lock fd x =
   PerfEvent.log (fun logger ->
-      PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"send to pipe" () ) ;
+      PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"send to pipe" ()) ;
   Option.iter file_lock ~f:(fun {Utils.lock} -> lock ()) ;
   Marshal.to_channel fd x [] ;
   (* Channel flush should be inside the critical section. *)
@@ -167,7 +167,7 @@ let wait_for_updates pool buffer =
               really_read file_descr ~buf:buffer ~len:Marshal.header_size ;
               let data_size = Marshal.data_size buffer 0 in
               really_read file_descr ~buf:buffer ~pos:Marshal.header_size ~len:data_size ;
-              Marshal.from_bytes buffer 0 :: msgs_acc )
+              Marshal.from_bytes buffer 0 :: msgs_acc)
         in
         aux messages ~timeout:`Immediately
   in
@@ -176,7 +176,7 @@ let wait_for_updates pool buffer =
 
 let wait_for_updates pool buffer =
   PerfEvent.log (fun logger ->
-      PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"wait for event" () ) ;
+      PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"wait for event" ()) ;
   let update = wait_for_updates pool buffer in
   PerfEvent.(log (fun logger -> log_end_event logger ())) ;
   update
@@ -184,11 +184,11 @@ let wait_for_updates pool buffer =
 
 let killall pool ~slot status =
   Array.iter pool.slots ~f:(fun {pid} ->
-      match Signal.send Signal.term (`Pid pid) with `Ok | `No_such_process -> () ) ;
+      match Signal.send Signal.term (`Pid pid) with `Ok | `No_such_process -> ()) ;
   Array.iter pool.slots ~f:(fun {pid} ->
       try Unix.wait (`Pid pid) |> ignore
       with Unix.Unix_error (ECHILD, _, _) ->
-        (* some children may have died already, it's fine *) () ) ;
+        (* some children may have died already, it's fine *) ()) ;
   ProcessPoolState.has_running_children := false ;
   L.die InternalError "Subprocess %d: %s" slot status
 
@@ -201,7 +201,7 @@ let has_dead_child pool =
      these pre-existing children die they'll get detected here but won't appear in our list of
      workers. Just return [None] in that case. *)
   Array.find_mapi pool.slots ~f:(fun slot {pid} ->
-      if Pid.equal pid dead_pid then Some slot else None )
+      if Pid.equal pid dead_pid then Some slot else None)
   >>| fun slot -> (slot, status)
 
 
@@ -215,7 +215,7 @@ let send_work_to_child pool slot =
   |> Option.iter ~f:(fun x ->
          let {down_pipe} = pool.slots.(slot) in
          pool.children_states.(slot) <- Processing x ;
-         marshal_to_pipe down_pipe (Do x) )
+         marshal_to_pipe down_pipe (Do x))
 
 
 (* this should not be called in any other arch than Linux *)
@@ -253,7 +253,7 @@ let process_updates pool buffer =
   (* abort everything if some child has died unexpectedly *)
   has_dead_child pool
   |> Option.iter ~f:(fun (slot, status) ->
-         killall pool ~slot (Unix.Exit_or_signal.to_string_hum status) ) ;
+         killall pool ~slot (Unix.Exit_or_signal.to_string_hum status)) ;
   wait_for_updates pool buffer
   |> List.iter ~f:(function
        | UpdateStatus (slot, t, status) ->
@@ -275,11 +275,11 @@ let process_updates pool buffer =
                L.die InternalError "Received a Ready message from an idle worker@." ) ;
            TaskBar.set_remaining_tasks pool.task_bar (pool.tasks.remaining_tasks ()) ;
            TaskBar.update_status pool.task_bar ~slot (Mtime_clock.now ()) "idle" ;
-           pool.children_states.(slot) <- Idle ) ;
+           pool.children_states.(slot) <- Idle) ;
   (* try to schedule more work if there are idle workers *)
   if not (pool.tasks.is_empty ()) then
     Array.iteri pool.children_states ~f:(fun slot state ->
-        match state with Idle -> send_work_to_child pool slot | Initializing | Processing _ -> () )
+        match state with Idle -> send_work_to_child pool slot | Initializing | Processing _ -> ())
 
 
 type 'a final_worker_message = Finished of int * 'a option | FinalCrash of int
@@ -302,7 +302,7 @@ let collect_results (pool : (_, 'final, _) t) =
                we receive it we know we should fail hard *)
             killall pool ~slot "see backtrace above"
         | Finished (_slot, data) ->
-            data )
+            data)
 
 
 (** terminate all worker processes *)
@@ -310,7 +310,7 @@ let wait_all pool =
   (* tell each alive worker to go home *)
   Array.iter pool.slots ~f:(fun {down_pipe} ->
       marshal_to_pipe down_pipe GoHome ;
-      Out_channel.close down_pipe ) ;
+      Out_channel.close down_pipe) ;
   let results = collect_results pool in
   (* wait(2) workers one by one; the order doesn't matter since we want to wait for all of them
      eventually anyway. *)
@@ -321,7 +321,7 @@ let wait_all pool =
             errors
         | _pid, (Error _ as status) ->
             (* Collect all children errors and die only at the end to avoid creating zombies. *)
-            (slot, status) :: errors )
+            (slot, status) :: errors)
   in
   ProcessPoolState.has_running_children := false ;
   ( if not (List.is_empty errors) then
@@ -350,7 +350,7 @@ let rec child_loop ~slot send_to_parent send_final receive_from_parent ~f ~epilo
             else (
               (* crash hard, but first let the master know that we have crashed *)
               send_final (FinalCrash slot) ;
-              true ) ) )
+              true )) )
   | Do stuff ->
       let result =
         try f stuff
@@ -363,7 +363,7 @@ let rec child_loop ~slot send_to_parent send_final receive_from_parent ~f ~epilo
               else (
                 (* crash hard, but first let the master know that we have crashed *)
                 send_to_parent (Crash slot) ;
-                true ) ) ;
+                true )) ;
           None
       in
       child_loop ~slot send_to_parent send_final receive_from_parent ~f ~epilogue
@@ -412,7 +412,7 @@ let fork_child ~file_lock ~child_prologue ~slot (updates_r, updates_w) ~f ~epilo
       let orders_ic = Unix.in_channel_of_descr to_child_r in
       let receive_from_parent () =
         PerfEvent.log (fun logger ->
-            PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"receive from pipe" () ) ;
+            PerfEvent.log_begin_event logger ~categories:["sys"] ~name:"receive from pipe" ()) ;
         let x = Marshal.from_channel orders_ic in
         PerfEvent.(log (fun logger -> log_end_event logger ())) ;
         x
@@ -444,14 +444,14 @@ let create :
   let slots =
     Array.init jobs ~f:(fun slot ->
         let child_pipe = List.nth_exn children_pipes slot in
-        fork_child ~file_lock ~child_prologue ~slot child_pipe ~f ~epilogue:child_epilogue )
+        fork_child ~file_lock ~child_prologue ~slot child_pipe ~f ~epilogue:child_epilogue)
   in
   ProcessPoolState.has_running_children := true ;
   Epilogues.register ~description:"Wait children processes exit" ~f:(fun () ->
       if !ProcessPoolState.has_running_children then (
         Array.iter slots ~f:(fun {pid} ->
-            ignore (Unix.wait (`Pid pid) : Pid.t * Unix.Exit_or_signal.t) ) ;
-        ProcessPoolState.has_running_children := false ) ) ;
+            ignore (Unix.wait (`Pid pid) : Pid.t * Unix.Exit_or_signal.t)) ;
+        ProcessPoolState.has_running_children := false )) ;
   (* we have forked the child processes and are now in the parent *)
   let children_updates = List.map children_pipes ~f:(fun (pipe_child_r, _) -> pipe_child_r) in
   let children_states = Array.create ~len:jobs Initializing in
@@ -472,7 +472,7 @@ let run pool =
       done ;
       let results = wait_all pool in
       TaskBar.finish pool.task_bar ;
-      results )
+      results)
 
 
 let run pool =

@@ -214,7 +214,7 @@ end = struct
                     Io_infer.Html.pp_proc_link [fname_encoding] proc_name fmt label )
                   else F.fprintf fmt "no summary for %s" proc_name_escaped
               | _ ->
-                  () )
+                  ())
       | exception Caml.Not_found ->
           () ) ;
       ( match Hashtbl.find table_err_per_line line_number with
@@ -267,7 +267,7 @@ end = struct
                 else files
               else files
           | None ->
-              files )
+              files)
     in
     SourceFile.Set.iter
       (fun file ->
@@ -279,7 +279,7 @@ end = struct
               []
         in
         DB.Results_dir.init file ;
-        write_html_file file pdescs_in_file )
+        write_html_file file pdescs_in_file)
       source_files_in_cfg
 
 

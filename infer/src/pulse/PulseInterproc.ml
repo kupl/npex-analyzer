@@ -89,7 +89,7 @@ let fold_globals_of_stack call_loc stack call_state ~f =
           in
           f pvar ~stack_value ~addr_hist_caller call_state
       | _ ->
-          Ok call_state )
+          Ok call_state)
 
 
 let visit call_state ~pre ~addr_callee ~addr_hist_caller =
@@ -148,7 +148,7 @@ let rec materialize_pre_from_address callee_proc_name call_location ~pre ~addr_p
             in
             let call_state = {call_state with astate} in
             materialize_pre_from_address callee_proc_name call_location ~pre ~addr_pre:addr_pre_dest
-              ~addr_hist_caller:addr_hist_dest_caller call_state ) )
+              ~addr_hist_caller:addr_hist_dest_caller call_state) )
 
 
 (** materialize subgraph of [pre] rooted at the address represented by a [formal] parameter that has
@@ -173,7 +173,7 @@ let materialize_pre_for_captured_vars callee_proc_name call_location pre_post
     ~f:(fun call_state (formal, actual) ->
       materialize_pre_from_actual callee_proc_name call_location
         ~pre:(pre_post.AbductiveDomain.pre :> BaseDomain.t)
-        ~formal ~actual call_state )
+        ~formal ~actual call_state)
 
 
 let materialize_pre_for_parameters callee_proc_name call_location pre_post ~formals ~actuals
@@ -185,7 +185,7 @@ let materialize_pre_for_parameters callee_proc_name call_location pre_post ~form
     IList.fold2_result formals actuals ~init:call_state ~f:(fun call_state formal (actual, _) ->
         materialize_pre_from_actual callee_proc_name call_location
           ~pre:(pre_post.AbductiveDomain.pre :> BaseDomain.t)
-          ~formal ~actual call_state )
+          ~formal ~actual call_state)
   with
   | Unequal_lengths ->
       raise (Contradiction (FormalActualLength {formals; actuals}))
@@ -198,13 +198,13 @@ let materialize_pre_for_globals callee_proc_name call_location pre_post call_sta
     call_state ~f:(fun _var ~stack_value:(addr_pre, _) ~addr_hist_caller call_state ->
       materialize_pre_from_address callee_proc_name call_location
         ~pre:(pre_post.AbductiveDomain.pre :> BaseDomain.t)
-        ~addr_pre ~addr_hist_caller call_state )
+        ~addr_pre ~addr_hist_caller call_state)
 
 
 let add_call_to_attributes proc_name call_location caller_history attrs =
   Attributes.map attrs ~f:(fun attr ->
       Attribute.map_trace attr ~f:(fun trace ->
-          add_call_to_trace proc_name call_location caller_history trace ) )
+          add_call_to_trace proc_name call_location caller_history trace))
 
 
 let subst_find_or_new subst addr_callee ~default_hist_caller =
@@ -250,7 +250,7 @@ let apply_arithmetic_constraints callee_proc_name call_location pre_post call_st
       | None ->
           call_state
       | Some callee_attrs ->
-          one_address_sat callee_attrs addr_hist_caller call_state )
+          one_address_sat callee_attrs addr_hist_caller call_state)
     call_state.subst call_state
 
 
@@ -298,7 +298,7 @@ let delete_edges_in_callee_pre_from_caller ~addr_callee:_ ~edges_pre_opt ~addr_c
            whole [cell_pre] beforehand so that [Edges.merge] makes sense. *)
         BaseMemory.Edges.filter old_post_edges ~f:(fun (access, _) ->
             (* delete edge if some edge for the same access exists in the pre *)
-            not (BaseMemory.Edges.mem edges_pre access) ) )
+            not (BaseMemory.Edges.mem edges_pre access)) )
 
 
 let record_post_cell callee_proc_name call_loc ~addr_callee ~edges_pre_opt
@@ -320,7 +320,7 @@ let record_post_cell callee_proc_name call_loc ~addr_callee ~edges_pre_opt
         ( subst
         , ( addr_curr
           , ValueHistory.Call {f= Call callee_proc_name; location= call_loc; in_call= trace_post}
-            :: hist_curr ) ) )
+            :: hist_curr ) ))
   in
   let astate =
     let post_edges_minus_pre =
@@ -359,7 +359,7 @@ let rec record_post_for_address callee_proc_name call_loc ({AbductiveDomain.pre;
                 ~default_hist_caller:(snd addr_hist_caller)
             in
             record_post_for_address callee_proc_name call_loc pre_post ~addr_callee:addr_callee_dest
-              ~addr_hist_caller:addr_hist_curr_dest call_state ) )
+              ~addr_hist_caller:addr_hist_curr_dest call_state) )
 
 
 let record_post_for_actual callee_proc_name call_loc pre_post ~formal ~actual call_state =
@@ -420,7 +420,7 @@ let apply_post_for_parameters callee_proc_name call_location pre_post ~formals ~
      post but nuke other fields in the meantime? is that possible?). *)
   match
     List.fold2 formals actuals ~init:call_state ~f:(fun call_state formal (actual, _) ->
-        record_post_for_actual callee_proc_name call_location pre_post ~formal ~actual call_state )
+        record_post_for_actual callee_proc_name call_location pre_post ~formal ~actual call_state)
   with
   | Unequal_lengths ->
       (* should have been checked before by [materialize_pre] *)
@@ -432,7 +432,7 @@ let apply_post_for_parameters callee_proc_name call_location pre_post ~formals ~
 let apply_post_for_captured_vars callee_proc_name call_location pre_post ~captured_vars_with_actuals
     call_state =
   List.fold captured_vars_with_actuals ~init:call_state ~f:(fun call_state (formal, actual) ->
-      record_post_for_actual callee_proc_name call_location pre_post ~formal ~actual call_state )
+      record_post_for_actual callee_proc_name call_location pre_post ~formal ~actual call_state)
 
 
 let apply_post_for_globals callee_proc_name call_location pre_post call_state =
@@ -441,7 +441,7 @@ let apply_post_for_globals callee_proc_name call_location pre_post call_state =
       call_state ~f:(fun _var ~stack_value:(addr_callee, _) ~addr_hist_caller call_state ->
         Ok
           (record_post_for_address callee_proc_name call_location pre_post ~addr_callee
-             ~addr_hist_caller call_state) )
+             ~addr_hist_caller call_state))
   with
   | Error _ ->
       (* always return [Ok _] above *) assert false
@@ -462,7 +462,7 @@ let record_post_remaining_attributes callee_proc_name call_loc pre_post call_sta
         | Some (addr_caller, history) ->
             let attrs' = add_call_to_attributes callee_proc_name call_loc history attrs in
             let astate = AddressAttributes.abduce_and_add addr_caller attrs' call_state.astate in
-            {call_state with astate} )
+            {call_state with astate})
     (pre_post.AbductiveDomain.post :> BaseDomain.t).attrs call_state
 
 
@@ -517,7 +517,7 @@ let check_all_valid callee_proc_name call_location {AbductiveDomain.pre; _} call
                    L.d_printfln "ERROR: caller's %a invalid!" AbstractValue.pp addr_caller ;
                    ( Diagnostic.AccessToInvalidAddress
                        {calling_context= []; invalidation; invalidation_trace; access_trace}
-                   , astate ) ) ) )
+                   , astate )) ))
     call_state.subst (Ok call_state.astate)
 
 

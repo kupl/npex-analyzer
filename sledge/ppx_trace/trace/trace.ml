@@ -102,7 +102,7 @@ let parse s =
             | mod_name, None, enabled ->
                 Map.add mod_name
                   {trace_mod= Some enabled; trace_funs= default}
-                  m )
+                  m)
           default parts
       in
       Ok {none with trace_mods_funs}
@@ -120,7 +120,7 @@ let pp_styled style fmt fs =
     Format.kfprintf
       (fun fs ->
         Format.fprintf fs "@<0>\027[0m" ;
-        Format.pp_close_box fs () )
+        Format.pp_close_box fs ())
       fs fmt )
 
 let init ?(colors = false) ?(margin = 240) ?config:(c = none) () =
@@ -209,7 +209,7 @@ let trace :
   let retn = Option.value retn ~default:(fun {pf} _ -> pf "") in
   let rais =
     Option.value rais ~default:(fun {pf} exc _ ->
-        pf "%s" (Printexc.to_string exc) )
+        pf "%s" (Printexc.to_string exc))
   in
   if not (enabled mod_name fun_name) then k ()
   else (
@@ -237,7 +237,7 @@ let raisef ?margin exn fmt =
       Format.pp_close_box fs () ;
       let msg = Format.flush_str_formatter () in
       let exn = exn msg in
-      Printexc.raise_with_backtrace exn bt )
+      Printexc.raise_with_backtrace exn bt)
     fs fmt
 
 let fail fmt =
@@ -245,5 +245,5 @@ let fail fmt =
   raisef ~margin
     (fun msg ->
       Format.fprintf fs "@\n%s@." msg ;
-      Failure msg )
+      Failure msg)
     fmt

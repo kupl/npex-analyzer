@@ -49,7 +49,7 @@ let fold_map_until xs ~init ~f ~finish =
         (fold_map xs ~init ~f:(fun s x ->
              match (f s x : _ Continue_or_stop.t) with
              | Continue x -> x
-             | Stop x -> return x )) )
+             | Stop x -> return x)))
 
 let map_endo xs ~f = map_endo map xs ~f
 

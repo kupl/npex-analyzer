@@ -93,7 +93,7 @@ module SymLinear = struct
       ( M.fold
           (fun s c is_beginning ->
             pp1 ~markup ~is_beginning f s c ;
-            false )
+            false)
           x is_beginning
         : bool )
       |> ignore
@@ -108,7 +108,7 @@ module SymLinear = struct
   let remove_positive_length_symbol : t -> t =
     M.filter (fun symb coeff ->
         let path = Symb.Symbol.path symb in
-        not (NonZeroInt.is_positive coeff && Symb.SymbolPath.is_length path) )
+        not (NonZeroInt.is_positive coeff && Symb.SymbolPath.is_length path))
 
 
   let plus : t -> t -> t =
@@ -163,7 +163,7 @@ module SymLinear = struct
 
   let is_one_symbol_of_common get_symbol_opt ?(weak = false) s x =
     Option.exists (get_symbol_opt x) ~f:(fun s' ->
-        (if weak then Symb.Symbol.paths_equal else Symb.Symbol.equal) s s' )
+        (if weak then Symb.Symbol.paths_equal else Symb.Symbol.equal) s s')
 
 
   let is_one_symbol_of : ?weak:bool -> Symb.Symbol.t -> t -> bool =
@@ -355,7 +355,7 @@ module Bound = struct
   let is_path_of ~f = function
     | Linear (n, se) when Z.(equal n zero) ->
         Option.value_map (SymLinear.get_one_symbol_opt se) ~default:false ~f:(fun s ->
-            f (Symb.Symbol.path s) )
+            f (Symb.Symbol.path s))
     | _ ->
         false
 
@@ -365,7 +365,7 @@ module Bound = struct
       | Symb.SymbolPath.Offset {p} ->
           Symb.SymbolPath.equal_partial p path
       | _ ->
-          false )
+          false)
 
 
   let is_length_path_of path =
@@ -373,7 +373,7 @@ module Bound = struct
       | Symb.SymbolPath.Length {p} ->
           Symb.SymbolPath.equal_partial p path
       | _ ->
-          false )
+          false)
 
 
   let rec is_symbolic : t -> bool = function
@@ -391,7 +391,7 @@ module Bound = struct
     | Linear (i, se) ->
         Z.(equal i one)
         && Option.value_map (SymLinear.get_one_symbol_opt se) ~default:false ~f:(fun sym ->
-               Symb.SymbolPath.equal (Symb.SymbolPath.normal path) (Symb.Symbol.path sym) )
+               Symb.SymbolPath.equal (Symb.SymbolPath.normal path) (Symb.Symbol.path sym))
     | _ ->
         false
 
@@ -734,7 +734,7 @@ module Bound = struct
             let d = Sign.eval_neg_if_minus sign1 Z.(v - c1) in
             mk_MinMax (c1, sign1, minmax1, d, s1)
         | b1, b2 ->
-            fallback_underapprox_min b1 b2 )
+            fallback_underapprox_min b1 b2)
 
 
   and fallback_underapprox_min b1 b2 =
@@ -811,7 +811,7 @@ module Bound = struct
               mk_MinMax (c1, Minus, Max, Z.(c1 - d), SymLinear.get_mone_symbol x1)
           | _ ->
               (* When the result is not representable, our best effort is to return the first original argument. Any other deterministic heuristics would work too. *)
-              original_b1 )
+              original_b1)
     in
     overapprox_min original_b1 b2
 
@@ -965,7 +965,7 @@ module Bound = struct
         | Linear (c2, x2), MinMax (c1, Minus, Min, d1, _) ->
             Linear (Z.(c1 - d1 + c2), x2)
         | _, _ ->
-            MInf )
+            MInf)
 
 
   let plus_u : weak:bool -> t -> t -> t =
@@ -978,7 +978,7 @@ module Bound = struct
         | Linear (c2, x2), MinMax (c1, Minus, Max, d1, _) ->
             Linear (Z.(c1 - d1 + c2), x2)
         | _, _ ->
-            PInf )
+            PInf)
 
 
   let plus = function
@@ -1145,7 +1145,7 @@ module Bound = struct
           match get s bound_position with
           | Bottom ->
               Option.value_map (big_int_of_minmax subst_pos x) ~default:Bottom ~f:(fun i ->
-                  NonBottom (of_big_int i) )
+                  NonBottom (of_big_int i))
           | NonBottom x' ->
               let res =
                 match (sign, min_max, x') with

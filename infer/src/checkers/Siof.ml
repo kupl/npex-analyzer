@@ -80,7 +80,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     Staged.stage (fun (* gvar \notin initialized, up to some fuzzing *)
                         gvar ->
         QualifiedCppName.of_qual_string (Pvar.to_string gvar)
-        |> Fn.non (QualifiedCppName.Match.match_qualifiers initialized_matcher) )
+        |> Fn.non (QualifiedCppName.Match.match_qualifiers initialized_matcher))
 
 
   let is_not_always_initialized =
@@ -98,7 +98,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
     in
     Exp.program_vars e
     |> Sequence.fold ~init:GlobalVarSet.empty ~f:(fun gset g ->
-           if is_dangerous_global g then GlobalVarSet.add g gset else gset )
+           if is_dangerous_global g then GlobalVarSet.add g gset else gset)
 
 
   let add_globals astate loc globals =
@@ -114,7 +114,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
         GlobalVarSet.fold
           (fun global acc ->
             if is_dangerous global then SiofTrace.add_sink (SiofTrace.make_access global loc) acc
-            else acc )
+            else acc)
           globals trace
       in
       (NonBottom trace_with_non_init_globals, snd astate)
@@ -122,7 +122,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
 
   let add_actuals_globals analysis_data astate0 call_loc actuals =
     List.fold_left actuals ~init:astate0 ~f:(fun astate (e, _) ->
-        get_globals analysis_data e |> add_globals astate call_loc )
+        get_globals analysis_data e |> add_globals astate call_loc)
 
 
   let at_least_nonbottom = Domain.join (NonBottom SiofTrace.bottom, Domain.VarNames.empty)
@@ -157,7 +157,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 |> Fn.flip QualifiedCppName.Match.match_qualifiers
                      (Procname.get_qualifiers callee_pname)
               then Some initialized_globals
-              else None )
+              else None)
         in
         Domain.join astate (NonBottom SiofTrace.bottom, Domain.VarNames.of_list init)
     | Call (_, Const (Cfun (ObjC_Cpp cpp_pname as callee_pname)), _ :: actuals_without_self, loc, _)
@@ -172,7 +172,7 @@ module TransferFunctions (CFG : ProcCfg.S) = struct
                 SiofTrace.sinks trace
                 |> SiofTrace.Sinks.filter (fun sink ->
                        SiofTrace.Sink.kind sink
-                       |> Staged.unstage (filter_global_accesses already_initialized) )
+                       |> Staged.unstage (filter_global_accesses already_initialized))
               in
               let callsite = CallSite.make callee_pname loc in
               let sinks =

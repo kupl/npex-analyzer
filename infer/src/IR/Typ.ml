@@ -35,7 +35,7 @@ module IntegerWidths = struct
         |> SqliteUtils.check_result_code db ~log:"load bind source file" ;
         SqliteUtils.result_single_column_option ~finalize:false ~log:"Typ.IntegerWidths.load" db
           load_stmt
-        |> Option.bind ~f:SQLite.deserialize )
+        |> Option.bind ~f:SQLite.deserialize)
 end
 
 (** Kinds of integers *)

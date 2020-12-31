@@ -29,7 +29,7 @@ let try_finally ~f ~finally =
       r
   | exception (Analysis_failure_exe _ as f_exn) ->
       IExn.reraise_after f_exn ~f:(fun () ->
-          try finally () with _ -> (* swallow in favor of the original exception *) () )
+          try finally () with _ -> (* swallow in favor of the original exception *) ())
   | exception f_exn ->
       IExn.reraise_after f_exn ~f:(fun () ->
           try finally ()
@@ -38,7 +38,7 @@ let try_finally ~f ~finally =
           when (* do not swallow Analysis_failure_exe thrown from finally *)
                match finally_exn with Analysis_failure_exe _ -> false | _ -> true
           ->
-            () )
+            ())
 
 
 let pp_failure_kind fmt = function

@@ -41,7 +41,7 @@ let to_simplified_string fld =
   if is_java fld then
     Typ.Name.name fld.class_name |> String.rsplit2 ~on:'.'
     |> Option.value_map ~default:fld.field_name ~f:(fun (_, class_only) ->
-           String.concat ~sep:"." [class_only; fld.field_name] )
+           String.concat ~sep:"." [class_only; fld.field_name])
   else fld.field_name
 
 

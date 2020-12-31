@@ -158,7 +158,7 @@ module Stack = struct
       List.filter vars ~f:(fun var -> not (is_in_pre var astate))
     in
     map_post_stack astate ~f:(fun stack ->
-        BaseStack.filter (fun var _ -> not (List.mem ~equal:Var.equal vars_to_remove var)) stack )
+        BaseStack.filter (fun var _ -> not (List.mem ~equal:Var.equal vars_to_remove var)) stack)
 
 
   let fold f astate accum = BaseStack.fold f (astate.post :> base_domain).stack accum
@@ -245,7 +245,7 @@ module AddressAttributes = struct
         let astate =
           if Attribute.is_suitable_for_pre attr then abduce_attribute value attr astate else astate
         in
-        add_one value attr astate )
+        add_one value attr astate)
 
 
   let find_opt address astate =
@@ -380,7 +380,7 @@ let set_post_cell (addr, history) (edges, attr_set) location astate =
   set_post_edges addr edges astate
   |> AddressAttributes.map_post_attrs ~f:(fun attrs ->
          BaseAddressAttributes.add_one addr (WrittenTo (Trace.Immediate {location; history})) attrs
-         |> BaseAddressAttributes.add addr attr_set )
+         |> BaseAddressAttributes.add addr attr_set)
 
 
 let filter_for_summary astate =
@@ -417,7 +417,7 @@ let invalidate_locals pdesc astate : t =
                let get_local_typ_opt pvar =
                  Procdesc.get_locals pdesc
                  |> List.find_map ~f:(fun ProcAttributes.{name; typ} ->
-                        if Mangled.equal name (Pvar.get_name pvar) then Some typ else None )
+                        if Mangled.equal name (Pvar.get_name pvar) then Some typ else None)
                in
                match var with
                | Var.ProgramVar pvar ->
@@ -425,7 +425,7 @@ let invalidate_locals pdesc astate : t =
                    |> Option.value_map ~default:acc
                         ~f:(add_out_of_scope_attribute addr pvar location history acc)
                | _ ->
-                   acc ) )
+                   acc))
       attrs attrs
   in
   if phys_equal attrs attrs' then astate

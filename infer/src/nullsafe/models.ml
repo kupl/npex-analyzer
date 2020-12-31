@@ -69,7 +69,7 @@ let get_modelled_annotated_signature ~is_callee_in_trust_list tenv proc_attribut
       Hashtbl.find_opt annotated_table_nullability proc_id
       (* Maybe it is a special method whose nullability is predefined *)
       |> IOption.if_none_evalopt ~f:(fun () ->
-             get_special_method_modelled_nullability tenv proc_name )
+             get_special_method_modelled_nullability tenv proc_name)
     in
     Option.value_map modelled_nullability
       ~f:
@@ -82,13 +82,13 @@ let get_modelled_annotated_signature ~is_callee_in_trust_list tenv proc_attribut
     ThirdPartyAnnotationInfo.unique_repr_of_java_proc_name proc_name
     |> ThirdPartyAnnotationInfo.find_nullability_info (ThirdPartyAnnotationGlobalRepo.get_repo ())
     |> Option.map ~f:(fun ThirdPartyAnnotationInfo.{signature; filename; line_number} ->
-           (to_modelled_nullability signature, filename, line_number) )
+           (to_modelled_nullability signature, filename, line_number))
     |> Option.value_map
        (* If we found information in third-party repo, overwrite annotated signature *)
          ~f:(fun (modelled_nullability, filename, line_number) ->
            AnnotatedSignature.set_modelled_nullability (Procname.Java proc_name) ann_sig
              (InThirdPartyRepo {filename; line_number})
-             modelled_nullability )
+             modelled_nullability)
          ~default:ann_sig
   in
   (* External models overwrite internal ones *)

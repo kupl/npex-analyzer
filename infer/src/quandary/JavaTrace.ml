@@ -83,7 +83,7 @@ module SourceKind = struct
         List.concat_map external_sources ~f:(fun (procedure_regex, kinds) ->
             if Str.string_match procedure_regex procedure 0 then
               List.rev_map kinds ~f:(fun kind -> (of_string kind, return))
-            else [] )
+            else [])
       in
       Option.some_if (not (List.is_empty sources)) sources
     in
@@ -180,7 +180,7 @@ module SourceKind = struct
       List.map
         ~f:(fun (name, typ) ->
           let taint = if Mangled.is_this name then None else Some (make_source name typ.Typ.desc) in
-          (name, typ, taint) )
+          (name, typ, taint))
         (Procdesc.get_formals pdesc)
     in
     let formals = Procdesc.get_formals pdesc in
@@ -237,7 +237,7 @@ module SourceKind = struct
                   Annotations.struct_typ_has_annot typ Annotations.ia_is_thrift_service
                   && PatternMatch.override_exists ~check_current_type:false
                        (fun superclass_pname ->
-                         String.equal (Procname.get_method superclass_pname) method_name )
+                         String.equal (Procname.get_method superclass_pname) method_name)
                        tenv pname
                 then
                   (* assume every non-this formal of a Thrift service is tainted *)
@@ -381,7 +381,7 @@ module SinkKind = struct
                       taint_all kinds
                   in
                   Option.value taints ~default:[]
-                else [] )
+                else [])
           in
           Option.some_if (not (List.is_empty sinks)) sinks
         in
@@ -538,7 +538,7 @@ module JavaSanitizer = struct
     let procedure_string = Printf.sprintf "%s.%s" class_name method_name in
     List.find_map
       ~f:(fun procedure_regex ->
-        if Str.string_match procedure_regex procedure_string 0 then Some All else None )
+        if Str.string_match procedure_regex procedure_string 0 then Some All else None)
       external_sanitizers
 
 

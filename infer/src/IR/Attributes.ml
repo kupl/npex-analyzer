@@ -48,7 +48,7 @@ let should_try_to_update =
         SqliteUtils.result_single_column_option ~finalize:false ~log:"Attributes.replace" db
           find_stmt
         |> (* there is no entry with a strictly larger "definedness" for that proc name *)
-        Option.is_none )
+        Option.is_none)
 
 
 let find =
@@ -61,7 +61,7 @@ let find =
         |> SqliteUtils.check_result_code db ~log:"find bind proc name" ;
         SqliteUtils.result_single_column_option ~finalize:false ~log:"Attributes.find" db
           select_stmt
-        |> Option.map ~f:ProcAttributes.SQLite.deserialize )
+        |> Option.map ~f:ProcAttributes.SQLite.deserialize)
 
 
 let load pname = find (Procname.to_unique_id pname)
@@ -96,7 +96,7 @@ let find_file_capturing_procedure pname =
         | false ->
             `Source
       in
-      (source_file, origin) )
+      (source_file, origin))
 
 
 let pp_attributes_kind f = function

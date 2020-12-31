@@ -20,7 +20,7 @@ let test_fnv64_hash_function =
   in
   [("test_correct_hash", "_Z4testv", "18241244337164948030")]
   |> List.map ~f:(fun (name, test_input, expected_output) ->
-         name >:: create_test test_input expected_output )
+         name >:: create_test test_input expected_output)
 
 
 let tests = "fnv64_hash_function_suite" >::: test_fnv64_hash_function

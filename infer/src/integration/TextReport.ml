@@ -36,7 +36,7 @@ module ReportSummary = struct
       |> Seq.fold_left
            (fun (max_issue_length, issue_counts) ((issue_type, (_, issue_type_hum)) as binding) ->
              let l = String.length (string_of_issue ~issue_type ~issue_type_hum) in
-             (Int.max max_issue_length l, binding :: issue_counts) )
+             (Int.max max_issue_length l, binding :: issue_counts))
            (String.length header_issue, [])
     in
     pp_n_spaces (max_issue_length - String.length header_issue) fmt ;
@@ -44,11 +44,11 @@ module ReportSummary = struct
     List.sort issue_counts ~compare:(fun (issue_type1, (count1, _)) (issue_type2, (count2, _)) ->
         (* reverse lexicographic order on (count * issue_type) *)
         if Int.equal count2 count1 then String.compare issue_type2 issue_type1
-        else Int.compare count2 count1 )
+        else Int.compare count2 count1)
     |> List.iter ~f:(fun (issue_type, (count, issue_type_hum)) ->
            let issue_string = string_of_issue ~issue_type ~issue_type_hum in
            pp_n_spaces (max_issue_length - String.length issue_string) fmt ;
-           F.fprintf fmt "  %s: %d@\n" issue_string count )
+           F.fprintf fmt "  %s: %d@\n" issue_string count)
 
 
   let add_issue summary (jsonbug : Jsonbug_t.jsonbug) =
@@ -104,7 +104,7 @@ let pp_source_context ~indent fmt
                   pp_n_spaces (indent + n_length + 1 + report_col) fmt ;
                   F.pp_print_char fmt '^' ;
                   F.pp_print_newline fmt () ) ) ;
-              if line_number < end_line then Continue (line_number + 1) else Stop () ) )
+              if line_number < end_line then Continue (line_number + 1) else Stop ()))
 
 
 let create_from_json ~quiet ~console_limit ~report_txt ~report_json =
@@ -142,7 +142,7 @@ let create_from_json ~quiet ~console_limit ~report_txt ~report_json =
             let summary' = ReportSummary.add_issue summary jsonbug in
             one_issue_to_report_txt report_txt_fmt (i, jsonbug) ;
             if not quiet then one_issue_to_console ~console_limit i jsonbug ;
-            summary' )
+            summary')
       in
       let n_issues = summary.n_issues in
       if Int.equal n_issues 0 then (
@@ -164,4 +164,4 @@ let create_from_json ~quiet ~console_limit ~report_txt ~report_json =
               () ) ;
           F.printf "@\n%a@]%!" ReportSummary.pp summary ) ;
         F.fprintf report_txt_fmt "Found %d issue%s@\n%a%!" n_issues s_of_issues ReportSummary.pp
-          summary )
+          summary)

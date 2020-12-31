@@ -19,7 +19,7 @@ let extract_javac_args line =
   let is_interesting s = String.is_suffix s ~suffix:".java" || is_quoted s in
   Option.map (String.substr_index line ~pattern:javac_pattern) ~f:(fun pos ->
       let content = String.drop_prefix line (pos + String.length javac_pattern) |> String.strip in
-      if is_interesting content then Some (remove_quotes content) else None )
+      if is_interesting content then Some (remove_quotes content) else None)
   |> Option.join
 
 
@@ -60,7 +60,7 @@ let capture ~prog ~args =
             else rev_javac_args
           in
           {collecting; rev_javac_args}
-        else {collecting; rev_javac_args} )
+        else {collecting; rev_javac_args})
   in
   if not (List.is_empty res.rev_javac_args) then
     Javac.call_infer_javac_capture ~javac_args:(List.rev res.rev_javac_args)

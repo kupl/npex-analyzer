@@ -566,7 +566,7 @@ module Call = struct
    fun matchers ->
     let on_objc_cpp context objc_cpp args =
       List.find_map matchers ~f:(fun (matcher : _ matcher) ->
-          matcher.on_objc_cpp context objc_cpp args )
+          matcher.on_objc_cpp context objc_cpp args)
     in
     let on_c context c args =
       List.find_map matchers ~f:(fun (matcher : _ matcher) -> matcher.on_c context c args)
@@ -934,7 +934,7 @@ module ProcName = struct
     in
     let on_templated_name context templated_name =
       List.find_map matchers ~f:(fun (matcher : _ matcher) ->
-          matcher.on_templated_name context templated_name )
+          matcher.on_templated_name context templated_name)
     in
     let on_java context (java : Procname.Java.t) =
       let templated_name = templated_name_of_java java in
@@ -967,5 +967,5 @@ module TypName = struct
    fun matchers context typname ->
     let templated_name = templated_name_of_class_name typname in
     List.find_map matchers ~f:(fun (matcher : _ matcher) ->
-        matcher.on_templated_name context templated_name )
+        matcher.on_templated_name context templated_name)
 end

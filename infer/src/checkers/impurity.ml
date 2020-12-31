@@ -19,7 +19,7 @@ let get_matching_dest_addr_opt ~edges_pre ~edges_post :
       ~f:(fun acc (access, (addr_dest_pre, _)) (_, (addr_dest_post, _)) ->
         if AbstractValue.equal addr_dest_pre addr_dest_post then
           Option.map acc ~f:(fun acc -> (access, addr_dest_pre) :: acc)
-        else None )
+        else None)
       (BaseMemory.Edges.bindings edges_pre)
       (BaseMemory.Edges.bindings edges_post)
   with
@@ -59,7 +59,7 @@ let add_invalid_and_modified ~var ~access ~check_empty attrs acc : ImpurityDomai
   else
     List.fold_left ~init:acc
       ~f:(fun acc trace ->
-        ImpurityDomain.ModifiedVarSet.add {var; access= ignore_array_index access; trace} acc )
+        ImpurityDomain.ModifiedVarSet.add {var; access= ignore_array_index access; trace} acc)
       invalid_and_modified
 
 
@@ -107,12 +107,12 @@ let get_modified_params pname post_stack pre_heap post formals =
         match BaseMemory.find_opt addr pre_heap with
         | Some edges_pre ->
             BaseMemory.Edges.fold edges_pre ~init:acc ~f:(fun acc (access, (addr, _)) ->
-                add_to_modified ~var ~access ~addr pre_heap post acc )
+                add_to_modified ~var ~access ~addr pre_heap post acc)
         | None ->
             debug "The address is not materialized in in pre-heap." ;
             acc )
       | _ ->
-          acc )
+          acc)
 
 
 let get_modified_globals pre_heap post post_stack =
@@ -123,7 +123,7 @@ let get_modified_globals pre_heap post post_stack =
            access here but we still want to pick up changes to
            globals. *)
         add_to_modified ~var ~access:HilExp.Access.Dereference ~addr pre_heap post modified_globals
-      else modified_globals )
+      else modified_globals)
     post_stack ImpurityDomain.ModifiedVarSet.empty
 
 
@@ -158,7 +158,7 @@ let extract_impurity tenv pdesc (exec_state : ExecutionDomain.t) : ImpurityDomai
   let skipped_calls =
     SkippedCalls.filter
       (fun proc_name _ ->
-        PurityChecker.should_report proc_name && not (is_modeled_pure tenv proc_name) )
+        PurityChecker.should_report proc_name && not (is_modeled_pure tenv proc_name))
       astate.AbductiveDomain.skipped_calls
   in
   {modified_globals; modified_params; skipped_calls; exited}
@@ -188,7 +188,7 @@ let checker {IntraproceduralAnalysis.proc_desc; tenv; err_log}
         List.fold pre_posts ~init:ImpurityDomain.pure
           ~f:(fun acc (exec_state : ExecutionDomain.summary) ->
             let modified = extract_impurity tenv proc_desc (exec_state :> ExecutionDomain.t) in
-            ImpurityDomain.join acc modified )
+            ImpurityDomain.join acc modified)
       in
       if PurityChecker.should_report proc_name && not (ImpurityDomain.is_pure impurity_astate) then
         let modified_ltr param_source set acc =
@@ -201,8 +201,8 @@ let checker {IntraproceduralAnalysis.proc_desc; tenv; err_log}
             (fun proc_name trace acc ->
               Trace.add_to_errlog ~nesting:1 ~include_value_history:false
                 ~pp_immediate:(fun fmt ->
-                  F.fprintf fmt "call to skipped function %a occurs here" Procname.pp proc_name )
-                trace acc )
+                  F.fprintf fmt "call to skipped function %a occurs here" Procname.pp proc_name)
+                trace acc)
             skipped_calls []
         in
         let impure_fun_desc = F.asprintf "Impure function %a" Procname.pp proc_name in

@@ -55,9 +55,9 @@ let assert_anonymous_equal actual expected_name_to_ids case_name =
           actual
         |> IOption.if_none_eval ~f:(fun () ->
                assert_failure
-                 (F.sprintf "%s: Did not find anonymous class info for %s" case_name anonymous_name) )
+                 (F.sprintf "%s: Did not find anonymous class info for %s" case_name anonymous_name))
       in
-      assert_summaries_equal actual_summaries expected_summary_ids anonymous_name case_name )
+      assert_summaries_equal actual_summaries expected_summary_ids anonymous_name case_name)
 
 
 let rec assert_expected_list actual expected case_name =
@@ -71,9 +71,9 @@ let rec assert_expected_list actual expected case_name =
         List.find actual ~f:(fun actual_info ->
             JavaClassName.equal
               (ClassInfo.get_class_name actual_info)
-              (JavaClassName.make ~package:test_package ~classname:name) )
+              (JavaClassName.make ~package:test_package ~classname:name))
         |> IOption.if_none_eval ~f:(fun () ->
-               assert_failure (F.sprintf "%s: Did not find class info for %s" case_name name) )
+               assert_failure (F.sprintf "%s: Did not find class info for %s" case_name name))
       in
       assert_summaries_equal (ClassInfo.get_summaries actual_info) summary_ids name case_name ;
       assert_anonymous_equal (ClassInfo.get_nested_anonymous_summaries actual_info) anm case_name ;
@@ -81,12 +81,12 @@ let rec assert_expected_list actual expected case_name =
       assert_expected_list
         (ClassInfo.get_nested_classes_info actual_info)
         nested
-        (F.sprintf "%s:%s" case_name name) )
+        (F.sprintf "%s:%s" case_name name))
 
 
 let aggregate list =
   List.map list ~f:(fun (classname, summary_id) ->
-      (JavaClassName.make ~package:test_package ~classname, mock_summary summary_id) )
+      (JavaClassName.make ~package:test_package ~classname, mock_summary summary_id))
   |> AggregatedSummaries.aggregate
 
 

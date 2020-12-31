@@ -38,7 +38,7 @@ let merge_json_results infer_out_src json_entry =
     `List
       (List.dedup_and_sort
          ~compare:(fun s1 s2 ->
-           match (s1, s2) with `String s1, `String s2 -> String.compare s1 s2 | _ -> 0 )
+           match (s1, s2) with `String s1, `String s2 -> String.compare s1 s2 | _ -> 0)
          (List.append main_json changed_json))
   in
   YB.to_file main_changed_fs_file all_fs
@@ -64,7 +64,7 @@ let merge_captured_targets () =
   let infer_deps_file = ResultsDir.get_path CaptureDependencies in
   DBWriter.merge ~infer_deps_file ;
   ScubaLogging.execute_with_time_logging "merge_captured_tenvs" (fun () ->
-      merge_global_tenvs infer_deps_file ) ;
+      merge_global_tenvs infer_deps_file) ;
   let targets_num =
     let counter = ref 0 in
     let incr_counter _line = incr counter in

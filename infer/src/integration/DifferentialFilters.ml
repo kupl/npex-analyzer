@@ -19,7 +19,7 @@ module FileRenamings = struct
 
   let of_renamings ~fold container =
     fold container ~init:empty ~f:(fun acc {current; previous} ->
-        CurrentToPreviousMap.add current previous acc )
+        CurrentToPreviousMap.add current previous acc)
 
 
   (* A json renaming assoc list looks like:
@@ -127,7 +127,7 @@ let skip_duplicated_types_on_filenames renamings (diff : Differential.t) : Diffe
        over the same domain. *)
     let introduced_normalized =
       List.map diff.introduced ~f:(fun i ->
-          (i, FileRenamings.find_previous renamings i.Jsonbug_t.file) )
+          (i, FileRenamings.find_previous renamings i.Jsonbug_t.file))
     in
     let fixed_normalized = List.map diff.fixed ~f:(fun f -> (f, f.Jsonbug_t.file)) in
     let introduced_normalized', preexisting', fixed_normalized' =
@@ -151,7 +151,7 @@ let interesting_paths_filter (interesting_paths : SourceFile.t list option) =
         |> List.filter_map ~f:(fun p ->
                if (not (SourceFile.is_invalid p)) && SourceFile.is_under_project_root p then
                  Some (SourceFile.to_string p)
-               else None )
+               else None)
         |> String.Set.of_list
       in
       fun report ->

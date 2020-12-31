@@ -332,13 +332,13 @@ let get_vararg_type_names tenv (call_node : Procdesc.Node.t) (ivar : Pvar.t) : s
          | Sil.Store {e1= Exp.Lvar iv; e2= Exp.Var t2} when Pvar.equal ivar iv ->
              Some t2
          | _ ->
-             None )
+             None)
     |> Option.exists ~f:(fun t2 ->
            Instrs.exists instrs ~f:(function
              | Sil.Call ((t1, _), Exp.Const (Const.Cfun pn), _, _, _) ->
                  Ident.equal t1 t2 && Procname.equal pn (Procname.from_string_c_fun "__new_array")
              | _ ->
-                 false ) )
+                 false))
   in
   (* Get the type name added to ivar or None *)
   let added_type_name instrs =
@@ -348,12 +348,12 @@ let get_vararg_type_names tenv (call_node : Procdesc.Node.t) (ivar : Pvar.t) : s
            | Sil.Load {id= nv; e; typ= t} when Ident.equal nv nvar ->
                Some (e, t)
            | _ ->
-               None )
+               None)
       |> Option.bind ~f:(function
            | Exp.Lfield (_, id, t), _ ->
                get_field_type_name tenv t id
            | _, t ->
-               Some (get_type_name t) )
+               Some (get_type_name t))
     in
     let added_nvar array_nvar =
       instrs
@@ -365,7 +365,7 @@ let get_vararg_type_names tenv (call_node : Procdesc.Node.t) (ivar : Pvar.t) : s
              when Ident.equal iv array_nvar ->
                Some (Some (Java.get_const_type_name c))
            | _ ->
-               None )
+               None)
       |> Option.join
     in
     let array_nvar =
@@ -374,7 +374,7 @@ let get_vararg_type_names tenv (call_node : Procdesc.Node.t) (ivar : Pvar.t) : s
            | Sil.Load {id= nv; e= Exp.Lvar iv} when Pvar.equal iv ivar ->
                Some nv
            | _ ->
-               None )
+               None)
       |> Option.bind ~f:added_nvar
     in
     array_nvar
@@ -445,7 +445,7 @@ let has_same_signature proc_name =
       | List.Or_unequal_lengths.Ok res ->
           res
       | List.Or_unequal_lengths.Unequal_lengths ->
-          false )
+          false)
 
 
 let override_find ?(check_current_type = true) f tenv proc_name =
@@ -457,7 +457,7 @@ let override_find ?(check_current_type = true) f tenv proc_name =
            | None ->
                List.find_map ~f:find_super_type supers
            | pname_opt ->
-               pname_opt )
+               pname_opt)
   in
   let find_super_type type_name =
     List.find_map ~f:find_super_type (type_get_direct_supertypes tenv (Typ.mk (Tstruct type_name)))
@@ -484,7 +484,7 @@ let override_iter f tenv proc_name =
     (override_exists
        (fun pname ->
          f pname ;
-         false )
+         false)
        tenv proc_name)
 
 

@@ -78,7 +78,7 @@ let marshal program file =
 
 let unmarshal file () =
   In_channel.with_file
-    ~f:(fun ic -> (Marshal.from_channel ic : Llair.program))
+    ~f:(fun ic : Llair.program -> Marshal.from_channel ic)
     file
 
 let used_globals pgm preanalyze : Domain_used_globals.r =
@@ -97,7 +97,7 @@ let used_globals pgm preanalyze : Domain_used_globals.r =
   else
     Declared
       (IArray.fold pgm.globals ~init:Llair.Reg.Set.empty ~f:(fun acc g ->
-           Llair.Reg.Set.add acc g.reg ))
+           Llair.Reg.Set.add acc g.reg))
 
 let analyze =
   let%map_open bound =
@@ -166,7 +166,7 @@ let disassemble =
     | Some file ->
         Out_channel.with_file file ~f:(fun oc ->
             let fs = Format.formatter_of_out_channel oc in
-            Format.fprintf fs "%a@." Llair.Program.pp pgm ) ) ;
+            Format.fprintf fs "%a@." Llair.Program.pp pgm) ) ;
     Report.Ok
 
 let disassemble_cmd =

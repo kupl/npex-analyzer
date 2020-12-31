@@ -88,6 +88,6 @@ let process_ast ast default_source_file =
             CLocation.should_translate_lib default_source_file source_range `DeclTraversal
               ~translate_when_used:true
           then process_proc_decl default_source_file map decl
-          else map )
+          else map)
   | _ ->
       assert false

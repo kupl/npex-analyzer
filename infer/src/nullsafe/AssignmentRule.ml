@@ -123,7 +123,7 @@ module ReportableViolation = struct
           Option.value_map suggested_third_party_sig_file
             ~f:(fun sig_file_name ->
               ThirdPartyAnnotationGlobalRepo.get_user_friendly_third_party_sig_file_name
-                ~filename:sig_file_name )
+                ~filename:sig_file_name)
               (* this can happen when third party is registered in a deprecated way (not in third party repository) *)
             ~default:"the third party signature storage"
         in
@@ -225,7 +225,7 @@ module ReportableViolation = struct
       |> IOption.if_none_eval ~f:(fun () ->
              Logging.die InternalError
                "get_description:: Assignment violation should not be possible for non-nullable \
-                values on right hand side" )
+                values on right hand side")
     in
     match user_friendly_nullable with
     | ErrorRenderingUtils.UserFriendlyNullable.UntrustedNonnull untrusted_kind ->

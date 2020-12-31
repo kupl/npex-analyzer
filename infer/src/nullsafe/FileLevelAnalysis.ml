@@ -22,7 +22,7 @@ let get_summaries
       let* class_name = Procname.get_class_type_name procname in
       let* java_class_name = get_java_class_name class_name in
       let* _proc_desc, summary = analyze_file_dependency procname in
-      return (java_class_name, summary) )
+      return (java_class_name, summary))
 
 
 (* Analyze the class and all its nested children recursively *)
@@ -53,7 +53,7 @@ let analyze_file ({InterproceduralAnalysis.file_exe_env; source_file} as analysi
   let top_level_classes = AggregatedSummaries.aggregate all_summaries in
   List.iter top_level_classes ~f:(fun top_level_class ->
       Logging.debug Analysis Medium "Hierarchy for a top level class:@\n%a@\n"
-        AggregatedSummaries.ClassInfo.pp top_level_class ) ;
+        AggregatedSummaries.ClassInfo.pp top_level_class) ;
   let issue_log =
     List.fold top_level_classes ~init:IssueLog.empty ~f:(analyze_top_level_class tenv source_file)
   in

@@ -54,11 +54,11 @@ let iterate_procedure_callbacks exe_env summary =
           log (fun logger ->
               log_begin_event logger ~name:checker_name ~categories:["backend"]
                 ~arguments:[("proc", `String (Procname.to_string proc_name))]
-                () )) ;
+                ())) ;
         let summary = callback {summary; exe_env} in
         PerfEvent.(log (fun logger -> log_end_event logger ())) ;
         summary )
-      else summary )
+      else summary)
 
 
 let iterate_file_callbacks_and_store_issues procedures exe_env source_file =
@@ -75,4 +75,4 @@ let iterate_file_callbacks_and_store_issues procedures exe_env source_file =
         if language_matches language then (
           Language.curr_language := language ;
           let issue_log = callback environment in
-          IssueLog.store ~file:source_file ~entry:issue_dir issue_log ) )
+          IssueLog.store ~file:source_file ~entry:issue_dir issue_log ))

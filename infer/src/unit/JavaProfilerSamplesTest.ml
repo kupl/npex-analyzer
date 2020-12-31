@@ -35,7 +35,7 @@ let test_jni_pp =
         , Void ))
     , "([(I(J[[JZ)J)[[[(ILaaa/bbb/Ccc;Z)[C)V" ) ]
   |> List.map ~f:(fun (name, test_input, expected_output) ->
-         name >:: create_test test_input expected_output )
+         name >:: create_test test_input expected_output)
 
 
 let test_jni_parse_method_str_with_invalid_input =
@@ -50,7 +50,7 @@ let test_jni_parse_method_str_with_invalid_input =
     , "I"
     , Logging.InferUserError "'I' did not parse as one JNI method signature" ) ]
   |> List.map ~f:(fun (name, test_input, expected_exception) ->
-         name >:: create_test test_input expected_exception )
+         name >:: create_test test_input expected_exception)
 
 
 let test_jni_parse_str_with_valid_input =
@@ -102,7 +102,7 @@ let test_jni_parse_str_with_valid_input =
     , T.[Method ([], Void)] )
   ; ("test_jni_parse_str_with_empty_input", "", []) ]
   |> List.map ~f:(fun (name, test_input, expected_output) ->
-         name >:: create_test test_input expected_output )
+         name >:: create_test test_input expected_output)
 
 
 let test_jni_parse_str_with_invalid_input =
@@ -121,7 +121,7 @@ let test_jni_parse_str_with_invalid_input =
     , "(((("
     , Logging.InferUserError "No symbols were reduced during a scan, failed parsing input" ) ]
   |> List.map ~f:(fun (name, test_input, expected_exception) ->
-         name >:: create_test test_input expected_exception )
+         name >:: create_test test_input expected_exception)
 
 
 let test_from_json_string_with_valid_input =
@@ -203,7 +203,7 @@ let test_from_json_string_with_valid_input =
   ; ("test_from_json_string_2", input2, expected2, true)
   ; ("test_from_json_string_3", input2, expected3, false) ]
   |> List.map ~f:(fun (name, test_input, expected_output, use_signature) ->
-         name >:: create_test test_input expected_output ~use_signature )
+         name >:: create_test test_input expected_output ~use_signature)
 
 
 let test_from_json_string_with_invalid_input =
@@ -226,7 +226,7 @@ let test_from_json_string_with_invalid_input =
     , "("
     , Yojson.Json_error "Line 1, bytes 0-1:\nExpected '[' but found '('" ) ]
   |> List.map ~f:(fun (name, test_input, expected_exception) ->
-         name >:: create_test test_input expected_exception )
+         name >:: create_test test_input expected_exception)
 
 
 let tests =

@@ -35,4 +35,4 @@ let () =
       | ALFileException exc_info ->
           Some (Format.sprintf "ALFileException: %s" (hum_string_of_exc_info exc_info))
       | _ ->
-          None )
+          None)

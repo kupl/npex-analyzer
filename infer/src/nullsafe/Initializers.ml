@@ -128,10 +128,9 @@ let final_initializer_typestates_lazy tenv curr_pname curr_pdesc typecheck_proc 
     (let initializers_current_class =
        pname_and_pdescs_with tenv curr_pname (function pname, proc_attributes ->
            is_initializer tenv proc_attributes
-           && equal_class_opt (get_class pname) (get_class curr_pname) )
+           && equal_class_opt (get_class pname) (get_class curr_pname))
      in
-     final_typestates ((curr_pname, curr_pdesc) :: initializers_current_class) tenv typecheck_proc
-    )
+     final_typestates ((curr_pname, curr_pdesc) :: initializers_current_class) tenv typecheck_proc)
 
 
 (** Typestates after all constructors. *)
@@ -139,6 +138,6 @@ let final_constructor_typestates_lazy tenv curr_pname typecheck_proc =
   lazy
     (let constructors_current_class =
        pname_and_pdescs_with tenv curr_pname (fun (pname, _) ->
-           Procname.is_constructor pname && equal_class_opt (get_class pname) (get_class curr_pname) )
+           Procname.is_constructor pname && equal_class_opt (get_class pname) (get_class curr_pname))
      in
-     final_typestates constructors_current_class tenv typecheck_proc )
+     final_typestates constructors_current_class tenv typecheck_proc)

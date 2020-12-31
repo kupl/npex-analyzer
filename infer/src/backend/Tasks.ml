@@ -52,7 +52,7 @@ let run_sequentially ~(f : ('a, 'b) doer) (tasks : 'a list) : unit =
     if not (task_generator.is_empty ()) then (
       Option.iter (task_generator.next ()) ~f:(fun t ->
           let result = f t in
-          task_generator.finished ~result t ) ;
+          task_generator.finished ~result t) ;
       TaskBar.set_remaining_tasks task_bar (task_generator.remaining_tasks ()) ;
       TaskBar.refresh task_bar ;
       run_tasks () )

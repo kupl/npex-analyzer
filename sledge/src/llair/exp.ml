@@ -154,11 +154,11 @@ and pp_record fs elts =
           String.init (IArray.length elts) ~f:(fun i ->
               match IArray.get elts i with
               | Integer {data} -> Char.of_int_exn (Z.to_int data)
-              | _ -> raise (Invalid_argument "not a string") )
+              | _ -> raise (Invalid_argument "not a string"))
         with
         | s -> Format.fprintf fs "@[<h>%s@]" (String.escaped s)
         | exception _ ->
-            Format.fprintf fs "@[<h>%a@]" (IArray.pp ",@ " pp) elts )
+            Format.fprintf fs "@[<h>%a@]" (IArray.pp ",@ " pp) elts)
       elts]
   [@@warning "-9"]
 
@@ -238,7 +238,7 @@ let rec invariant exp =
         assert (IArray.length elts = IArray.length args) ;
         assert (
           IArray.for_all2_exn elts args ~f:(fun typ arg ->
-              Typ.castable typ (typ_of arg) ) )
+              Typ.castable typ (typ_of arg)) )
     | _ -> assert false )
   | RecRecord _ -> ()
   [@@warning "-9"]
@@ -427,7 +427,7 @@ let fold_exps e ~init ~f =
 
 let fold_regs e ~init ~f =
   fold_exps e ~init ~f:(fun z x ->
-      match x with Reg _ -> f z (x :> Reg.t) | _ -> z )
+      match x with Reg _ -> f z (x :> Reg.t) | _ -> z)
 
 (** Query *)
 

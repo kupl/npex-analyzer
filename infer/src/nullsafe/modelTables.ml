@@ -273,7 +273,7 @@ let nullable_method_with_nonnull_alternatives_nullability_list =
   in
   List.iter result ~f:(fun ((ret_nullability, _param_nullability), _) ->
       if not (Bool.equal ret_nullability n) then
-        Logging.die Logging.InternalError "Function is expected to be nullable" ) ;
+        Logging.die Logging.InternalError "Function is expected to be nullable") ;
   result
 
 
@@ -673,7 +673,7 @@ let annotated_list_nullability =
   List.find_a_dup result ~compare:(fun (_, descr1) (_, descr2) -> String.compare descr1 descr2)
   |> Option.iter ~f:(fun (_, duplicate_method_descr) ->
          Logging.die Logging.InternalError "Nullability table contains a duplicate %s"
-           duplicate_method_descr ) ;
+           duplicate_method_descr) ;
   result
 
 

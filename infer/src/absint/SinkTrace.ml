@@ -69,7 +69,7 @@ module Make (TraceElem : TaintTraceElem.S) = struct
     List.fold
       ~f:(fun t_acc sink ->
         let callee_sink = Sink.with_callsite sink call_site in
-        add_sink callee_sink t_acc )
+        add_sink callee_sink t_acc)
       ~init:bottom
       (Sinks.elements (sinks t))
 

@@ -24,7 +24,7 @@ let get_existing_data source_file =
         stmt ~read_row:(fun stmt ->
           let tenv = Sqlite3.column stmt 0 |> Tenv.SQLite.deserialize
           and proc_names = Sqlite3.column stmt 1 |> Procname.SQLiteList.deserialize in
-          (tenv, proc_names) ) )
+          (tenv, proc_names)))
 
 
 let add source_file cfg tenv integer_type_widths =
@@ -42,11 +42,11 @@ let add source_file cfg tenv integer_type_widths =
            preserved but merging is still linear time *)
         let existing_proc_names = Caml.Hashtbl.create (List.length old_proc_names) in
         List.iter old_proc_names ~f:(fun proc_name ->
-            Caml.Hashtbl.add existing_proc_names proc_name () ) ;
+            Caml.Hashtbl.add existing_proc_names proc_name ()) ;
         let proc_names =
           List.fold new_proc_names ~init:old_proc_names ~f:(fun proc_names proc_name ->
               if not (Caml.Hashtbl.mem existing_proc_names proc_name) then proc_name :: proc_names
-              else proc_names )
+              else proc_names)
         in
         (Tenv.merge_per_file ~dst:old_tenv ~src:tenv, proc_names)
     | None ->
@@ -72,7 +72,7 @@ let get_all ~filter () =
        ~fold:(SqliteUtils.result_fold_single_column_rows db ~log:"getting all source files")
        ~f:(fun column ->
          let source_file = SourceFile.SQLite.deserialize column in
-         Option.some_if (filter source_file) source_file )
+         Option.some_if (filter source_file) source_file)
 
 
 let load_proc_names_statement =
@@ -87,7 +87,7 @@ let proc_names_of_source source =
       |> SqliteUtils.check_result_code db ~log:"load bind source file" ;
       SqliteUtils.result_single_column_option ~finalize:false db
         ~log:"SourceFiles.proc_names_of_source" load_stmt
-      |> Option.value_map ~default:[] ~f:Procname.SQLiteList.deserialize )
+      |> Option.value_map ~default:[] ~f:Procname.SQLiteList.deserialize)
 
 
 let is_non_empty_statement = ResultsDatabase.register_statement "SELECT 1 FROM source_files LIMIT 1"
@@ -95,7 +95,7 @@ let is_non_empty_statement = ResultsDatabase.register_statement "SELECT 1 FROM s
 let is_empty () =
   ResultsDatabase.with_registered_statement is_non_empty_statement ~f:(fun db stmt ->
       SqliteUtils.result_single_column_option ~finalize:false ~log:"SourceFiles.is_empty" db stmt
-      |> Option.is_none )
+      |> Option.is_none)
 
 
 let is_freshly_captured_statement =
@@ -115,7 +115,7 @@ let is_freshly_captured source =
       |> SqliteUtils.check_result_code db ~log:"load bind source file" ;
       SqliteUtils.result_single_column_option ~finalize:false ~log:"SourceFiles.is_freshly_captured"
         db load_stmt
-      |> Option.value_map ~default:false ~f:deserialize_freshly_captured )
+      |> Option.value_map ~default:false ~f:deserialize_freshly_captured)
 
 
 let mark_all_stale () = DBWriter.mark_all_source_files_stale ()
@@ -161,7 +161,7 @@ let pp_all ~filter ~type_environment ~procedure_names ~freshly_captured fmt () =
             (SqliteUtils.result_fold_single_column_rows ~finalize:false db
                ~log:"printing all source files")
       in
-      F.fprintf fmt "@[<v>%a@]" pp_result stmt )
+      F.fprintf fmt "@[<v>%a@]" pp_result stmt)
 
 
 let get_procs_in_file proc_name =

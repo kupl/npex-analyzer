@@ -65,7 +65,7 @@ module Make (Set : Set) = struct
                  r
              | Some r' ->
                  if not (phys_equal r r') then H.replace t e r' ;
-                 r' )
+                 r')
 
 
     let find (t : t) e : Repr.t = match find_opt t e with Some r -> r | None -> Repr.of_elt e

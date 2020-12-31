@@ -114,7 +114,7 @@ module InstrBasicCostWithReason = struct
         in
         let fun_arg_list =
           List.map params ~f:(fun (exp, typ) ->
-              ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()} )
+              ProcnameDispatcher.Call.FuncArg.{exp; typ; arg_payload= ()})
         in
         let inferbo_mem_opt =
           BufferOverrunAnalysis.extract_pre (InstrCFG.Node.id instr_node) inferbo_invariant_map
@@ -123,7 +123,7 @@ module InstrBasicCostWithReason = struct
           lazy
             (let node_hash = InstrCFG.Node.hash instr_node in
              BufferOverrunUtils.ModelEnv.mk_model_env callee_pname ~node_hash location tenv
-               integer_type_widths inferbo_get_summary )
+               integer_type_widths inferbo_get_summary)
         in
         let get_callee_cost_opt kind inferbo_mem =
           match (get_summary callee_pname, get_formals callee_pname) with
@@ -131,7 +131,7 @@ module InstrBasicCostWithReason = struct
               CostDomain.find_opt kind callee_cost_record
               |> Option.map ~f:(fun callee_cost ->
                      instantiate_cost integer_type_widths ~inferbo_caller_mem:inferbo_mem
-                       ~callee_pname ~callee_formals ~params ~callee_cost ~loc:location )
+                       ~callee_pname ~callee_formals ~params ~callee_cost ~loc:location)
           | _ ->
               None
         in
@@ -149,7 +149,7 @@ module InstrBasicCostWithReason = struct
                     dispatch_allocation tenv callee_pname callee_cost_opt
                 | AutoreleasepoolSize ->
                     dispatch_autoreleasepool tenv callee_pname callee_cost_opt fun_arg_list extras
-                      model_env ret cfg location inferbo_mem ) )
+                      model_env ret cfg location inferbo_mem) )
     | Sil.Call (_, Exp.Const (Const.Cfun _), _, _, _) ->
         CostDomain.zero_record
     | Sil.Load {id= lhs_id} when Ident.is_none lhs_id ->
@@ -228,13 +228,13 @@ module WorstCaseCost = struct
               CostDomain.set_autoreleasepool_size_zero cost
             else cost
           in
-          CostDomain.plus acc cost )
+          CostDomain.plus acc cost)
     in
     Option.iter (CostDomain.get_operation_cost cost).top_pname_opt ~f:(fun top_pname ->
         ScubaLogging.cost_log_message ~label:"unmodeled_function_top_cost"
           ~message:(F.asprintf "Unmodeled Function[Top Cost] : %a" Procname.pp top_pname) ;
         Logging.(debug Analysis Verbose)
-          "@ Unmodeled Function[Top Cost]: %a@\n" Procname.pp top_pname ) ;
+          "@ Unmodeled Function[Top Cost]: %a@\n" Procname.pp top_pname) ;
     cost
 end
 
@@ -273,7 +273,7 @@ module Check = struct
       CostIssues.CostKindMap.iter2 CostIssues.enabled_cost_map cost
         ~f:(fun kind (CostIssues.{name; top_and_unreachable} as issue_spec) cost ->
           if top_and_unreachable then
-            report_top_and_unreachable kind pname proc_desc err_log proc_loc ~name ~cost issue_spec )
+            report_top_and_unreachable kind pname proc_desc err_log proc_loc ~name ~cost issue_spec)
 end
 
 type bound_map = BasicCost.t Node.IdMap.t
@@ -301,7 +301,7 @@ let compute_get_node_nb_exec node_cfg bound_map : get_node_nb_exec =
     ~f:(fun () ->
       let equalities = ConstraintSolver.collect_constraints ~debug node_cfg in
       let () = ConstraintSolver.compute_costs ~debug bound_map equalities in
-      ConstraintSolver.get_node_nb_exec equalities )
+      ConstraintSolver.get_node_nb_exec equalities)
 
 
 let get_cost_summary ~is_on_ui_thread astate = {CostDomain.post= astate; is_on_ui_thread}

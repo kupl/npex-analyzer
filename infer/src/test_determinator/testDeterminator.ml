@@ -49,7 +49,7 @@ module MethodRangeMap = struct
                 in
                 Procname.Map.add key (range, ()) acc
             | _ ->
-                acc )
+                acc)
     | _ ->
         L.die UserError "Missing method declaration info argument"
 end
@@ -70,7 +70,7 @@ module DiffLines = struct
               | None ->
                   acc
               | Some (fname, cl) ->
-                  String.Map.set acc ~key:fname ~data:(FileDiff.parse_unix_diff cl) )
+                  String.Map.set acc ~key:fname ~data:(FileDiff.parse_unix_diff cl))
       | Error _ ->
           L.die UserError "Could not read file %s" changed_lines_file )
     | None ->
@@ -82,7 +82,7 @@ module DiffLines = struct
   let pp_changed_lines fmt map =
     F.fprintf fmt "--- Changed Lines Map ---@\n" ;
     String.Map.iteri map ~f:(fun ~key ~data ->
-        F.fprintf fmt "%s --> [%a]@\n" key (Pp.seq ~sep:", " F.pp_print_int) data )
+        F.fprintf fmt "%s --> [%a]@\n" key (Pp.seq ~sep:", " F.pp_print_int) data)
 end
 
 [@@@warning "-32"]
@@ -117,7 +117,7 @@ module TestSample = struct
   let pp_map fmt labeled_test_samples =
     List.iter labeled_test_samples ~f:(fun (label, profiler_samples) ->
         F.fprintf fmt "=== Samples for %s ===@\n%a@\n=== End Samples for %s ===@\n" label
-          pp_profiler_sample_set profiler_samples label )
+          pp_profiler_sample_set profiler_samples label)
 end
 
 let in_range l range = l >= (fst range).Location.line && l <= (snd range).Location.line
@@ -134,7 +134,7 @@ let affected_methods method_range_map file_changed_lines changed_lines =
     (fun key (range, _) acc ->
       if is_file_in_changed_lines file_changed_lines changed_lines range then
         Procname.Set.add key acc
-      else acc )
+      else acc)
     method_range_map Procname.Set.empty
 
 
@@ -142,7 +142,7 @@ let compute_affected_methods_java changed_lines_map method_range_map =
   String.Map.fold changed_lines_map ~init:Procname.Set.empty
     ~f:(fun ~key:file_changed_lines ~data acc ->
       let am = affected_methods method_range_map file_changed_lines data in
-      Procname.Set.union am acc )
+      Procname.Set.union am acc)
 
 
 let compute_affected_methods_clang ~clang_range_map ~source_file ~changed_lines_map =
@@ -160,7 +160,7 @@ let compute_affected_proc_names_clang ~clang_range_map ~source_file ~changed_lin
   | Some changed_lines ->
       Procname.Map.fold
         (fun _ (range, clang_proc) acc ->
-          if is_file_in_changed_lines fname changed_lines range then clang_proc :: acc else acc )
+          if is_file_in_changed_lines fname changed_lines range then clang_proc :: acc else acc)
         clang_range_map []
   | None ->
       []
@@ -198,7 +198,7 @@ let java_test_to_run () =
   else
     List.fold profiler_samples ~init:[] ~f:(fun acc (label, profiler_samples) ->
         let intersection = Procname.Set.inter affected_methods profiler_samples in
-        if Procname.Set.is_empty intersection then acc else label :: acc )
+        if Procname.Set.is_empty intersection then acc else label :: acc)
 
 
 let remove_llvm_suffix_native_symbols native_symbols =
@@ -305,7 +305,7 @@ let clang_test_to_run ~clang_range_map ~source_file () =
         in
         if match_profiler_samples_affected_methods native_symbols_with_hash_mangled affected_methods
         then test :: acc
-        else acc )
+        else acc)
 
 
 let emit_tests_to_run_java relevant_tests =
@@ -346,7 +346,7 @@ let merge_test_determinator_results () =
   let main_results_list_sorted =
     List.dedup_and_sort
       ~compare:(fun s1 s2 ->
-        match (s1, s2) with `String s1, `String s2 -> String.compare s1 s2 | _ -> 0 )
+        match (s1, s2) with `String s1, `String s2 -> String.compare s1 s2 | _ -> 0)
       !main_results_list
   in
   let main_results_file = ResultsDir.get_path TestDeterminatorReport in

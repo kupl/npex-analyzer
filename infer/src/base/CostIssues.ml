@@ -24,7 +24,7 @@ module CostKindMap = struct
       merge
         (fun k v1_opt v2_opt ->
           (match (v1_opt, v2_opt) with Some v1, Some v2 -> f k v1 v2 | _ -> ()) ;
-          None )
+          None)
         map1 map2
     in
     ()
@@ -42,4 +42,4 @@ let enabled_cost_map =
         ; infinite_issue= IssueType.infinite_cost_call ~kind
         ; top_and_unreachable }
       in
-      CostKindMap.add kind kind_spec acc )
+      CostKindMap.add kind kind_spec acc)

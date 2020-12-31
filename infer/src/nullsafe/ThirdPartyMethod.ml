@@ -86,7 +86,7 @@ let bind_list list_of_results ~f =
   List.fold list_of_results ~init:(Ok []) ~f:(fun acc element ->
       acc
       >>= fun accumulated_success_results ->
-      f element >>= fun success_result -> Ok (accumulated_success_results @ [success_result]) )
+      f element >>= fun success_result -> Ok (accumulated_success_results @ [success_result]))
 
 
 let strip_first_space str =
@@ -106,7 +106,7 @@ let split_params str =
                Ok str
            | _ ->
                (* Params should be separated by ", ", so we expect a space after each comma *)
-               strip_first_space str )
+               strip_first_space str)
 
 
 let parse_params str = split_params str >>= fun params -> bind_list params ~f:parse_param

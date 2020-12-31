@@ -53,7 +53,7 @@ module Make (TransferFunctions : TransferFunctions.HIL) (HilConfig : HilConfig) 
               let dummy_assign =
                 HilInstr.Assign (lhs_access_path, HilExp.AccessExpression access_expr, loc)
               in
-              TransferFunctions.exec_instr astate_acc analysis_data node dummy_assign )
+              TransferFunctions.exec_instr astate_acc analysis_data node dummy_assign)
         in
         (TransferFunctions.exec_instr actual_state' analysis_data node hil_instr, Bindings.empty)
     | hil_instr ->
@@ -74,7 +74,7 @@ module Make (TransferFunctions : TransferFunctions.HIL) (HilConfig : HilConfig) 
         let bindings, vars =
           List.fold vars ~init:(bindings, []) ~f:(fun (bindings, vars) var ->
               let bindings, vars' = Bindings.exit_scope var bindings in
-              (bindings, append_bindings vars vars') )
+              (bindings, append_bindings vars vars'))
         in
         let instr =
           if List.is_empty vars then None else Some (HilInstr.Metadata (ExitScope (vars, loc)))

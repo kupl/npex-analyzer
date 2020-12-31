@@ -17,14 +17,14 @@ let pp_cfgnodename pname fmt (n : Procdesc.Node.t) =
 
 let pp_etlist fmt etl =
   List.iter etl ~f:(fun (id, typ) ->
-      Format.fprintf fmt " %a:%a" Mangled.pp id (Typ.pp_full Pp.text) typ )
+      Format.fprintf fmt " %a:%a" Mangled.pp id (Typ.pp_full Pp.text) typ)
 
 
 let pp_var_list fmt etl =
   List.iter etl ~f:(fun (id, ty, mode) ->
       Format.fprintf fmt " [%s]%a:%a"
         (Pvar.string_of_capture_mode mode)
-        Mangled.pp id (Typ.pp_full Pp.text) ty )
+        Mangled.pp id (Typ.pp_full Pp.text) ty)
 
 
 let pp_local_list fmt etl = List.iter ~f:(Procdesc.pp_local fmt) etl
@@ -130,7 +130,7 @@ let emit_frontend_cfg source cfg =
              [Config.dotty_frontend_output])
   in
   with_dot_file fname ~pp:(fun fmt ->
-      Cfg.iter_sorted cfg ~f:(fun pdesc -> print_pdesc source fmt pdesc) )
+      Cfg.iter_sorted cfg ~f:(fun pdesc -> print_pdesc source fmt pdesc))
 
 
 let emit_proc_desc source proc_desc =

@@ -20,7 +20,7 @@ let check_immutable_cast analysis_data proc_desc typ_expected typ_found_opt loc 
       let in_casts expected given =
         List.exists
           ~f:(fun (x, y) ->
-            String.equal (Typ.Name.name expected) x && String.equal (Typ.Name.name given) y )
+            String.equal (Typ.Name.name expected) x && String.equal (Typ.Name.name given) y)
           casts
       in
       match

@@ -14,7 +14,7 @@ let get_all ~filter () =
     ~f:(fun rev_results stmt ->
       let source_file = Sqlite3.column stmt 0 |> SourceFile.SQLite.deserialize in
       let proc_name = Sqlite3.column stmt 1 |> Procname.SQLite.deserialize in
-      if filter source_file proc_name then proc_name :: rev_results else rev_results )
+      if filter source_file proc_name then proc_name :: rev_results else rev_results)
 
 
 let select_proc_names_interactive ~filter =
@@ -30,7 +30,7 @@ let select_proc_names_interactive ~filter =
   | _ ->
       let proc_names_array = List.to_array proc_names in
       Array.iteri proc_names_array ~f:(fun i proc_name ->
-          Format.printf "%d: %a@\n" i Procname.pp proc_name ) ;
+          Format.printf "%d: %a@\n" i Procname.pp proc_name) ;
       Format.print_flush () ;
       let rec ask_user_input () =
         print_string "Select one number (type 'a' for selecting all, 'q' for quit): " ;
@@ -106,4 +106,4 @@ let pp_all ~filter ~proc_name:proc_name_cond ~attr_kind ~source_file:source_file
        ~f:(fun stmt ->
          let proc_name = Sqlite3.column stmt 0 |> Procname.SQLite.deserialize in
          let source_file = Sqlite3.column stmt 3 |> SourceFile.SQLite.deserialize in
-         if filter source_file proc_name then pp_row stmt fmt source_file proc_name )
+         if filter source_file proc_name then pp_row stmt fmt source_file proc_name)

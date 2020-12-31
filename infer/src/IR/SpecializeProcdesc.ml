@@ -146,7 +146,7 @@ let with_formals_types ?(has_clang_model = false) callee_pdesc resolved_pname ar
               (* Replace the type of the parameter by the type of the argument *)
               ((param_name, arg_typ) :: params, Mangled.Map.add param_name typename subts)
           | _ ->
-              ((param_name, param_typ) :: params, subts) )
+              ((param_name, param_typ) :: params, subts))
     with
     | Ok result ->
         result
