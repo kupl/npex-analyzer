@@ -28,6 +28,7 @@ let infer_profile =
               <forceJavacCompilerUse>true</forceJavacCompilerUse>
               <fork>true</fork>
               <executable>%s</executable>
+              <useIncrementalCompilation>false</useIncrementalCompilation>
               %s
             </configuration>
           </plugin>
