@@ -64,6 +64,14 @@ let setup () =
   | Debug ->
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | NPEX ->
+      ( match Sys.is_directory Config.npex_summary_dir with
+      | `Yes ->
+          ()
+      | `No ->
+          Utils.rmtree Config.npex_summary_dir ;
+          Utils.create_dir Config.npex_summary_dir
+      | `Unknown ->
+          Utils.create_dir Config.npex_summary_dir ) ;
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | Help ->
       () ) ;
@@ -275,7 +283,6 @@ let () =
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
           ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
   | NPEX ->
-      InferAnalyze.main ~changed_files:None ;
       let get_summary proc_name =
         match Summary.OnDisk.get proc_name with
         | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
@@ -288,8 +295,19 @@ let () =
         assert (Int.equal (List.length Config.error_report_json) 1) ;
         Localizer.launch () )
       else if Config.npex_launch_spec_synthesizer then (
+        InferAnalyze.main ~changed_files:None ;
         L.progress "launch spec synthesizer" ;
         SpecSynth.launch ~get_summary )
-      else if Config.npex_launch_spec_verifier then SpecVeri.launch ~get_summary ) ;
+      else if Config.npex_launch_spec_verifier then (
+        let all_procs = Program.all_procs (Program.build ()) in
+        L.progress " - %d procedure summaries are invalidated@." (Procname.Set.cardinal all_procs) ;
+        Procname.Set.iter
+          (fun pname ->
+            Ondemand.LocalCache.remove pname ;
+            Summary.OnDisk.delete pname ;
+            Sys.remove (Config.npex_summary_dir ^/ Procname.to_filename pname ^ ".specs"))
+          all_procs ;
+        InferAnalyze.main ~changed_files:None ;
+        SpecVeri.launch ~get_summary ) ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0

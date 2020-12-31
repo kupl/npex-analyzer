@@ -122,8 +122,8 @@ let pp_html source fmt summary =
 module ReportSummary = struct
   type t = {loc: Location.t; cost_opt: CostDomain.summary option; err_log: Errlog.t}
 
-  let of_full_summary (f : full_summary) =
-    ({loc= get_loc f; cost_opt= f.payloads.Payloads.cost; err_log= f.err_log} : t)
+  let of_full_summary (f : full_summary) : t =
+    {loc= get_loc f; cost_opt= f.payloads.Payloads.cost; err_log= f.err_log}
 
 
   module SQLite = SqliteUtils.MarshalledDataNOTForComparison (struct
@@ -146,14 +146,13 @@ module AnalysisSummary = struct
     [@@deriving fields]
   end
 
-  let of_full_summary (f : full_summary) =
-    ( { payloads= f.payloads
-      ; sessions= f.sessions
-      ; stats= f.stats
-      ; status= f.status
-      ; proc_desc= f.proc_desc
-      ; callee_pnames= f.callee_pnames }
-      : t )
+  let of_full_summary (f : full_summary) : t =
+    { payloads= f.payloads
+    ; sessions= f.sessions
+    ; stats= f.stats
+    ; status= f.status
+    ; proc_desc= f.proc_desc
+    ; callee_pnames= f.callee_pnames }
 
 
   module SQLite = SqliteUtils.MarshalledDataNOTForComparison (struct
@@ -161,15 +160,15 @@ module AnalysisSummary = struct
   end)
 end
 
-let mk_full_summary (report_summary : ReportSummary.t) (analysis_summary : AnalysisSummary.t) =
-  ( { payloads= analysis_summary.payloads
-    ; sessions= analysis_summary.sessions
-    ; stats= analysis_summary.stats
-    ; status= analysis_summary.status
-    ; proc_desc= analysis_summary.proc_desc
-    ; callee_pnames= analysis_summary.callee_pnames
-    ; err_log= report_summary.err_log }
-    : full_summary )
+let mk_full_summary (report_summary : ReportSummary.t) (analysis_summary : AnalysisSummary.t) :
+    full_summary =
+  { payloads= analysis_summary.payloads
+  ; sessions= analysis_summary.sessions
+  ; stats= analysis_summary.stats
+  ; status= analysis_summary.status
+  ; proc_desc= analysis_summary.proc_desc
+  ; callee_pnames= analysis_summary.callee_pnames
+  ; err_log= report_summary.err_log }
 
 
 module OnDisk = struct
@@ -204,7 +203,7 @@ module OnDisk = struct
               let report_summary =
                 Sqlite3.column stmt report_summary_column |> ReportSummary.SQLite.deserialize
               in
-              mk_full_summary report_summary analysis_summary ) )
+              mk_full_summary report_summary analysis_summary))
     in
     let spec_of_procname =
       let load_statement =
@@ -227,12 +226,23 @@ module OnDisk = struct
     (spec_of_procname, spec_of_model)
 
 
+  let specs_filename pname = Procname.to_filename pname ^ ".specs"
+
+  let summary_serializer : t Serialization.serializer =
+    Serialization.create_serializer Serialization.Key.summary
+
+
+  let load_from_file specs_file = Serialization.read_from_file summary_serializer specs_file
+
   (** Load procedure summary for the given procedure name and update spec table *)
   let load_summary_to_spec_table proc_name =
     let summ_opt =
       match spec_of_procname proc_name with
       | None when BiabductionModels.mem proc_name ->
           spec_of_model proc_name
+      | None when Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier ->
+          Filename.concat Config.npex_summary_dir (specs_filename proc_name)
+          |> DB.filename_from_string |> load_from_file
       | summ_opt ->
           summ_opt
     in
@@ -265,12 +275,16 @@ module OnDisk = struct
     let proc_name = get_proc_name summary in
     (* Make sure the summary in memory is identical to the saved one *)
     add proc_name summary ;
-    let analysis_summary = AnalysisSummary.of_full_summary summary in
-    let report_summary = ReportSummary.of_full_summary summary in
-    DBWriter.store_spec ~proc_uid:(Procname.to_unique_id proc_name)
-      ~proc_name:(Procname.SQLite.serialize proc_name)
-      ~analysis_summary:(AnalysisSummary.SQLite.serialize analysis_summary)
-      ~report_summary:(ReportSummary.SQLite.serialize report_summary)
+    if Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier then
+      DB.filename_from_string (Config.npex_summary_dir ^/ specs_filename proc_name)
+      |> Serialization.write_to_file summary_serializer ~data:summary
+    else
+      let analysis_summary = AnalysisSummary.of_full_summary summary in
+      let report_summary = ReportSummary.of_full_summary summary in
+      DBWriter.store_spec ~proc_uid:(Procname.to_unique_id proc_name)
+        ~proc_name:(Procname.SQLite.serialize proc_name)
+        ~analysis_summary:(AnalysisSummary.SQLite.serialize analysis_summary)
+        ~report_summary:(ReportSummary.SQLite.serialize report_summary)
 
 
   let store_analyzed summary = store {summary with status= Status.Analyzed}
@@ -294,7 +308,7 @@ module OnDisk = struct
       spec_of_procname proc_name
       |> Option.iter ~f:(fun summary ->
              let blank_summary = reset summary.proc_desc in
-             store blank_summary )
+             store blank_summary)
     in
     Procedures.get_all ~filter () |> List.iter ~f:reset
 
@@ -317,7 +331,7 @@ module OnDisk = struct
              let analysis_summary = Sqlite3.column stmt 1 |> AnalysisSummary.SQLite.deserialize in
              let report_summary = Sqlite3.column stmt 2 |> ReportSummary.SQLite.deserialize in
              let spec = mk_full_summary report_summary analysis_summary in
-             f spec )
+             f spec)
 
 
   let iter_filtered_report_summaries ~filter ~f =
@@ -332,7 +346,7 @@ module OnDisk = struct
              let ({loc; cost_opt; err_log} : ReportSummary.t) =
                Sqlite3.column stmt 1 |> ReportSummary.SQLite.deserialize
              in
-             f proc_name loc cost_opt err_log )
+             f proc_name loc cost_opt err_log)
 
 
   let make_filtered_iterator_from_config ~iter ~f =
@@ -357,5 +371,5 @@ module OnDisk = struct
 
   let pp_specs_from_config fmt =
     iter_specs_from_config ~f:(fun summary ->
-        F.fprintf fmt "Procedure: %a@\n%a@." Procname.pp (get_proc_name summary) pp_text summary )
+        F.fprintf fmt "Procedure: %a@\n%a@." Procname.pp (get_proc_name summary) pp_text summary)
 end

@@ -84,10 +84,6 @@ def verify_patch(project_root_dir, patch_dir, maven_build_command):
     # Prepare origianl summary except to_analyze
     shutil.rmtree(NPEX_SUMMARY_DIR)
     shutil.copytree(NPEX_ORIGINAL_SUMMARY_DIR, NPEX_SUMMARY_DIR)
-    patch_class = os.path.basename(source_path_to_patch).rstrip(".java")
-    specs_to_invalidate = glob.glob(f"{NPEX_SUMMARY_DIR}/*{patch_class}*")
-    for spec in specs_to_invalidate:
-        os.remove(spec)
 
     capture_cmd = f"{INFER_PATH} capture -- {maven_build_command}"
     if (subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
@@ -97,7 +93,7 @@ def verify_patch(project_root_dir, patch_dir, maven_build_command):
     # if (subprocess.run(analyze_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
     #     return None
 
-    launch_spec_veri_cmd = f"{INFER_PATH} npex --launch-spec-verifier --biabduction-models-mode --spec-checker-only"
+    launch_spec_veri_cmd = f"{INFER_PATH} npex --launch-spec-verifier --spec-checker-only"
     if (subprocess.run(launch_spec_veri_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
         return None
 

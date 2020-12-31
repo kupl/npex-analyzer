@@ -19,6 +19,8 @@ module Key : sig
 
   val tenv : t
   (** current key for tenv *)
+
+  val summary : t
 end
 
 (** Generic serializer *)

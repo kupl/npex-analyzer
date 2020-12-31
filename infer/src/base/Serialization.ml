@@ -23,6 +23,8 @@ module Key = struct
   (** Current keys for various serializable objects. The keys are computed using the [generate_keys]
       function below *)
   let tenv, issues = ({name= "tenv"; key= 425184201}, {name= "issues"; key= 852343110})
+
+  let summary = {name= "summary"; key= 612614616}
 end
 
 (** version of the binary files, to be incremented for each change *)
@@ -62,7 +64,7 @@ let create_serializer (key : Key.t) : 'a serializer =
     PerfEvent.(
       log (fun logger -> log_begin_event logger ~name:("writing " ^ key.name) ~categories:["io"] ())) ;
     Utils.with_intermediate_temp_file_out filename ~f:(fun outc ->
-        Marshal.to_channel outc (key.key, version, data) [] ) ;
+        Marshal.to_channel outc (key.key, version, data) []) ;
     PerfEvent.(log (fun logger -> log_end_event logger ()))
   in
   {read_from_file; write_to_file}
