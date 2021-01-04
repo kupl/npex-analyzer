@@ -111,3 +111,9 @@ val is_npe_alternative : t -> bool
 val mark_npe_alternative : t -> t
 
 val loc_to_access_expr : t -> Loc.t -> AccessExpr.t option
+
+val is_exceptional : t -> bool
+
+val set_exception : t -> t
+
+val unwrap_exception : t -> t
