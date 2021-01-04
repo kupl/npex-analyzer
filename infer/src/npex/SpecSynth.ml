@@ -31,9 +31,13 @@ module Terms = AccessExpr.Set
 let rec synthesize ~nullpoint ~summary ~pdesc =
   let terms_from_summary = collect_terms_from_summary summary in
   let terms_from_pdesc = collect_terms_from_pdesc pdesc in
-  L.debug_dev "Collected terms from summary: %a@." Terms.pp terms_from_summary ;
-  L.debug_dev "Collected terms from pdesc: %a@." Terms.pp terms_from_pdesc ;
-  let all_terms = terms_from_summary |> Terms.union terms_from_pdesc |> Terms.add AccessExpr.null in
+  let all_terms =
+    terms_from_summary
+    |> Terms.union terms_from_pdesc
+    |> Terms.add AccessExpr.null
+    |> Terms.filter (not <<< AccessExpr.contain_method_call_access)
+  in
+  L.debug_dev "All terms collected: %a@." Terms.pp all_terms ;
   let formulas = enumerate_formulas all_terms in
   let npe_str = F.asprintf "%s_%d" (NullPoint.get_method nullpoint) (NullPoint.get_line nullpoint) in
   List.map formulas ~f:(fun post ->
@@ -67,6 +71,7 @@ and collect_terms_from_pdesc pdesc =
   let get_expressions_in_instr instr =
     List.concat_map (Sil.exps_of_instr instr) ~f:(fun e -> Exp.fold_captured ~f:(fun acc e' -> e' :: acc) e [e])
     |> Exp.Set.of_list
+    |> Exp.Set.filter (function Const (Cfun _) -> false | _ -> true)
   in
   let all_exprs =
     Procdesc.fold_instrs pdesc ~init:Exp.Set.empty ~f:(fun acc _ instr ->
