@@ -3,7 +3,6 @@ open! Vocab
 module L = Logging
 module CFG = SpecChecker.CFG
 module Analyzer = SpecChecker.Analyzer
-module Conjunctions = Specification.Conjunctions
 module Formula = Specification.Formula
 
 let nullpoint_list = ref []
@@ -31,8 +30,10 @@ module Terms = AccessExpr.Set
 
 let rec synthesize ~nullpoint ~summary ~pdesc =
   let terms_from_summary = collect_terms_from_summary summary in
+  let terms_from_pdesc = collect_terms_from_pdesc pdesc in
   L.debug_dev "Collected terms from summary: %a@." Terms.pp terms_from_summary ;
-  let all_terms = Terms.add AccessExpr.null terms_from_summary in
+  L.debug_dev "Collected terms from pdesc: %a@." Terms.pp terms_from_pdesc ;
+  let all_terms = terms_from_summary |> Terms.union terms_from_pdesc |> Terms.add AccessExpr.null in
   let formulas = enumerate_formulas all_terms in
   let npe_str = F.asprintf "%s_%d" (NullPoint.get_method nullpoint) (NullPoint.get_line nullpoint) in
   List.map formulas ~f:(fun post ->
@@ -60,6 +61,21 @@ and collect_terms_from_summary summary =
         |> Terms.of_list
       in
       acc |> Terms.union terms_from_memory |> Terms.union terms_from_pc)
+
+
+and collect_terms_from_pdesc pdesc =
+  let get_expressions_in_instr instr =
+    List.concat_map (Sil.exps_of_instr instr) ~f:(fun e -> Exp.fold_captured ~f:(fun acc e' -> e' :: acc) e [e])
+    |> Exp.Set.of_list
+  in
+  let all_exprs =
+    Procdesc.fold_instrs pdesc ~init:Exp.Set.empty ~f:(fun acc _ instr ->
+        Exp.Set.union acc (get_expressions_in_instr instr))
+  in
+  L.debug_dev "All Expressions: %a@." Pp.(seq Exp.pp) (Exp.Set.elements all_exprs) ;
+  Exp.Set.fold
+    (fun e acc -> match AccessExpr.from_IR_exp_opt pdesc e with Some ae -> Terms.add ae acc | None -> acc)
+    all_exprs Terms.empty
 
 
 and enumerate_formulas (terms : Terms.t) : Formula.formula list =
@@ -103,10 +119,11 @@ and enumerate_binaries terms =
 
 
 let launch ~get_summary =
+  let program = Program.build () in
   let nullpoints = get_nullpoint_list () in
   let specs =
     List.fold nullpoints ~init:[] ~f:(fun acc nullpoint ->
-        let pdesc = NullPoint.get_pdesc nullpoint in
+        let pdesc = Program.pdesc_of program (NullPoint.get_procname nullpoint) in
         let summary = get_summary (Procdesc.get_proc_name pdesc) in
         acc @ synthesize ~nullpoint ~summary ~pdesc)
   in
