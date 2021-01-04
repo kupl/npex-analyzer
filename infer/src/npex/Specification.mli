@@ -11,7 +11,7 @@ module Formula : sig
 
   and binop = Equals | IsFunctionOf
 
-  and term = AccessExpr.t [@@deriving compare]
+  and term = AccessExpr.t [@@deriving compare, equal]
 
   val pp_formula : Format.formatter -> formula -> unit
 

@@ -13,7 +13,7 @@ module Formula = struct
 
   and binop = Equals | IsFunctionOf
 
-  and term = AccessExpr.t [@@deriving compare]
+  and term = AccessExpr.t [@@deriving compare, equal]
 
   let rec pp_formula fmt = function
     | Atom atom ->
