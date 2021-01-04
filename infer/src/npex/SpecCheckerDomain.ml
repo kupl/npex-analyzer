@@ -568,21 +568,28 @@ module PC = struct
       union pc (filter (fun cond -> not (PathCond.is_valid cond)) transitives)
 end
 
-type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool}
+type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
-let pp fmt {symtbl; reg; mem; pc; is_npe_alternative} =
+let pp fmt {symtbl; reg; mem; pc; is_npe_alternative; is_exceptional} =
   F.fprintf fmt
     "@[<v 2> - Symbol Table:@,\
     \ %a@]@. @[<v 2> - Register:@,\
     \ %a@]@. @[<v 2> - Memory:@,\
     \ %a@]@. @[<v 2> - Path Conditions:@,\
-    \ %a@]@. @[<v 2> - Is NPE Alternative: %b@]@." SymTbl.pp symtbl Reg.pp reg Mem.pp mem PC.pp pc
-    is_npe_alternative
+    \ %a@]@. @[<v 2> - Is NPE Alternative? Is Exceptional?@,\
+    \ %b,%b@]@." SymTbl.pp symtbl Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
 
 
-let leq ~lhs:_ ~rhs:_ = (* No join *) false
+let leq ~lhs ~rhs = phys_equal lhs rhs
 
-let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; symtbl= SymTbl.empty; is_npe_alternative= false}
+let bottom =
+  { reg= Reg.bottom
+  ; mem= Mem.bottom
+  ; pc= PC.empty
+  ; symtbl= SymTbl.empty
+  ; is_npe_alternative= false
+  ; is_exceptional= false }
+
 
 let fold_memory {mem} ~init ~f = Mem.fold (fun l v acc -> f acc l v) mem init
 
@@ -592,7 +599,9 @@ type get_summary = Procname.t -> t option
 
 let is_unknown_loc {mem} l = Loc.is_unknown l || not (Mem.mem l mem)
 
-let is_unknown_id {reg} l = not (Reg.mem l reg)
+let is_unknown_id {reg} id = Val.is_bottom (Reg.find id reg)
+
+let is_exceptional {is_exceptional} = is_exceptional
 
 (* Read & Write *)
 let read_loc {mem} l = Mem.find l mem
@@ -603,9 +612,16 @@ let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.me
 
 let store_reg astate id v = {astate with reg= Reg.strong_update id v astate.reg}
 
-let remove_id astate id = {astate with reg= Reg.remove id astate.reg}
+let remove_id astate id =
+  if Reg.mem id astate.reg then {astate with reg= Reg.remove id astate.reg}
+  else (* OPTIMIZATION: to enable physical equality *) astate
 
-let remove_pvar astate ~pv = {astate with mem= Mem.remove (Loc.of_pvar pv) astate.mem}
+
+let remove_pvar astate ~pv =
+  let pvar_loc = Loc.of_pvar pv in
+  if Mem.mem pvar_loc astate.mem then {astate with mem= Mem.remove (Loc.of_pvar pv) astate.mem}
+  else (* OPTIMIZATION: to enable physical equality *) astate
+
 
 let remove_locals astate ~locals = List.fold locals ~init:astate ~f:(fun acc pv -> remove_pvar acc ~pv)
 
@@ -624,6 +640,10 @@ let get_path_conditions {pc} = PC.elements pc
 let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
+
+let set_exception astate = {astate with is_exceptional= true}
+
+let unwrap_exception astate = {astate with is_exceptional= false}
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
