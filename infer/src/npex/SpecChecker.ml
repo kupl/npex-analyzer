@@ -122,6 +122,10 @@ module DisjReady = struct
     match callee with
     | _ when String.equal "__cast" (Procname.get_method callee) ->
         (* ret_typ of__cast is Boolean, but is actually pointer type *)
+        let arg_exp, _ = List.hd_exn arg_typs in
+        (* TODO: check the logic is correct *)
+        let value = Domain.eval astate node instr arg_exp in
+        (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
         [Domain.store_reg astate ret_id value]
     | _ when String.equal "__instanceof" (Procname.get_method callee) ->
         (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
@@ -156,6 +160,7 @@ module DisjReady = struct
     let ret_id, _ = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
+        L.d_printfln "Found summary from %a" Procname.pp callee ;
         let formals = Procdesc.get_pvar_formals callee_pdesc in
         let formal_pvars = List.map formals ~f:fst in
         let ret_var = Procdesc.get_ret_var callee_pdesc in
@@ -240,8 +245,25 @@ module DisjReady = struct
         [astate]
 
 
+  let filter_invalid_states astate = function
+    | Sil.Load {e= Var id} when Domain.is_unknown_id astate id ->
+        (* Undefined behavior (e.g., unhandled exceptional flow) *)
+        []
+    | Sil.Store {e2= Var id} when Domain.is_unknown_id astate id ->
+        (* Undefined behavior (e.g., unhandled exceptional flow) *)
+        []
+    | Sil.Call (_, _, arg_typs, _, _) ->
+        let contains_unknown_id (arg_exp, _) =
+          match arg_exp with Exp.Var id -> Domain.is_unknown_id astate id | _ -> false
+        in
+        if List.exists arg_typs ~f:contains_unknown_id then [] else [astate]
+    | _ ->
+        [astate]
+
+
   let exec_instr astate analysis_data cfg_node instr =
     let node = CFG.Node.underlying_node cfg_node in
+    let pre_states = filter_invalid_states astate instr in
     let post_states =
       List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
     in
