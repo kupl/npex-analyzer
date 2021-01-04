@@ -80,15 +80,26 @@ and enumerate_predicates terms : (Formula.func * Terms.elt list) list =
 
 
 and enumerate_unaries terms =
-  let unops = Formula.[IsConstant; IsImmutable] in
+  let open Formula in
   let arguments = List.chunks_of terms ~length:1 in
-  List.concat_map unops ~f:(fun unop -> List.map arguments ~f:(fun terms -> (Formula.Unary unop, terms)))
+  List.concat_map
+    ~f:(fun unop -> List.map arguments ~f:(fun terms -> (Unary unop, terms)))
+    [IsConstant; IsImmutable]
 
 
 and enumerate_binaries terms =
-  let binops = Formula.[Equals; IsFunctionOf] in
-  let arguments = List.map (List.cartesian_product terms terms) ~f:(fun (a, b) -> [a; b]) in
-  List.concat_map binops ~f:(fun binop -> List.map arguments ~f:(fun terms -> (Formula.Binary binop, terms)))
+  let open Formula in
+  let irreflxive_pairs =
+    List.filter_map
+      ~f:(fun (x, y) -> if equal_term x y then None else Some [x; y])
+      (List.cartesian_product terms terms)
+  in
+  let comb_of_pairs = combinations ~k:2 ~lst:terms in
+  List.concat_map
+    ~f:(fun binop ->
+      let arguments = if equal_binop binop Equals then comb_of_pairs else irreflxive_pairs in
+      List.map arguments ~f:(fun terms -> (Binary binop, terms)))
+    [Equals; IsFunctionOf]
 
 
 let launch ~get_summary =
