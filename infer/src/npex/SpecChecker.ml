@@ -1,7 +1,7 @@
 open! Vocab
 module F = Format
 module L = Logging
-module CFG = ProcCfg.NormalOneInstrPerNode
+module CFG = ProcCfg.Exceptional
 module Node = InstrNode
 module Summary = SpecCheckerSummary
 
@@ -62,6 +62,13 @@ module DisjReady = struct
             let value1 = Domain.eval ~pos:0 astate node instr e1 in
             let value2 = Domain.eval ~pos:0 astate node instr e2 in
             Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation
+        | Exp.Var _ as e ->
+            let value = Domain.eval ~pos:0 astate node instr e in
+            (* TODO: make e == 1 *)
+            Domain.PathCond.make_physical_equals Binop.Ne value Domain.Val.zero
+        | Exp.UnOp (Unop.LNot, (Exp.Var _ as e), _) ->
+            let value = Domain.eval ~pos:0 astate node instr e in
+            Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.zero
         | _ as bexp ->
             raise (Unexpected (F.asprintf "%a is not allowed as boolean expression in java" Exp.pp bexp))
       in
@@ -115,7 +122,6 @@ module DisjReady = struct
     match callee with
     | _ when String.equal "__cast" (Procname.get_method callee) ->
         (* ret_typ of__cast is Boolean, but is actually pointer type *)
-        let value = Domain.Val.make_extern instr_node Typ.void_star in
         [Domain.store_reg astate ret_id value]
     | _ when String.equal "__instanceof" (Procname.get_method callee) ->
         (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
@@ -130,6 +136,9 @@ module DisjReady = struct
           else Domain.Val.make_extern instr_node Typ.void_star
         in
         [Domain.store_reg astate ret_id value]
+    | _ when String.equal "__unwrap_exception" (Procname.get_method callee) ->
+        let value = Domain.Val.make_extern instr_node Typ.void_star in
+        [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
     | _ when is_virtual && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
         let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" in
         exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
@@ -142,8 +151,8 @@ module DisjReady = struct
         [Domain.store_reg astate ret_id value]
 
 
-  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency}; program} node instr
-      ret_typ arg_typs callee =
+  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency}} node instr ret_typ
+      arg_typs callee =
     let ret_id, _ = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
@@ -165,80 +174,76 @@ module DisjReady = struct
         exec_model_proc astate node instr callee ret_typ arg_typs
 
 
-  let exec_instr astate ({program} as analysis_data) cfg_node instr =
-    let node = CFG.Node.underlying_node cfg_node in
+  let compute_posts astate analysis_data node instr =
     let instr_node = Node.of_pnode node instr in
+    match instr with
+    | Sil.Load {id; e} when Ident.is_none id ->
+        (* dereference instruction *)
+        let loc = Domain.eval_lv astate e in
+        if Domain.Loc.is_null loc then [] else add_non_null_constraints node instr e astate
+    | Sil.Load {id; e; typ} ->
+        let loc = Domain.eval_lv astate e in
+        if Domain.Loc.is_null loc then []
+        else if Domain.is_unknown_loc astate loc then
+          (* symbolic location is introduced at load instr *)
+          let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
+          let value = Domain.read_loc state_unknown_resolved loc in
+          Domain.store_reg state_unknown_resolved id value |> add_non_null_constraints node instr e
+        else
+          let value = Domain.read_loc astate loc in
+          [Domain.store_reg astate id value]
+    | Sil.Store {e1; e2= Exp.Exn _ as e2} ->
+        let loc = Domain.eval_lv astate e1 in
+        let value = Domain.eval astate node instr e2 ~pos:0 in
+        [Domain.set_exception (Domain.store_loc astate loc value)]
+    | Sil.Store {e1; e2} ->
+        let loc = Domain.eval_lv astate e1 in
+        if Domain.Loc.is_null loc then []
+        else
+          let value = Domain.eval astate node instr e2 ~pos:0 in
+          Domain.store_loc astate loc value |> add_non_null_constraints node instr e1
+    | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when Models.is_new proc ->
+        (* allocation instruction *)
+        let value = Domain.Val.make_allocsite instr_node in
+        [Domain.store_reg astate ret_id value]
+    | Sil.Call (ret_typ, Const (Cfun (Java mthd)), arg_typs, _, _) when Procname.Java.is_constructor mthd ->
+        exec_interproc_call astate analysis_data node instr ret_typ arg_typs (Procname.Java mthd)
+        |> List.map ~f:(init_uninitialized_fields mthd arg_typs node instr)
+    | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when not cf_virtual ->
+        (* static call *)
+        exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc
+    | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when cf_virtual -> (
+        (* virtual call *)
+        let this_exp, _ = List.hd_exn arg_typs in
+        let this_value = Domain.eval astate node instr this_exp ~pos:0 in
+        match Domain.Val.get_class_name_opt this_value with
+        | Some class_name ->
+            let callee = Procname.replace_class proc class_name in
+            exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+        | None ->
+            exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc )
+    | Sil.Call (ret_typ, _, arg_typs, _, _) ->
+        (* callback call *)
+        exec_unknown_call astate node instr ret_typ arg_typs
+    | Sil.Prune (bexp, _, _, _) ->
+        exec_prune astate node instr bexp
+    | Sil.Metadata (ExitScope (vars, _)) ->
+        let real_temps =
+          List.filter vars ~f:(function Var.LogicalVar _ -> true | Var.ProgramVar pv -> Pvar.is_frontend_tmp pv)
+        in
+        [Domain.remove_temps astate real_temps]
+    | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
+        [Domain.remove_pvar astate ~pv]
+    | Sil.Metadata (Nullify (_, _)) ->
+        [astate]
+    | Sil.Metadata (Abstract _) | Sil.Metadata Skip | Sil.Metadata (VariableLifetimeBegins _) ->
+        [astate]
+
+
+  let exec_instr astate analysis_data cfg_node instr =
+    let node = CFG.Node.underlying_node cfg_node in
     let post_states =
-      match instr with
-      | Sil.Load {id; e} when Ident.is_none id ->
-          (* dereference instruction *)
-          let loc = Domain.eval_lv astate e in
-          if Domain.Loc.is_null loc then [] else add_non_null_constraints node instr e astate
-      | Sil.Load {id; e; typ} ->
-          let loc = Domain.eval_lv astate e in
-          if Domain.Loc.is_null loc then []
-          else if Domain.is_unknown_loc astate loc then
-            (* symbolic location is introduced at load instr *)
-            let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
-            let value = Domain.read_loc state_unknown_resolved loc in
-            Domain.store_reg state_unknown_resolved id value |> add_non_null_constraints node instr e
-          else
-            let value = Domain.read_loc astate loc in
-            [Domain.store_reg astate id value]
-      | Sil.Store {e2= Exp.Exn _} ->
-          (* TODO: ignore exceptional flow *)
-          []
-      | Sil.Store {e1; e2= Var id; typ} when Domain.is_unknown_id astate id ->
-          (* TODO: Why this is happening? *)
-          let loc = Domain.eval_lv astate e1 in
-          if Domain.Loc.is_null loc then []
-          else Domain.store_loc astate loc (Domain.Val.of_typ typ) |> add_non_null_constraints node instr e1
-      | Sil.Store {e1; e2} ->
-          let loc = Domain.eval_lv astate e1 in
-          if Domain.Loc.is_null loc then []
-          else
-            let value = Domain.eval astate node instr e2 ~pos:0 in
-            Domain.store_loc astate loc value |> add_non_null_constraints node instr e1
-      | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when Models.is_new proc ->
-          (* allocation instruction *)
-          let value = Domain.Val.make_allocsite instr_node in
-          [Domain.store_reg astate ret_id value]
-      | Sil.Call (ret_typ, Const (Cfun (Java mthd)), arg_typs, _, _) when Procname.Java.is_constructor mthd ->
-          exec_interproc_call astate analysis_data node instr ret_typ arg_typs (Procname.Java mthd)
-          |> List.map ~f:(init_uninitialized_fields mthd arg_typs node instr)
-      | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when not cf_virtual ->
-          (* static call *)
-          exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc
-      | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when cf_virtual -> (
-          (* virtual call *)
-          let this_exp, _ = List.hd_exn arg_typs in
-          let this_value = Domain.eval astate node instr this_exp ~pos:0 in
-          match Domain.Val.get_class_name_opt this_value with
-          | Some class_name ->
-              let callee = Procname.replace_class proc class_name in
-              exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
-          | None ->
-              exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc )
-      | Sil.Call (ret_typ, _, arg_typs, _, _) ->
-          (* callback call *)
-          exec_unknown_call astate node instr ret_typ arg_typs
-      | Sil.Prune (bexp, _, _, _) ->
-          exec_prune astate node instr bexp
-      | Sil.Metadata (ExitScope (vars, _)) ->
-          let real_temps =
-            List.filter vars ~f:(function
-              | Var.LogicalVar _ ->
-                  true
-              | Var.ProgramVar pv ->
-                  Pvar.is_frontend_tmp pv)
-          in
-          [Domain.remove_temps astate real_temps]
-      | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
-          [Domain.remove_pvar astate ~pv]
-      | Sil.Metadata (Nullify (_, _)) ->
-          [astate]
-      | Sil.Metadata (Abstract _) | Sil.Metadata Skip | Sil.Metadata (VariableLifetimeBegins _) ->
-          [astate]
+      List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
     in
     List.map post_states ~f:(check_npe_alternative analysis_data node instr)
 
@@ -253,7 +258,7 @@ module DisjunctiveConfig : TransferFunctions.DisjunctiveConfig = struct
   let widen_policy = `UnderApproximateAfterNumIterations 2
 end
 
-module Analyzer = AbstractInterpreter.MakeDisjunctive (DisjReady) (DisjunctiveConfig)
+module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
 
 let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> Analyzer.invariant_map =
  fun ({InterproceduralAnalysis.proc_desc} as interproc) ->
