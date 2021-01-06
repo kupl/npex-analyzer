@@ -28,7 +28,7 @@ let rec synthesize ~nullpoint ~summary ~pdesc =
     terms_from_summary
     |> Terms.union terms_from_pdesc
     |> Terms.filter (not <<< AccessExpr.contain_method_call_access)
-    |> function ts -> AccessExpr.null :: Terms.elements ts
+    |> function ts -> AccessExpr.zero :: AccessExpr.null :: Terms.elements ts
   in
   L.debug_dev "All terms collected: %a@." (Pp.seq AccessExpr.pp) all_terms ;
   let formulas = enumerate_formulas all_terms in
