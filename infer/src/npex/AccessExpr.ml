@@ -13,6 +13,19 @@ module S = struct
 
   let dummy = AccessExpr (Pvar.mk_tmp "" Procname.empty_block, [])
 
+  (* Infer IntLit's compare does not distinguish pointernesses *)
+  type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
+
+  and pointerness = bool
+
+  let compare x y =
+    match (x, y) with
+    | Primitive (Cint i), Primitive (Cint j) when IntLit.isnull i || IntLit.isnull j ->
+        compare_literal_with_pointerness (i, IntLit.isnull i) (j, IntLit.isnull j)
+    | _ ->
+        compare x y
+
+
   let rec pp fmt = function
     | AccessExpr (base, accesses) ->
         pp_access_expr fmt (base, accesses)
