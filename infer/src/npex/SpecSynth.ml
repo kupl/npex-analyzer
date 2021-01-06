@@ -34,10 +34,10 @@ let rec synthesize ~nullpoint ~summary ~pdesc =
   let all_terms =
     terms_from_summary
     |> Terms.union terms_from_pdesc
-    |> Terms.add AccessExpr.null
     |> Terms.filter (not <<< AccessExpr.contain_method_call_access)
+    |> function ts -> AccessExpr.null :: Terms.elements ts
   in
-  L.debug_dev "All terms collected: %a@." Terms.pp all_terms ;
+  L.debug_dev "All terms collected: %a@." (Pp.seq AccessExpr.pp) all_terms ;
   let formulas = enumerate_formulas all_terms in
   let npe_str = F.asprintf "%s_%d" (NullPoint.get_method nullpoint) (NullPoint.get_line nullpoint) in
   List.map formulas ~f:(fun post ->
@@ -83,10 +83,8 @@ and collect_terms_from_pdesc pdesc =
     all_exprs Terms.empty
 
 
-and enumerate_formulas (terms : Terms.t) : Formula.formula list =
-  List.concat_map
-    (enumerate_atoms (Terms.elements terms))
-    ~f:(fun atom -> [Formula.Neg (Formula.Atom atom); Formula.Atom atom])
+and enumerate_formulas terms : Formula.formula list =
+  List.concat_map (enumerate_atoms terms) ~f:(fun atom -> [Formula.Neg (Formula.Atom atom); Formula.Atom atom])
 
 
 and enumerate_atoms terms =
