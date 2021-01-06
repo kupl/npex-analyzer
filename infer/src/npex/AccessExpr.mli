@@ -50,3 +50,5 @@ val zero : t
 val one : t
 
 module Set : PrettyPrintable.PPSet with type elt = t
+
+module Map : PrettyPrintable.PPMap with type key = t

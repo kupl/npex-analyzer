@@ -246,3 +246,4 @@ end
 
 include S
 module Set = PrettyPrintable.MakePPSet (S)
+module Map = PrettyPrintable.MakePPMap (S)
