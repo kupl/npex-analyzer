@@ -144,19 +144,20 @@ module DisjReady = struct
         let value = Domain.Val.make_extern instr_node Typ.void_star in
         [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
     | _ when is_virtual && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
-        let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" in
+        (* Modeling getter method (e.g., p.getField() returns p.field) *)
+        let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
         exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
     | Procname.Java mthd ->
+        (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
         let ret_typ = Procname.Java.get_return_typ mthd in
         let value = Domain.Val.make_extern instr_node ret_typ in
         [Domain.store_reg astate ret_id value]
     | _ ->
-        let value = Domain.Val.make_extern instr_node ret_typ in
-        [Domain.store_reg astate ret_id value]
+        exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs
 
 
-  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency}} node instr ret_typ
-      arg_typs callee =
+  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
+      ret_typ arg_typs callee =
     let ret_id, _ = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
@@ -172,9 +173,16 @@ module DisjReady = struct
         in
         Summary.resolve_summary astate ~actual_values ~formals callee_summary
         |> List.map ~f:(fun astate' ->
-               Domain.read_loc astate' (Domain.Loc.of_pvar ret_var)
-               |> Domain.store_reg astate' ret_id
-               |> Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals))
+               let return_value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+               let astate_ret_binded =
+                 if Domain.is_exceptional astate' then
+                   (* caller_return := callee_return *)
+                   let caller_ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+                   Domain.store_loc astate' caller_ret_loc return_value
+                 else (* ret_id := callee_return *)
+                   Domain.store_reg astate' ret_id return_value
+               in
+               Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals) astate_ret_binded)
     | None ->
         exec_model_proc astate node instr callee ret_typ arg_typs
 
@@ -263,11 +271,18 @@ module DisjReady = struct
 
   let exec_instr astate analysis_data cfg_node instr =
     let node = CFG.Node.underlying_node cfg_node in
-    let pre_states = filter_invalid_states astate instr in
-    let post_states =
-      List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
+    let is_exn_handler () =
+      Procdesc.Node.equal_nodekind Procdesc.Node.exn_handler_kind (Procdesc.Node.get_kind node)
     in
-    List.map post_states ~f:(check_npe_alternative analysis_data node instr)
+    if Domain.is_exceptional astate && not (is_exn_handler ()) then
+      (* If a state is exceptional, stop executing instruction until it met catch statement *)
+      [astate]
+    else
+      let pre_states = filter_invalid_states astate instr in
+      let post_states =
+        List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
+      in
+      List.map post_states ~f:(check_npe_alternative analysis_data node instr)
 
 
   let pp_session_name node fmt =

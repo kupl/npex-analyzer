@@ -261,10 +261,9 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
     let open IOption.Let_syntax in
     (* NPEX: to handle exceptional flow *)
     match Procdesc.Node.get_kind (CFG.Node.underlying_node node) with
-    | Stmt_node ExceptionHandler | Exit_node ->
-        L.d_printfln "ExceptionHandler Node: get all states" ;
+    | Exit_node ->
         compute_pre cfg node inv_map
-    | Stmt_node ExceptionsSink ->
+    | Stmt_node ExceptionHandler | Stmt_node ExceptionsSink ->
         L.d_printfln "ExceptionHandler Node: invalidate non-exceptional states" ;
         let+ pre_disjuncts = compute_pre cfg node inv_map in
         List.filter pre_disjuncts ~f:SpecCheckerDomain.is_exceptional

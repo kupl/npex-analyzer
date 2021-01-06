@@ -808,7 +808,15 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   in
   let mem' = SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem in
   let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
-  if PC.exists PathCond.is_invalid pc' then None else Some {astate with mem= mem'; pc= pc'; symtbl= symtbl'}
+  if PC.exists PathCond.is_invalid pc' then None
+  else
+    Some
+      { astate with
+        mem= mem'
+      ; pc= pc'
+      ; symtbl= symtbl'
+      ; is_exceptional= callee_summary.is_exceptional
+      ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
 
 
 (* Eval functions *)
