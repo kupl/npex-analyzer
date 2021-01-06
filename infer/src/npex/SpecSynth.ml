@@ -17,14 +17,7 @@ let get_nullpoint_list () =
 
 
 (* TODO: extract context-conditions *)
-let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
-  (* Original logic *)
-  let inv_map = SpecChecker.cached_compute_invariant_map analysis_data in
-  let formals = Procdesc.get_pvar_formals proc_desc in
-  let cfg = CFG.from_pdesc proc_desc in
-  let summary = SpecChecker.compute_summary formals cfg inv_map in
-  Some summary
-
+let checker = SpecChecker.checker
 
 module Terms = AccessExpr.Set
 
