@@ -4,6 +4,19 @@ module L = Logging
 module Domain = SpecCheckerDomain
 open Specification.Formula
 
+type result = Valid | Satisfiable | UnSAT | Unknown
+
+let to_string_result = function
+  | Valid ->
+      "Valid"
+  | Satisfiable ->
+      "Satisfiable"
+  | UnSAT ->
+      "UnSAT"
+  | Unknown ->
+      "Unknown"
+
+
 module Row = struct
   type t = (string, bool) List.Assoc.t
 
@@ -76,42 +89,82 @@ let eval_term astate aexpr =
       value
 
 
+let is_constant Domain.{pc} =
+  let open SymDom in
+  function
+  | Val.Vint (SymExp.IntLit _) | Val.Vheap (SymHeap.String _) | Val.Vheap (SymHeap.Null _) ->
+      Valid
+  | (Val.Vint (SymExp.Symbol _) | Val.Vheap (SymHeap.Symbol _)) as v ->
+      let equal_values =
+        PC.fold
+          (fun pc acc ->
+            match pc with
+            | PathCond.Equals (v1, v2) when Val.equal v1 v ->
+                v2 :: acc
+            | PathCond.Equals (v2, v1) when Val.equal v1 v ->
+                v2 :: acc
+            | _ ->
+                acc)
+          pc []
+      in
+      if List.exists equal_values ~f:Val.is_constant then Valid
+      else if List.is_empty equal_values then UnSAT
+      else Satisfiable
+  | _ ->
+      Unknown
+
+
 let eval_unary astate f term =
   let value = eval_term astate term in
   match f with
   | IsConstant ->
-      Domain.Val.is_constant value
+      is_constant astate value
   | IsImmutable ->
       (* raise (TODO "How to eval isImmutable?") *)
-      true
+      Unknown
+
+
+let is_valid_pred Domain.{pc} cond =
+  if Domain.PathCond.is_valid cond then Valid
+  else if Domain.PathCond.is_invalid cond then UnSAT
+  else if Domain.PC.mem cond pc then Valid
+  else
+    let pc_added = Domain.PC.add cond pc in
+    if Domain.PC.exists Domain.PathCond.is_invalid pc_added then UnSAT else Satisfiable
 
 
 let eval_binary astate f aexpr1 aexpr2 =
   match f with
   | Equals when AccessExpr.equal aexpr1 aexpr2 ->
-      true
+      Valid
   | Equals ->
       let value1 = eval_term astate aexpr1 in
       let value2 = eval_term astate aexpr2 in
       let cond = Domain.PathCond.make_physical_equals Binop.Eq value1 value2 in
-      Domain.is_valid_pc astate cond
+      is_valid_pred astate cond
   | IsFunctionOf ->
       (* raise (TODO "How to eval isFunctionOf?") *)
-      true
+      Unknown
 
 
-let rec eval_formula astate f =
+let eval_formula astate f =
   match f with
-  | Neg formula' ->
-      not (eval_formula astate formula')
   | Atom True ->
-      true
+      Valid
   | Atom (Predicate (Unary f, [aexpr])) ->
       eval_unary astate f aexpr
   | Atom (Predicate (Binary f, [aexpr1; aexpr2])) ->
       eval_binary astate f aexpr1 aexpr2
   | _ as formula ->
       L.(die InternalError) "Invalid formula: %a@." pp_formula formula
+
+
+let eval_formula astate f =
+  match f with
+  | Neg f -> (
+    match eval_formula astate f with UnSAT -> true | _ -> false )
+  | _ -> (
+    match eval_formula astate f with Valid -> true | _ -> false )
 
 
 let debug_check ~get_summary specs id_valid_map =
