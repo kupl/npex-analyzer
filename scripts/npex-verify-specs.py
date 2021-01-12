@@ -18,14 +18,14 @@ NPEX_ORIGINAL_SUMMARY_DIR = f"{ROOT_DIR}/npex-original-summaries"
 
 
 # Assume original buggy code is analyzed. So we don't need to clean compile it
-def verify_patches(project_root_dir, maven_build_command=f"mvn test-compile {MVN_OPT}"):
+def verify_patches(project_root_dir, maven_build_command=f"mvn test-compile {MVN_OPT}", error_reports=["npe.json"]):
     start_time = time.time()
     patches_dir = f"{project_root_dir}/patches"
     dicts = []
     fieldnames = ["patch_id"]
     for patch in glob.glob(f"{patches_dir}/*"):
         patch_id = os.path.basename(patch)
-        result_path = verify_patch(project_root_dir, patch, maven_build_command)
+        result_path = verify_patch(project_root_dir, patch, maven_build_command, error_reports)
         if result_path == None:
             continue
         with open(result_path, "r", newline="") as csvfile:
@@ -66,7 +66,7 @@ def extract_interesting_features(dicts, project_root_dir):
         os.system(f"cat specs/{feature}.text")
     return worthy_features
 
-def verify_patch(project_root_dir, patch_dir, maven_build_command):
+def verify_patch(project_root_dir, patch_dir, maven_build_command, error_reports):
     print(f"Verifying patch in directory: {patch_dir}")
     patch_source_path = f"{patch_dir}/patch.java"
     patch_json_path = f"{patch_dir}/patch.json"
@@ -93,7 +93,10 @@ def verify_patch(project_root_dir, patch_dir, maven_build_command):
     # if (subprocess.run(analyze_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
     #     return None
 
-    launch_spec_veri_cmd = f"{INFER_PATH} npex --launch-spec-verifier --spec-checker-only"
+    npe_jsons = glob.glob(f"{project_root_dir}/{error_reports}")
+    error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in npe_jsons])
+
+    launch_spec_veri_cmd = f"{INFER_PATH} npex --launch-spec-verifier --spec-checker-only {error_reports_arg}"
     if (subprocess.run(launch_spec_veri_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
         return None
 
@@ -108,10 +111,24 @@ def verify_patch(project_root_dir, patch_dir, maven_build_command):
     )
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3:
-        verify_patches(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--error_reports", help="error reports")
+    parser.add_argument("--patch_id", help="patch_id")
+    parser.add_argument("--apply_patch", default=False, action='store_true' ,help="patch_id")
+    args=parser.parse_args()
+    
+    if args.apply_patch:
+        patch_dir = f"{ROOT_DIR}/patches/{args.patch_id}"
+        with open(f"{patch_dir}/patch.json", "r") as f:
+            patch_json = json.load(f)
+        source_path_to_patch = f"{ROOT_DIR}/{patch_json['original_filepath']}"
+        shutil.copy(f"{patch_dir}/patch.java", f"{source_path_to_patch}")
+        shutil.copy(f"{patch_dir}/patch.json", f"{ROOT_DIR}/patch.json")
+    
+    # elif len(sys.argv) == 3:
+    #     verify_patches(sys.argv[1], sys.argv[2], args.error_reports)
     else:
         if os.path.isdir(NPEX_ORIGINAL_SUMMARY_DIR):
             shutil.rmtree(NPEX_ORIGINAL_SUMMARY_DIR)
         shutil.copytree(NPEX_SUMMARY_DIR, NPEX_ORIGINAL_SUMMARY_DIR)
-        verify_patches(ROOT_DIR)
+        verify_patches(ROOT_DIR, error_reports=args.error_reports)
