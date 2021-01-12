@@ -1,64 +1,15 @@
-type t
+module Loc = SymDom.Loc
+module Val = SymDom.Val
+module PathCond = SymDom.PathCond
+module PC = SymDom.PC
 
-module Loc : sig
-  type t
+module Reg : module type of WeakMap.Make (Ident) (Val)
 
-  val of_pvar : Pvar.t -> t
+module Mem : module type of WeakMap.Make (Loc) (Val)
 
-  val is_null : t -> bool
+module SymTbl : module type of PrettyPrintable.MakePPMonoMap (Loc) (Val)
 
-  val append_field : fn:Fieldname.t -> t -> t
-
-  val pp : Format.formatter -> t -> unit
-end
-
-module Val : sig
-  type t
-
-  val make_null : ?pos:int -> InstrNode.t -> t
-
-  val make_extern : InstrNode.t -> Typ.t -> t
-
-  val make_allocsite : InstrNode.t -> t
-
-  val get_class_name_opt : t -> Typ.Name.t option
-
-  val get_default_by_typ : InstrNode.t -> Typ.t -> t
-
-  val is_top : t -> bool
-
-  val is_constant : t -> bool
-
-  val of_typ : Typ.t -> t
-
-  val of_const : Const.t -> t
-
-  val get_const : t -> Const.t option
-
-  val top : t
-
-  val zero : t
-
-  val pp : Format.formatter -> t -> unit
-
-  val to_loc : t -> Loc.t
-end
-
-module PathCond : sig
-  type t = PEquals of Val.t * Val.t | Not of t | Equals of Val.t * Val.t
-
-  val make_physical_equals : Binop.t -> Val.t -> Val.t -> t
-
-  val make_negation : t -> t
-
-  val is_false : t -> bool
-
-  val is_true : t -> bool
-
-  val vals_of_path_cond : t -> Val.t list
-
-  val pp : Format.formatter -> t -> unit
-end
+type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
 type get_summary = Procname.t -> t option
 
