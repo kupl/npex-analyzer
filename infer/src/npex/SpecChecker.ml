@@ -102,7 +102,6 @@ module DisjReady = struct
 
   let exec_unknown_get_proc astate node instr fieldname (ret_id, _) arg_typs =
     let instr_node = Node.of_pnode node instr in
-    let value = Domain.Val.make_extern instr_node Typ.void_star in
     let this_type_loc =
       let this_loc =
         let arg_exp, _ = List.hd_exn arg_typs in
@@ -111,6 +110,10 @@ module DisjReady = struct
       let field_class = Typ.Name.Java.from_string (String.capitalize fieldname) in
       let field_name = Fieldname.make field_class fieldname in
       Domain.Loc.append_field this_loc ~fn:field_name
+    in
+    let value =
+      if Domain.is_unknown_loc astate this_type_loc then Domain.Val.make_extern instr_node Typ.void_star
+      else Domain.read_loc astate this_type_loc
     in
     let astate_field_stored = Domain.store_loc astate this_type_loc value in
     [Domain.store_reg astate_field_stored ret_id value]
@@ -292,7 +295,7 @@ end
 module DisjunctiveConfig : TransferFunctions.DisjunctiveConfig = struct
   let join_policy = `UnderApproximateAfter 20
 
-  let widen_policy = `UnderApproximateAfterNumIterations 2
+  let widen_policy = `UnderApproximateAfterNumIterations 1
 end
 
 module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
@@ -301,7 +304,7 @@ let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> An
  fun ({InterproceduralAnalysis.proc_desc} as interproc) ->
   let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc in
-  Analyzer.exec_pdesc ~do_narrowing:true
+  Analyzer.exec_pdesc ~do_narrowing:false
     ~initial:[SpecCheckerDomain.init_with_formals formals]
     analysis_data proc_desc
 
