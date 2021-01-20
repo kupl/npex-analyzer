@@ -294,10 +294,9 @@ let () =
       if Config.npex_launch_localizer then (
         assert (Int.equal (List.length Config.error_report_json) 1) ;
         Localizer.launch () )
-      else if Config.npex_launch_spec_synthesizer then (
-        InferAnalyze.main ~changed_files:None ;
-        L.progress "launch spec synthesizer" ;
-        SpecSynth.launch ~get_summary )
+      else if Config.npex_launch_spec_inference then (
+        L.progress "launch spec inference" ;
+        InferAnalyze.main ~changed_files:None )
       else if Config.npex_launch_spec_verifier then (
         let all_procs = Program.all_procs (Program.build ()) in
         L.progress " - %d procedure summaries are invalidated@." (Procname.Set.cardinal all_procs) ;

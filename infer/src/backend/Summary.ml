@@ -240,7 +240,7 @@ module OnDisk = struct
       match spec_of_procname proc_name with
       | None when BiabductionModels.mem proc_name ->
           spec_of_model proc_name
-      | None when Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier ->
+      | None when Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier ->
           Filename.concat Config.npex_summary_dir (specs_filename proc_name)
           |> DB.filename_from_string |> load_from_file
       | summ_opt ->
@@ -275,7 +275,7 @@ module OnDisk = struct
     let proc_name = get_proc_name summary in
     (* Make sure the summary in memory is identical to the saved one *)
     add proc_name summary ;
-    if Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier then
+    if Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier then
       DB.filename_from_string (Config.npex_summary_dir ^/ specs_filename proc_name)
       |> Serialization.write_to_file summary_serializer ~data:summary
     else

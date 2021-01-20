@@ -2275,10 +2275,10 @@ and npex_launch_localizer =
     "Launch NPE localizer"
 
 
-and npex_launch_spec_synthesizer =
+and npex_launch_spec_inference =
   CLOpt.mk_bool ~default:false ~long:"launch-spec-synthesizer"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
-    "Launch specification synthesizer"
+    "Launch specification inference"
 
 
 and npex_launch_spec_verifier =
@@ -3215,7 +3215,7 @@ and npex_specifications_directory = !npex_specifications_directory
 
 and npex_launch_localizer = !npex_launch_localizer
 
-and npex_launch_spec_synthesizer = !npex_launch_spec_synthesizer
+and npex_launch_spec_inference = !npex_launch_spec_inference
 
 and npex_launch_spec_verifier = !npex_launch_spec_verifier
 
