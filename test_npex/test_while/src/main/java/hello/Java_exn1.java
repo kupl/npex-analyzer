@@ -20,7 +20,7 @@ static boolean main(hello.A arg) {
       while ((n = System.in.read(buffer)) != (-1)) {
           np = arg.get_f();/* np: null pointer */
 
-          ret = ret + np.i;
+          ret = ret + np.get_i();
       } 
       return ret == 0;
     }
