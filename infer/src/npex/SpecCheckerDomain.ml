@@ -283,7 +283,6 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
   if PC.exists PathCond.is_invalid pc' then None
   else
-    (* L.progress "======================@.BEFORE: %a@.AFTER:%a@." PC.pp astate.pc PC.pp pc' ; *)
     Some
       { astate with
         mem= mem'
