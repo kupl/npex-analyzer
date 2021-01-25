@@ -10,24 +10,43 @@ module DisjReady = struct
   module Domain = SpecCheckerDomain
 
   type analysis_data =
-    {program: Program.t; interproc: SpecCheckerSummary.t InterproceduralAnalysis.t; patch: Patch.t option}
+    { program: Program.t
+    ; interproc: SpecCheckerSummary.t InterproceduralAnalysis.t
+    ; patch: Patch.t option
+    ; npe_list: NullPoint.t list option }
 
   let analysis_data interproc : analysis_data =
     let program = Program.from_marshal () in
-    match Utils.read_json_file Config.npex_patch_json_name with
-    | Ok _ ->
-        let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
-        {program; interproc; patch= Some patch}
-    | Error _ ->
-        {program; interproc; patch= None}
+    if Config.npex_launch_spec_inference then
+      {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None}
+    else if Config.npex_launch_spec_verifier then
+      let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
+      {program; interproc; npe_list= None; patch= Some patch}
+    else {program; interproc; npe_list= None; patch= None}
 
 
-  let check_npe_alternative {patch} node instr astate =
-    match patch with
-    | Some {conditional= Some (null_cond, _)} when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
-        Domain.mark_npe_alternative astate
-    | _ ->
-        astate
+  let check_npe_alternative {npe_list; patch} node instr astate =
+    if Config.npex_launch_spec_inference then
+      let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
+      match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
+      | Some NullPoint.{null_exp} ->
+          let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
+          let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
+          let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
+          let null_state, non_null_state =
+            ( Domain.add_pc (Domain.mark_npe_alternative astate) nullcond
+            , Domain.add_pc astate (Domain.PathCond.make_negation nullcond) )
+          in
+          null_state @ non_null_state
+      | None ->
+          [astate]
+    else if Config.npex_launch_spec_verifier then
+      match patch with
+      | Some {conditional= Some (null_cond, _)} when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
+          [Domain.mark_npe_alternative astate]
+      | _ ->
+          [astate]
+    else [astate]
 
 
   let init_uninitialized_fields mthd arg_typs node instr astate =
@@ -190,13 +209,49 @@ module DisjReady = struct
         exec_model_proc astate node instr callee ret_typ arg_typs
 
 
+  let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
+    if Config.npex_launch_spec_inference then
+      let instr_node = Node.of_pnode node instr in
+      let arg_values =
+        (* TODO: optimize it *)
+        List.mapi arg_typs ~f:(fun i (arg_exp, _) -> Domain.eval astate node instr arg_exp ~pos:i)
+      in
+      let call_context = NullSpecModel.{arg_values; node; instr; ret_typ; arg_typs; callee} in
+      match NullSpecModel.get (Domain.equal_values astate) call_context with
+      | Some model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr ->
+          let value = Domain.Val.make_null ~pos:NullSpecModel.null_pos instr_node in
+          [Domain.store_reg astate (fst ret_typ) value]
+      | Some (AccessExpr.Primitive (Const.Cstr str)) when String.equal str NullSpecModel.empty_str ->
+          (* empty *)
+          [astate]
+      | Some (AccessExpr.Primitive const) ->
+          let value = Domain.Val.of_const const in
+          [Domain.store_reg astate (fst ret_typ) value]
+      | Some model_aexpr ->
+          (*TODO: *)
+          L.progress "[TODO]: design eval function for %a@." AccessExpr.pp model_aexpr ;
+          [astate]
+      | None ->
+          exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+    else exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+
+
   let compute_posts astate analysis_data node instr =
     let instr_node = Node.of_pnode node instr in
     match instr with
-    | Sil.Load {id; e} when Ident.is_none id ->
+    | Sil.Load {id; e} when Ident.is_none id -> (
         (* dereference instruction *)
         let loc = Domain.eval_lv astate e in
-        if Domain.Loc.is_null loc then [] else add_non_null_constraints node instr e astate
+        match loc with
+        | Domain.Loc.SymHeap sh ->
+            let equal_values = Domain.equal_values astate (Domain.Val.of_symheap sh) in
+            if List.exists equal_values ~f:NullSpecModel.is_model_null then
+              (* do not dereference null pointer during inferencing null-spec *)
+              [astate]
+            else if List.exists equal_values ~f:Domain.Val.is_null then []
+            else add_non_null_constraints node instr e astate
+        | _ ->
+            [astate] )
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate e in
         if Domain.Loc.is_null loc then []
@@ -243,6 +298,10 @@ module DisjReady = struct
         exec_unknown_call astate node instr ret_typ arg_typs
     | Sil.Prune (bexp, _, _, _) ->
         exec_prune astate node instr bexp
+    (* | Sil.Metadata (ExitScope (vars, _)) ->
+           [Domain.remove_temps astate vars]
+       | Sil.Metadata (Nullify (pv, _)) ->
+           [Domain.remove_pvar astate ~pv] *)
     | Sil.Metadata (ExitScope (vars, _)) ->
         let real_temps =
           List.filter vars ~f:(function Var.LogicalVar _ -> true | Var.ProgramVar pv -> Pvar.is_frontend_tmp pv)
@@ -285,7 +344,7 @@ module DisjReady = struct
       let post_states =
         List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
       in
-      List.map post_states ~f:(check_npe_alternative analysis_data node instr)
+      List.concat_map post_states ~f:(check_npe_alternative analysis_data node instr)
 
 
   let pp_session_name node fmt =
