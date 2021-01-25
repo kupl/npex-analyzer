@@ -1,4 +1,5 @@
 open! IStd
+open! Vocab
 module F = Format
 module L = Logging
 
@@ -68,6 +69,8 @@ module S = struct
   let to_string t = F.asprintf "%a" pp t
 
   let of_pvar pv = AccessExpr (pv, [])
+
+  let of_const const = Primitive const
 
   let equal_base t pv = match t with AccessExpr (base, _) -> Pvar.equal base pv | _ -> false
 
@@ -260,3 +263,12 @@ end
 include S
 module Set = PrettyPrintable.MakePPSet (S)
 module Map = PrettyPrintable.MakePPMap (S)
+
+let is_abstract = function
+  | AccessExpr (_, accesses) ->
+      List.exists accesses ~f:(function ArrayAccess _ -> true | _ -> false)
+  | _ ->
+      false
+
+
+let is_concrete = function AccessExpr _ -> false | Primitive _ -> true
