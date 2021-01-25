@@ -435,7 +435,7 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
             List.partition_tf ~f:T.Domain.is_npe_alternative (lhs @ rhs)
           in
           let npe_length = List.length npe_alternative_states in
-          if npe_length >= n then npe_alternative_states
+          if npe_length >= n then List.split_n npe_alternative_states n |> fst
           else list_rev_append non_alternatives npe_alternative_states (n - npe_length)
 
 
