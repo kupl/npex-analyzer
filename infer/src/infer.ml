@@ -290,6 +290,19 @@ let () =
         | _ ->
             L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
       in
+      let serializer = Serialization.create_serializer Serialization.Key.summary in
+      let get_original_summary proc_name =
+        let original_summary_path =
+          Procname.to_filename proc_name ^ ".specs"
+          |> Filename.concat Config.npex_summary_dir
+          |> DB.filename_from_string
+        in
+        match Serialization.read_from_file serializer original_summary_path with
+        | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
+            spec_checker_summary
+        | _ ->
+            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+      in
       ResultsDir.assert_results_dir "have you run capture before?" ;
       if Config.npex_launch_localizer then (
         assert (Int.equal (List.length Config.error_report_json) 1) ;
@@ -298,15 +311,7 @@ let () =
         L.progress "launch spec inference" ;
         InferAnalyze.main ~changed_files:None )
       else if Config.npex_launch_spec_verifier then (
-        let all_procs = Program.all_procs (Program.build ()) in
-        L.progress " - %d procedure summaries are invalidated@." (Procname.Set.cardinal all_procs) ;
-        Procname.Set.iter
-          (fun pname ->
-            Ondemand.LocalCache.remove pname ;
-            Summary.OnDisk.delete pname ;
-            Sys.remove (Config.npex_summary_dir ^/ Procname.to_filename pname ^ ".specs"))
-          all_procs ;
         InferAnalyze.main ~changed_files:None ;
-        SpecVeri.launch ~get_summary ) ) ;
+        SpecVeri.launch ~get_summary ~get_original_summary ) ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0
