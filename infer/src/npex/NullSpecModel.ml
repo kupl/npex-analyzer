@@ -117,6 +117,7 @@ let default_models =
   |> add (Key.default_of Aint) (Value.default_of "size" AccessExpr.zero)
   |> add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
   |> add (Key.default_of Avoid) (Value.default_of "write" (AccessExpr.Primitive (Cstr empty_str)))
+  |> add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
 
 
 let is_matchable {callee} Value.({method_name}, _) =
@@ -150,12 +151,15 @@ let get equal_values callee_context =
               None))
   in
   match key_opt with
-  | Some key ->
+  | Some key -> (
       L.d_printfln "[NullSpecModel] Find applicable key: %a" Key.pp key ;
       let open IOption.Let_syntax in
-      let+ values = find_opt key model in
-      (* TODO: design similarity function and select most similar one *)
-      L.d_printfln "Model candidates:@.%a" VSet.pp values ;
-      VSet.filter (is_matchable callee_context) values |> VSet.elements |> List.map ~f:snd |> List.hd_exn
+      match find_opt key model with
+      | Some values ->
+          (* TODO: design similarity function and select most similar one *)
+          L.d_printfln "Model candidates:@.%a" VSet.pp values ;
+          VSet.filter (is_matchable callee_context) values |> VSet.elements |> List.map ~f:snd |> List.hd
+      | None ->
+          None )
   | None ->
       None
