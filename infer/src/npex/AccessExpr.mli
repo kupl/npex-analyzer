@@ -19,6 +19,8 @@ val to_string : t -> string
 
 val of_pvar : Pvar.t -> t
 
+val of_const : Const.t -> t
+
 val equal_base : t -> Pvar.t -> bool
 
 val get_base : t -> Pvar.t
@@ -52,3 +54,7 @@ val one : t
 module Set : PrettyPrintable.PPSet with type elt = t
 
 module Map : PrettyPrintable.PPMap with type key = t
+
+val is_abstract : t -> bool
+
+val is_concrete : t -> bool
