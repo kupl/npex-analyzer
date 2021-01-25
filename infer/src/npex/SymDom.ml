@@ -56,6 +56,10 @@ module SymHeap = struct
     | Unknown
   [@@deriving compare]
 
+  let compare x y =
+    match (x, y) with Null _, Null _ -> 0 | Null _, _ -> 1 | _, Null _ -> -1 | _, _ -> compare x y
+
+
   let equal = [%compare.equal: t]
 
   let make_allocsite node = Allocsite (Allocsite.make node)
@@ -273,6 +277,18 @@ module Val = struct
         F.fprintf fmt "Top"
 
 
+  let compare x y =
+    match (x, y) with
+    | Vheap s1, Vheap s2 ->
+        SymHeap.compare s1 s2
+    | Vheap _, _ ->
+        1
+    | _, Vheap _ ->
+        -1
+    | _ ->
+        compare x y
+
+
   let bottom = Bot (* undefined *)
 
   let top = Top (* type is not resolved, error! *)
@@ -343,6 +359,8 @@ module Val = struct
   let intTop = Vint SymExp.intTop
 
   let unknown = Vheap SymHeap.unknown
+
+  let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
   let is_abstract = function
     | Vint symexp ->
