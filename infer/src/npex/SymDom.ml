@@ -154,6 +154,10 @@ module SymExp = struct
 
   let is_symbolic = function Symbol _ -> true | _ -> false
 
+  let add x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.add x y) | _ -> IntTop
+
+  let sub x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.sub x y) | _ -> IntTop
+
   let rec get_intlit = function
     | IntLit il ->
         Some il
@@ -343,6 +347,10 @@ module Val = struct
   let zero = Vint (SymExp.of_intlit IntLit.zero)
 
   let one = Vint (SymExp.of_intlit IntLit.one)
+
+  let add x y = match (x, y) with Vint x, Vint y -> Vint (SymExp.add x y) | _ -> Top
+
+  let sub x y = match (x, y) with Vint x, Vint y -> Vint (SymExp.sub x y) | _ -> Top
 
   let make_allocsite node = Vheap (SymHeap.make_allocsite node)
 
