@@ -89,6 +89,19 @@ module S = struct
         ""
 
 
+  let is_local pdesc =
+    let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
+    function
+    | AccessExpr (pv, _) when Pvar.is_global pv ->
+        false
+    | AccessExpr (pv, _) when List.mem formals ~equal:Pvar.equal pv ->
+        false
+    | AccessExpr _ ->
+        true
+    | _ ->
+        false
+
+
   let is_sub_expr ~(sub : t) aexpr =
     match (aexpr, sub) with AccessExpr (base, _), AccessExpr (base', _) -> Pvar.equal base base' | _, _ -> false
 

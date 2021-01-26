@@ -27,6 +27,8 @@ val get_base : t -> Pvar.t
 
 val get_deref_field : t -> string
 
+val is_local : Procdesc.t -> t -> bool
+
 val is_sub_expr : sub:t -> t -> bool
 
 val replace_sub : src:t -> dst:t -> t -> t

@@ -1,15 +1,15 @@
 open! IStd
 open! Vocab
 module L = Logging
+module Loc = SymDom.Loc
+module Val = SymDom.Val
 module Domain = SpecCheckerDomain
 module Predicate = Constraint.Make (AccessExpr)
 module Formula = Constraint.MakePC (AccessExpr)
-module APSet = PrettyPrintable.MakePPSet (AccessExpr)
-module AliasMap = PrettyPrintable.MakePPMonoMap (SymDom.SymHeap) (APSet)
-module Loc = SymDom.Loc
-module Val = SymDom.Val
+module APSet = AbstractDomain.FiniteSet (AccessExpr)
+module AliasMap = WeakMap.Make (Val) (APSet)
 
-let state_to_pc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
+let state_to_pc proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
   let rec loc_to_access_expr mem : Loc.t -> APSet.t = function
     | Loc.Var pv ->
         APSet.singleton (AccessExpr.of_pvar pv)
@@ -59,10 +59,11 @@ let state_to_pc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
     List.map ap_pairs ~f:(fun (ap1, ap2) -> Predicate.make_physical_equals binop ap1 ap2) |> Formula.of_list
   in
   let summary_formula =
+    let filter_local = APSet.filter (not <<< AccessExpr.is_local proc_desc) in
     Domain.Mem.fold
       (fun l v ->
         let aps_loc, aps_val = (loc_to_access_expr mem l, val_to_ap v) in
-        make_formula Binop.Eq aps_loc aps_val |> Formula.union)
+        make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) |> Formula.union)
       mem Formula.empty
   in
   let pc_formula =
@@ -87,23 +88,30 @@ let state_to_pc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
   L.progress "%s" debug_msg ; (pc_formula, summary_formula)
 
 
-let verify summary_inferenced summary_patched =
+let verify proc_desc summary_inferenced summary_patched =
   let specs_inferenced, specs_patched =
-    ( List.filter summary_inferenced ~f:Domain.is_npe_alternative |> List.map ~f:state_to_pc
-    , List.filter summary_patched ~f:Domain.is_npe_alternative |> List.map ~f:state_to_pc )
+    ( List.filter summary_inferenced ~f:Domain.is_npe_alternative |> List.map ~f:(state_to_pc proc_desc)
+    , List.filter summary_patched ~f:Domain.is_npe_alternative |> List.map ~f:(state_to_pc proc_desc) )
   in
-  List.for_all specs_inferenced ~f:(fun spec_inferenced ->
-      let pc_inferenced, state_inferenced = spec_inferenced in
-      let satisfiable_specs = List.filter specs_patched ~f:(Formula.check_sat pc_inferenced <<< fst) in
-      (not (List.is_empty satisfiable_specs))
-      && List.for_all satisfiable_specs ~f:(Formula.check_valid state_inferenced <<< snd))
+  (not (List.is_empty specs_inferenced))
+  && List.for_all specs_inferenced ~f:(fun spec_inferenced ->
+         let pc_inferenced, state_inferenced = spec_inferenced in
+         let satisfiable_specs = List.filter specs_patched ~f:(Formula.check_sat pc_inferenced <<< fst) in
+         (not (List.is_empty satisfiable_specs))
+         && List.for_all satisfiable_specs ~f:(Formula.check_valid state_inferenced <<< snd))
 
 
 let launch ~get_summary ~get_original_summary =
   let program = Program.build () in
   let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
   let target_proc = Patch.get_method patch in
+  let target_pdesc = Program.pdesc_of program target_proc in
   let summary_inferenced : Domain.t list = get_original_summary target_proc in
   let summary_patched : Domain.t list = get_summary target_proc in
-  let result = verify summary_inferenced summary_patched in
-  if result then L.exit 0 else L.exit 1
+  let result = verify target_pdesc summary_inferenced summary_patched in
+  if result then (
+    L.progress "[SUCCESS]: the patch is verified w.r.t. specification@." ;
+    L.exit 0 )
+  else (
+    L.progress "[FAIL]: the patch does not satisfy specification@." ;
+    L.exit 1 )
