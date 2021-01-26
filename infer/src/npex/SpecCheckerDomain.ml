@@ -293,10 +293,32 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
 
 
 (* Eval functions *)
-let eval_uop unop v = Val.top
+let eval_uop unop v =
+  match unop with
+  | Unop.LNot when Val.is_true v ->
+      Val.zero
+  | Unop.LNot when Val.is_false v ->
+      Val.one
+  | _ ->
+      Val.top
+
 
 let eval_binop binop v1 v2 =
-  match binop with Binop.PlusA _ -> Val.add v1 v2 | Binop.MinusA _ -> Val.sub v1 v2 | _ -> Val.top
+  match binop with
+  | Binop.PlusA _ ->
+      Val.add v1 v2
+  | Binop.MinusA _ ->
+      Val.sub v1 v2
+  | Binop.Lt ->
+      Val.lt v1 v2
+  | Binop.Gt ->
+      Val.lt v2 v1
+  | Binop.Le ->
+      Val.lte v1 v1
+  | Binop.Ge ->
+      Val.lte v2 v1
+  | _ ->
+      Val.top
 
 
 let rec eval ?(pos = 0) astate node instr exp =

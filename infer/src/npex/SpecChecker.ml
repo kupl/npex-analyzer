@@ -70,14 +70,26 @@ module DisjReady = struct
 
 
   let exec_prune astate node instr bexp =
-    try
+    let is_equal_predicate = function
+      | Exp.BinOp (Binop.Eq, _, _)
+      | Exp.BinOp (Binop.Ne, _, _)
+      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Eq, _, _), _)
+      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Ne, _, _), _)
+      | Exp.Var _
+      | Exp.UnOp (Unop.LNot, Exp.Var _, _) ->
+          true
+      | _ ->
+          false
+    in
+    if is_equal_predicate bexp then (
       let pathcond =
         match bexp with
-        | Exp.BinOp (binop, e1, e2) ->
+        | Exp.BinOp ((Binop.Eq as binop), e1, e2) | Exp.BinOp ((Binop.Ne as binop), e1, e2) ->
             let value1 = Domain.eval ~pos:0 astate node instr e1 in
             let value2 = Domain.eval ~pos:0 astate node instr e2 in
             Domain.PathCond.make_physical_equals binop value1 value2
-        | Exp.UnOp (Unop.LNot, Exp.BinOp (binop, e1, e2), _) ->
+        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Eq as binop), e1, e2), _)
+        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Ne as binop), e1, e2), _) ->
             let value1 = Domain.eval ~pos:0 astate node instr e1 in
             let value2 = Domain.eval ~pos:0 astate node instr e2 in
             Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation
@@ -94,8 +106,11 @@ module DisjReady = struct
       L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
       if Domain.PathCond.is_false pathcond then []
       else if Domain.PathCond.is_true pathcond then [astate]
-      else Domain.add_pc astate pathcond
-    with TODO _ -> [astate]
+      else Domain.add_pc astate pathcond )
+    else
+      (* Non-equal predicaate: just check whether bexp is true, not, or unknown *)
+      let value = Domain.eval astate node instr bexp in
+      if Domain.Val.is_true value then [astate] else if Domain.Val.is_false value then [] else [astate]
 
 
   let add_non_null_constraints node instr e astate =

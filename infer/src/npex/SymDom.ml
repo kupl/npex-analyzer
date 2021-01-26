@@ -136,9 +136,27 @@ module SymExp = struct
         F.fprintf fmt "IntTop"
 
 
-  (* let is_concrete = function IntTop -> false | _ -> true *)
-
   let equal = [%compare.equal: t]
+
+  let lt x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        if IntLit.lt x y then IntLit IntLit.one else IntLit IntLit.zero
+    | _ ->
+        IntTop
+
+
+  let lte x y =
+    match (x, y) with
+    | Symbol _, Symbol _ when equal x y ->
+        IntLit IntLit.one
+    | IntLit _, IntLit _ when equal x y ->
+        IntLit IntLit.one
+    | IntLit _, IntLit _ ->
+        lt x y
+    | _ ->
+        IntTop
+
 
   let of_intlit intlit : t = IntLit intlit
 
@@ -167,7 +185,7 @@ module SymExp = struct
         None
 end
 
-module Loc = struct
+module LocCore = struct
   type t = Var of Pvar.t | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t [@@deriving compare]
 
   let rec pp fmt = function
@@ -188,6 +206,15 @@ module Loc = struct
     | _ ->
         compare x y
 
+
+  let equal = [%compare.equal: t]
+end
+
+module LocSet = AbstractDomain.FiniteSet (LocCore)
+
+module Loc = struct
+  include LocCore
+  module Cache = WeakMap.Make (LocCore) (LocSet)
 
   let rec get_symbol_opt = function
     | Var _ ->
@@ -242,8 +269,6 @@ module Loc = struct
         false
 
 
-  let equal = [%compare.equal: t]
-
   let unknown = SymHeap SymHeap.unknown
 
   let make_extern node = SymHeap (SymHeap.make_extern node)
@@ -254,16 +279,26 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let rec append_index = function (Var _ | SymHeap _ | Field _) as l -> Index l | Index _ as l -> l
+  let _cache = ref Cache.empty
 
-  let append_field ~fn l = Field (l, fn)
+  let append_index l =
+    let appended = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l in
+    _cache := Cache.weak_update l (LocSet.singleton appended) !_cache ;
+    appended
+
+
+  let append_field ~fn l =
+    let appended = Field (l, fn) in
+    _cache := Cache.weak_update l (LocSet.singleton appended) !_cache ;
+    appended
+
+
+  let fields_of l = Cache.find l !_cache
 
   let of_pvar pv : t = Var pv
 
   let rec base_of = function Field (l, _) -> base_of l | Index l -> base_of l | _ as l -> l
 end
-
-module LocSet = PrettyPrintable.MakePPSet (Loc)
 
 module Val = struct
   type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Bot | Top [@@deriving compare]
@@ -292,6 +327,10 @@ module Val = struct
     | _ ->
         compare x y
 
+
+  let lt v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lt s1 s2) | _ -> Vint IntTop
+
+  let lte v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lte s1 s2) | _ -> Vint IntTop
 
   let bottom = Bot (* undefined *)
 
