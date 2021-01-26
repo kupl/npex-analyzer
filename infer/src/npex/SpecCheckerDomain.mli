@@ -47,6 +47,8 @@ val remove_pvar : t -> pv:Pvar.t -> t
 
 val remove_locals : t -> locals:Pvar.t list -> t
 
+val replace_value : t -> src:Val.t -> dst:Val.t -> t
+
 val read_loc : t -> Loc.t -> Val.t
 
 val read_symtbl : t -> Loc.t -> Val.t

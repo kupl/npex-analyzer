@@ -31,11 +31,16 @@ module DisjReady = struct
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
       | Some NullPoint.{null_exp} ->
           let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
+          let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
           let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
+          let astate_replaced =
+            List.fold existing_nullvalues ~init:astate ~f:(fun astate_acc existing_nullvalue ->
+                Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
+          in
           let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
           let null_state, non_null_state =
-            ( Domain.add_pc (Domain.mark_npe_alternative astate) nullcond
-            , Domain.add_pc astate (Domain.PathCond.make_negation nullcond) )
+            ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
+            , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
           in
           null_state @ non_null_state
       | None ->

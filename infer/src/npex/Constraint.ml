@@ -44,6 +44,18 @@ module Make (Val : S) = struct
         compare x y
 
 
+  let rec replace_value x ~src ~dst =
+    match x with
+    | PEquals (v1, v2) ->
+        let v1', v2' = ((if phys_equal src v1 then dst else v1), if phys_equal src v2 then dst else v2) in
+        PEquals (v1', v2')
+    | Not x ->
+        Not (replace_value x ~src ~dst)
+    | Equals (v1, v2) ->
+        let v1', v2' = ((if phys_equal src v1 then dst else v1), if phys_equal src v2 then dst else v2) in
+        Equals (v1', v2')
+
+
   let true_cond = PEquals (Val.zero, Val.zero) (* top *)
 
   let false_cond = Not true_cond
@@ -182,13 +194,13 @@ module MakePC (Val : S) = struct
 
   let add pathcond pc =
     if PathCond.contains_absval pathcond || PathCond.is_valid pathcond then pc
-    else if PathCond.is_invalid pathcond then (
-      L.progress "%a is invalid path condition!@." PathCond.pp pathcond ;
-      singleton PathCond.false_cond )
+    else if PathCond.is_invalid pathcond then singleton PathCond.false_cond
     else
       let transitives = compute_transitives pathcond pc in
       union pc (filter (fun cond -> not (PathCond.is_valid cond)) transitives)
 
+
+  let replace_value pc ~(src : Val.t) ~(dst : Val.t) = map (PathCond.replace_value ~src ~dst) pc
 
   let check_sat pc1 pc2 =
     let pc_unioned = fold add pc1 pc2 in

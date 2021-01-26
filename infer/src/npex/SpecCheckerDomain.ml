@@ -114,6 +114,14 @@ let set_exception astate = {astate with is_exceptional= true}
 
 let unwrap_exception astate = {astate with is_exceptional= false}
 
+let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
+  let pc' = PC.replace_value astate.pc ~src ~dst in
+  (* let pc' = PC.remove src astate.pc |> PC.add dst in *)
+  let mem' = Mem.map (fun v -> if phys_equal v src then dst else v) astate.mem in
+  let reg' = Reg.map (fun v -> if phys_equal v src then dst else v) astate.reg in
+  {astate with pc= pc'; mem= mem'; reg= reg'}
+
+
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
   if Loc.is_symbolizable loc then
