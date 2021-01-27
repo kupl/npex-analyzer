@@ -38,6 +38,11 @@ public abstract class AbstractList<T> {
     mIsEmpty = 0;
   }
 
+  public boolean add(T toAdd) {
+    mIsEmpty = 0;
+    return true;
+  } 
+
   public T remove(int index) {
     mIsEmpty = -1;
     return any();
