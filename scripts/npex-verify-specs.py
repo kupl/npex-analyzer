@@ -13,9 +13,6 @@ from pprint import pprint
 INFER_PATH = os.getenv("INFER_NPEX")
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true"
 ROOT_DIR = os.getcwd()
-NPEX_SUMMARY_DIR = f"{ROOT_DIR}/npex-summaries"
-NPEX_ORIGINAL_SUMMARY_DIR = f"{ROOT_DIR}/npex-original-summaries"
-
 
 # Assume original buggy code is analyzed. So we don't need to clean compile it
 def verify_patches(project_root_dir, maven_build_command=f"mvn test-compile {MVN_OPT}", error_reports=["npe.json"]):
@@ -81,18 +78,10 @@ def verify_patch(project_root_dir, patch_dir, maven_build_command, error_reports
     shutil.copyfile(patch_source_path, source_path_to_patch)
     shutil.copy2(patch_json_path, project_root_dir)
     
-    # Prepare origianl summary except to_analyze
-    shutil.rmtree(NPEX_SUMMARY_DIR)
-    shutil.copytree(NPEX_ORIGINAL_SUMMARY_DIR, NPEX_SUMMARY_DIR)
-
     capture_cmd = f"{INFER_PATH} capture -- {maven_build_command}"
     if (subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
         return None
     
-    # analyze_cmd = f"{INFER_PATH} analyze --biabduction-models-mode --spec-checker-only"
-    # if (subprocess.run(analyze_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
-    #     return None
-
     npe_jsons = glob.glob(f"{project_root_dir}/{error_reports}")
     error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in npe_jsons])
 
@@ -128,7 +117,4 @@ if __name__ == '__main__':
     # elif len(sys.argv) == 3:
     #     verify_patches(sys.argv[1], sys.argv[2], args.error_reports)
     else:
-        if os.path.isdir(NPEX_ORIGINAL_SUMMARY_DIR):
-            shutil.rmtree(NPEX_ORIGINAL_SUMMARY_DIR)
-        shutil.copytree(NPEX_SUMMARY_DIR, NPEX_ORIGINAL_SUMMARY_DIR)
         verify_patches(ROOT_DIR, error_reports=args.error_reports)
