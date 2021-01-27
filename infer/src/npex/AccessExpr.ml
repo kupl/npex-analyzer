@@ -11,6 +11,7 @@ module S = struct
   and t = AccessExpr of Pvar.t * access list | Primitive of Const.t [@@deriving compare]
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
+  [@@deriving compare]
 
   let dummy = AccessExpr (Pvar.mk_tmp "" Procname.empty_block, [])
 
@@ -26,6 +27,8 @@ module S = struct
     | _ ->
         compare x y
 
+
+  let equal_access = [%compare.equal: access]
 
   let rec pp fmt = function
     | AccessExpr (base, accesses) ->

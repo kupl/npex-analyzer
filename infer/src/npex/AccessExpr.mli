@@ -11,6 +11,10 @@ val compare : t -> t -> int
 
 val equal : t -> t -> bool
 
+val equal_base : t -> Pvar.t -> bool
+
+val equal_access : access -> access -> bool
+
 val pp : F.formatter -> t -> unit
 
 val pp_access : F.formatter -> access -> unit
@@ -20,8 +24,6 @@ val to_string : t -> string
 val of_pvar : Pvar.t -> t
 
 val of_const : Const.t -> t
-
-val equal_base : t -> Pvar.t -> bool
 
 val get_base : t -> Pvar.t
 
