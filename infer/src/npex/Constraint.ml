@@ -107,6 +107,13 @@ module Make (Val : S) = struct
         Equals (v1, v2)
 
 
+  let rec contains_with_pred ~f = function
+    | PEquals (v1, v2) | Equals (v1, v2) ->
+        f v1 && f v2
+    | Not x ->
+        contains_with_pred ~f x
+
+
   let make_negation = function Not x -> x | _ as x -> Not x
 
   let make_physical_equals binop v1 v2 =
@@ -199,6 +206,8 @@ module MakePC (Val : S) = struct
       let transitives = compute_transitives pathcond pc in
       union pc (filter (fun cond -> not (PathCond.is_valid cond)) transitives)
 
+
+  let filter_by_pred pc ~f = filter (PathCond.contains_with_pred ~f) pc
 
   let replace_value pc ~(src : Val.t) ~(dst : Val.t) = map (PathCond.replace_value ~src ~dst) pc
 

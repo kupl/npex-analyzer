@@ -108,16 +108,19 @@ let _model = ref None
 
 let from_json () = match !_model with None -> (* TODO: *) empty | Some model -> model
 
+let empty_value = AccessExpr.Primitive (Cstr empty_str)
+
 let default_models =
   empty
-  |> add (Key.make ~arg_length:2 Aobject) (Value.default_of "get" AccessExpr.null)
-  |> add (Key.default_of Aobject) (Value.default_of "get" AccessExpr.null)
-  |> add (Key.default_of Aint) (Value.default_of "get" AccessExpr.zero)
-  |> add (Key.default_of Aobject) (Value.default_of "set" (AccessExpr.Primitive (Cstr empty_str)))
-  |> add (Key.default_of Aint) (Value.default_of "size" AccessExpr.zero)
-  |> add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
-  |> add (Key.default_of Avoid) (Value.default_of "write" (AccessExpr.Primitive (Cstr empty_str)))
-  |> add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
+  |> (* null.get() *) add (Key.make ~arg_length:2 Aobject) (Value.default_of "get" AccessExpr.null)
+  |> (* null.get() *) add (Key.default_of Aobject) (Value.default_of "get" AccessExpr.null)
+  |> (* null.get() *) add (Key.default_of Aint) (Value.default_of "get" AccessExpr.zero)
+  |> (* null.set() *) add (Key.make ~arg_length:2 Avoid) (Value.default_of "set" empty_value)
+  |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "add" empty_value)
+  |> (* null.size() *) add (Key.default_of Aint) (Value.default_of "size" AccessExpr.zero)
+  |> (* null.length() *) add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
+  |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" empty_value)
+  |> (* null.startsWith(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
 
 
 let is_matchable {callee} Value.({method_name}, _) =

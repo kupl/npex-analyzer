@@ -210,11 +210,8 @@ module LocCore = struct
   let equal = [%compare.equal: t]
 end
 
-module LocSet = AbstractDomain.FiniteSet (LocCore)
-
 module Loc = struct
   include LocCore
-  module Cache = WeakMap.Make (LocCore) (LocSet)
 
   let rec get_symbol_opt = function
     | Var _ ->
@@ -279,25 +276,16 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let _cache = ref Cache.empty
+  let append_index l = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l
 
-  let append_index l =
-    let appended = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l in
-    _cache := Cache.weak_update l (LocSet.singleton appended) !_cache ;
-    appended
-
-
-  let append_field ~fn l =
-    let appended = Field (l, fn) in
-    _cache := Cache.weak_update l (LocSet.singleton appended) !_cache ;
-    appended
-
-
-  let fields_of l = Cache.find l !_cache
+  let append_field ~fn l = Field (l, fn)
 
   let of_pvar pv : t = Var pv
 
   let rec base_of = function Field (l, _) -> base_of l | Index l -> base_of l | _ as l -> l
+
+  module Set = AbstractDomain.FiniteSet (LocCore)
+  module Map = PrettyPrintable.MakePPMap (LocCore)
 end
 
 module Val = struct

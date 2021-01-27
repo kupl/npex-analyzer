@@ -213,7 +213,7 @@ module DisjReady = struct
         let actual_values =
           List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
         in
-        Summary.resolve_summary astate ~actual_values ~formals callee_summary
+        Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary
         |> List.map ~f:(fun astate' ->
                let return_value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
                let astate_ret_binded =
