@@ -23,7 +23,10 @@ module SymTbl = struct
 end
 
 module Reg = WeakMap.Make (Ident) (Val)
-module Mem = WeakMap.Make (Loc) (Val)
+
+module Mem = struct
+  include WeakMap.Make (Loc) (Val)
+end
 
 type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
@@ -172,6 +175,8 @@ module SymResolvedMap = struct
 
 
   and resolve_symheap sym_resolved_map = function
+    | SymHeap.Symbol s when not (mem s sym_resolved_map) ->
+        raise (Unexpected (F.asprintf "%a is not resolved" SymDom.Symbol.pp s))
     | SymHeap.Symbol s ->
         find s sym_resolved_map
     | _ as sheap ->
@@ -187,7 +192,13 @@ module SymResolvedMap = struct
         v
 
 
-  and resolve_symexp sym_resolved_map = function SymExp.Symbol s -> find s sym_resolved_map | _ -> Val.top
+  and resolve_symexp sym_resolved_map = function
+    | SymExp.Symbol s ->
+        find s sym_resolved_map
+    | _ as x ->
+        (* TODO: s1 + s2 -> resolve(s1) + resolve(s2) *)
+        Val.Vint x
+
 
   let rec resolve_symtbl astate callee_symtbl acc works =
     if IntSet.is_empty works then acc
@@ -287,7 +298,14 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
         (SymResolvedMap.next_works init_sym_resolved_map callee_summary.symtbl)
     with Unexpected msg -> L.(die InternalError) "%s@.%a" msg Mem.pp callee_summary.mem
   in
-  let mem' = SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem in
+  let mem' =
+    try SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
+    with Unexpected msg ->
+      L.(die InternalError)
+        "Failed to resolve callee memory@. Callee symtbl : %a@. Callee mem : %a@. Sym_resolved_map : %a@. Msg: \
+         %s@."
+        SymTbl.pp callee_summary.symtbl Mem.pp callee_summary.mem SymResolvedMap.pp sym_resolved_map msg
+  in
   let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
   if PC.exists PathCond.is_invalid pc' then None
   else
