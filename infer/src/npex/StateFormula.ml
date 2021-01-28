@@ -112,7 +112,7 @@ let val_to_ap mem ap_map : Val.t -> APSet.t = function
 
 
 let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
-  let formal_pvars = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
+  let formal_pvars = Procdesc.get_ret_var proc_desc :: (Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst) in
   let ap_map = compute_ap_map formal_pvars mem in
   let make_formula binop ap_set1 ap_set2 =
     let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
@@ -123,7 +123,10 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
     Domain.Mem.fold
       (fun l v ->
         let aps_loc, aps_val = (APMap.find l ap_map, val_to_ap mem ap_map v) in
-        make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) |> Formula.union)
+        (* L.debug_dev "@. - make %a = %a@." APSet.pp aps_loc APSet.pp aps_val ; *)
+        let formula = make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) in
+        (* L.debug_dev " - formula : %a@." Formula.pp formula ; *)
+        Formula.union formula)
       mem Formula.empty
   in
   let pc_formula =
