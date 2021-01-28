@@ -25,8 +25,8 @@ let launch ~get_summary ~get_original_summary =
   let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
   let target_proc = Patch.get_method patch in
   let target_pdesc = Program.pdesc_of program target_proc in
-  let summary_inferenced : Domain.t list = get_original_summary target_proc in
-  let summary_patched : Domain.t list = get_summary target_proc in
+  let summary_inferenced = get_original_summary target_proc |> SpecCheckerSummary.get_disjuncts in
+  let summary_patched = get_summary target_proc |> SpecCheckerSummary.get_disjuncts in
   let result = verify target_pdesc summary_inferenced summary_patched in
   if result then (
     L.progress "[SUCCESS]: the patch is verified w.r.t. specification@." ;

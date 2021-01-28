@@ -8,31 +8,76 @@ module Val = Domain.Val
 module ValSet = AbstractDomain.FiniteSet (Val)
 module Mem = Domain.Mem
 module PC = Domain.PC
+module APSet = AbstractDomain.FiniteSet (AccessExpr)
+
+module Features = struct
+  type t = {null_vars: APSet.t; return_value: Val.t option; npe_alternative: bool; exceptional: bool}
+  [@@deriving compare]
+
+  let pp fmt {null_vars} = APSet.pp fmt null_vars
+
+  let from_state proc_desc astate =
+    let ret_var = Procdesc.get_ret_var proc_desc in
+    let formals = ret_var :: (Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst) in
+    (* null_feilds *)
+    let null_vars =
+      Mem.fold
+        (fun l v acc ->
+          match l with
+          | Loc.Var pv when List.mem formals pv ~equal:Pvar.equal ->
+              if List.exists (Domain.equal_values astate v) ~f:Val.is_null then
+                APSet.add (AccessExpr.of_pvar pv) acc
+              else acc
+          | _ ->
+              acc)
+        Domain.(astate.mem)
+        APSet.empty
+    in
+    let return_value =
+      match Domain.read_loc astate (Loc.of_pvar ret_var) with
+      | Val.Vheap (Allocsite _) | Val.Vheap (Extern _) | Val.Vheap (Symbol _) ->
+          None
+      | Val.Vint (Extern _) ->
+          None
+      | _ as v ->
+          Some v
+    in
+    let npe_alternative = Domain.is_npe_alternative astate in
+    let exceptional = Domain.is_exceptional astate in
+    {null_vars; return_value; npe_alternative; exceptional}
+end
 
 module StateWithFeature = struct
-  type t = {astate: Domain.t [@compare.ignore]; features: StateFormula.t} [@@deriving compare]
+  type t = {astate: Domain.t [@compare.ignore]; features: Features.t} [@@deriving compare]
 
   let get_astate {astate} = astate
 
-  let from_state proc_desc astate = {astate; features= StateFormula.from_state proc_desc astate}
+  let get_features {features} = features
+
+  let from_state proc_desc astate = {astate; features= Features.from_state proc_desc astate}
 
   let pp fmt {astate; features} =
-    F.fprintf fmt "== StateWithFeature ==@. - State: %a@. - Features: %a" Domain.pp astate StateFormula.pp features
+    F.fprintf fmt "== StateWithFeature ==@. - State: %a@. - Features: %a" Domain.pp astate Features.pp features
 end
 
 module SFSet = PrettyPrintable.MakePPSet (StateWithFeature)
 
-type t = Domain.t list
+type t = StateWithFeature.t list
+
+let get_disjuncts t = List.map t ~f:StateWithFeature.get_astate
 
 (* let pp = Pp.seq Domain.pp ~sep:"\n" *)
-let pp f disjuncts =
+let pp f t =
+  let disjuncts = get_disjuncts t in
   let pp_disjuncts f disjuncts =
     List.iteri disjuncts ~f:(fun i disjunct -> F.fprintf f "#%d: @[%a@]@;" i Domain.pp disjunct)
   in
   F.fprintf f "%d disjuncts:@.%a@." (List.length disjuncts) pp_disjuncts disjuncts
 
 
-type get_summary = Domain.get_summary
+type get_summary = Procname.t -> t option
+
+let empty : t = []
 
 let reachable_locs mem formals =
   let module Cache = PrettyPrintable.MakePPMonoMap (Loc) (Bool) in
@@ -105,19 +150,21 @@ let remove_local (Domain.{mem; pc} as astate) ~formals ~ret_var =
   Domain.{astate with mem= mem'; pc= pc'}
 
 
+let to_summary proc_desc disjuncts =
+  L.progress "Converting to summary... of %a@." Procname.pp (Procdesc.get_proc_name proc_desc) ;
+  let formals = Procdesc.get_pvar_formals proc_desc in
+  let ret_var = Procdesc.get_ret_var proc_desc in
+  let disjuncts_local_removed = List.map disjuncts ~f:(remove_local ~formals ~ret_var) in
+  let summary =
+    List.map ~f:(StateWithFeature.from_state proc_desc) disjuncts_local_removed |> SFSet.of_list |> SFSet.elements
+  in
+  L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)
+    Procname.pp (Procdesc.get_proc_name proc_desc) ;
+  summary
+
+
 let resolve_summary astate ~actual_values ~callee_pdesc callee_summaries =
   let formals = Procdesc.get_pvar_formals callee_pdesc in
-  let ret_var = Procdesc.get_ret_var callee_pdesc in
-  let summaries_local_removed = List.map callee_summaries ~f:(remove_local ~formals ~ret_var) in
-  L.d_printfln "====== summaries local removed ======@. - %a@.==========================" pp
-    summaries_local_removed ;
-  let summaries_pruned =
-    summaries_local_removed
-    |> List.map ~f:(StateWithFeature.from_state callee_pdesc)
-    |> SFSet.of_list
-    |> SFSet.elements
-    |> List.map ~f:StateWithFeature.get_astate
-  in
-  (* L.progress "State pruning from %d to %d@." (List.length summaries_local_removed) (List.length summaries_pruned) ; *)
-  List.filter_map summaries_pruned ~f:(fun callee_summary ->
-      Domain.resolve_summary astate ~actual_values ~formals callee_summary)
+  List.map ~f:StateWithFeature.get_astate callee_summaries
+  |> List.filter_map ~f:(fun callee_summary ->
+         Domain.resolve_summary astate ~actual_values ~formals callee_summary)

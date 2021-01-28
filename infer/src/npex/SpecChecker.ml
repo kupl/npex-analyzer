@@ -400,11 +400,15 @@ let cached_compute_invariant_map =
         cache_set pname inv_map ; inv_map
 
 
-let compute_summary : (Pvar.t * Typ.t) list -> CFG.t -> Analyzer.invariant_map -> SpecCheckerSummary.t =
- fun _ cfg inv_map ->
+let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheckerSummary.t =
+ fun proc_desc cfg inv_map ->
   (* don't need to invalidate local information thanks to remove_temps and nullify *)
   let exit_node_id = CFG.exit_node cfg |> CFG.Node.id in
-  match Analyzer.extract_post exit_node_id inv_map with Some exit_state -> exit_state | None -> []
+  match Analyzer.extract_post exit_node_id inv_map with
+  | Some exit_state ->
+      Summary.to_summary proc_desc exit_state
+  | None ->
+      Summary.empty
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
@@ -414,7 +418,6 @@ let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
       None
   | _ ->
       let inv_map = cached_compute_invariant_map analysis_data in
-      let formals = Procdesc.get_pvar_formals proc_desc in
       let cfg = CFG.from_pdesc proc_desc in
-      let summary = compute_summary formals cfg inv_map in
+      let summary = compute_summary proc_desc cfg inv_map in
       Some summary
