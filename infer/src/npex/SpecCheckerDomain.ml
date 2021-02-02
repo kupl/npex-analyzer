@@ -84,6 +84,18 @@ let equal_values astate v =
     astate.pc [v]
 
 
+let inequal_values astate v =
+  PC.fold
+    (function
+      | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.equal v1 v ->
+          fun acc -> v2 :: acc
+      | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.equal v2 v ->
+          fun acc -> v1 :: acc
+      | _ ->
+          fun acc -> acc)
+    astate.pc []
+
+
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
 
 let store_reg astate id v = {astate with reg= Reg.strong_update id v astate.reg}

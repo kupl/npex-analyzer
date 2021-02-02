@@ -31,6 +31,8 @@ val is_exceptional : t -> bool
 
 val equal_values : t -> Val.t -> Val.t list
 
+val inequal_values : t -> Val.t -> Val.t list
+
 val resolve_unknown_loc : t -> Typ.t -> Loc.t -> t
 
 val resolve_summary : t -> actual_values:Val.t list -> formals:(Pvar.t * Typ.t) list -> t -> t option

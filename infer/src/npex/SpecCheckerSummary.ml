@@ -11,10 +11,21 @@ module PC = Domain.PC
 module APSet = AbstractDomain.FiniteSet (AccessExpr)
 
 module Features = struct
-  type t = {null_vars: APSet.t; return_value: Val.t option; npe_alternative: bool; exceptional: bool}
+  type t =
+    { null_vars: APSet.t
+    ; return_value: Val.t option
+    ; npe_alternative: bool
+    ; exceptional: bool
+    ; non_null_vars: APSet.t }
   [@@deriving compare]
 
-  let pp fmt {null_vars} = APSet.pp fmt null_vars
+  let pp fmt {null_vars; non_null_vars; return_value} =
+    let return_value_str =
+      match return_value with Some v -> F.asprintf "   - return_value : %a@." Val.pp v | None -> ""
+    in
+    F.fprintf fmt "   - null_vars: %a@.   - non_null_vars: %a@.%s" APSet.pp null_vars APSet.pp non_null_vars
+      return_value_str
+
 
   let from_state proc_desc astate =
     let ret_var = Procdesc.get_ret_var proc_desc in
@@ -33,6 +44,19 @@ module Features = struct
         Domain.(astate.mem)
         APSet.empty
     in
+    let non_null_vars =
+      Mem.fold
+        (fun l v acc ->
+          match l with
+          | Loc.Var pv when List.mem formals pv ~equal:Pvar.equal ->
+              if List.exists (Domain.inequal_values astate v) ~f:Val.is_null then
+                APSet.add (AccessExpr.of_pvar pv) acc
+              else acc
+          | _ ->
+              acc)
+        Domain.(astate.mem)
+        APSet.empty
+    in
     let return_value =
       match Domain.read_loc astate (Loc.of_pvar ret_var) with
       | Val.Vheap (Allocsite _) | Val.Vheap (Extern _) | Val.Vheap (Symbol _) ->
@@ -44,7 +68,7 @@ module Features = struct
     in
     let npe_alternative = Domain.is_npe_alternative astate in
     let exceptional = Domain.is_exceptional astate in
-    {null_vars; return_value; npe_alternative; exceptional}
+    {null_vars; return_value; npe_alternative; exceptional; non_null_vars}
 end
 
 module StateWithFeature = struct
@@ -68,11 +92,10 @@ let get_disjuncts t = List.map t ~f:StateWithFeature.get_astate
 
 (* let pp = Pp.seq Domain.pp ~sep:"\n" *)
 let pp f t =
-  let disjuncts = get_disjuncts t in
-  let pp_disjuncts f disjuncts =
-    List.iteri disjuncts ~f:(fun i disjunct -> F.fprintf f "#%d: @[%a@]@;" i Domain.pp disjunct)
+  let pp_elements f disjuncts =
+    List.iteri disjuncts ~f:(fun i disjunct -> F.fprintf f "#%d: @[%a@]@;" i StateWithFeature.pp disjunct)
   in
-  F.fprintf f "%d disjuncts:@.%a@." (List.length disjuncts) pp_disjuncts disjuncts
+  F.fprintf f "%d disjuncts:@.%a@." (List.length t) pp_elements t
 
 
 type get_summary = Procname.t -> t option
