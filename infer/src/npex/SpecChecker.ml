@@ -158,7 +158,8 @@ module DisjReady = struct
     [Domain.store_reg astate_field_stored ret_id value]
 
 
-  let exec_model_proc astate node instr callee (ret_id, ret_typ) arg_typs =
+  let exec_model_proc astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr callee (ret_id, ret_typ)
+      arg_typs =
     let[@warning "-8"] is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
     let instr_node = Node.of_pnode node instr in
     match callee with
@@ -185,7 +186,21 @@ module DisjReady = struct
     | _ when String.equal "__unwrap_exception" (Procname.get_method callee) ->
         let value = Domain.Val.make_extern instr_node Typ.void_star in
         [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-    | _ when is_virtual && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
+    | _ when String.equal "invoke" (Procname.get_method callee) ->
+        let ex_state =
+          let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+          let value = Domain.Val.Vexn (SymDom.SymHeap.make_extern instr_node) in
+          Domain.store_loc astate ret_loc value |> Domain.set_exception
+        in
+        let normal_state =
+          let value = Domain.Val.make_extern instr_node Typ.void_star in
+          Domain.store_reg astate ret_id value
+        in
+        [ex_state; normal_state]
+    | _
+      when is_virtual
+           && String.is_prefix (Procname.get_method callee) ~prefix:"get"
+           && List.hd_exn arg_typs |> snd |> Typ.is_pointer ->
         (* Modeling getter method (e.g., p.getField() returns p.field) *)
         let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
         exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
@@ -198,12 +213,15 @@ module DisjReady = struct
         exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs
 
 
-  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
-      ret_typ arg_typs callee =
-    let ret_id, _ = ret_typ in
+  let exec_interproc_call astate
+      ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} as analysis_data) node instr ret_typ
+      arg_typs callee =
+    let ret_id, ret_type = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
-        L.d_printfln "Found summary from %a" Procname.pp callee ;
+        L.d_printfln "Found %d summaries from %a"
+          (List.length (Summary.get_disjuncts callee_summary))
+          Procname.pp callee ;
         let formals = Procdesc.get_pvar_formals callee_pdesc in
         let formal_pvars = List.map formals ~f:fst in
         let ret_var = Procdesc.get_ret_var callee_pdesc in
@@ -215,7 +233,11 @@ module DisjReady = struct
         in
         Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary
         |> List.map ~f:(fun astate' ->
-               let return_value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+               let return_value =
+                 let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+                 (* TODO: why this is happening? *)
+                 if Domain.Val.is_top _value then Domain.Val.of_typ ret_type else _value
+               in
                let astate_ret_binded =
                  if Domain.is_exceptional astate' then
                    (* caller_return := callee_return *)
@@ -226,7 +248,7 @@ module DisjReady = struct
                in
                Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals) astate_ret_binded)
     | None ->
-        exec_model_proc astate node instr callee ret_typ arg_typs
+        exec_model_proc astate analysis_data node instr callee ret_typ arg_typs
 
 
   let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
@@ -412,12 +434,12 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
-  match Procdesc.get_proc_name proc_desc with
-  | Procname.Java mthd when Procname.Java.is_autogen_method mthd ->
-      (* TODO: IR of lambda function is incorrect *)
-      None
-  | _ ->
-      let inv_map = cached_compute_invariant_map analysis_data in
-      let cfg = CFG.from_pdesc proc_desc in
-      let summary = compute_summary proc_desc cfg inv_map in
-      Some summary
+  (* match Procdesc.get_proc_name proc_desc with
+     | Procname.Java mthd when Procname.Java.is_autogen_method mthd ->
+         (* TODO: IR of lambda function is incorrect *)
+         None
+     | _ -> *)
+  let inv_map = cached_compute_invariant_map analysis_data in
+  let cfg = CFG.from_pdesc proc_desc in
+  let summary = compute_summary proc_desc cfg inv_map in
+  Some summary
