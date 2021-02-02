@@ -250,7 +250,7 @@ let analyze_and_report ?suppress_console_report ~changed_files mode =
         (false, false)
     | (Capture | Compile | Debug | Explore | Help | Report | ReportDiff), _ ->
         (false, false)
-    | (Analyze | Run), _ ->
+    | (Analyze | Run | NPEX), _ ->
         (true, true)
   in
   let should_analyze = should_analyze && Config.capture in

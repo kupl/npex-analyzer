@@ -10,24 +10,48 @@ module DisjReady = struct
   module Domain = SpecCheckerDomain
 
   type analysis_data =
-    {program: Program.t; interproc: SpecCheckerSummary.t InterproceduralAnalysis.t; patch: Patch.t option}
+    { program: Program.t
+    ; interproc: SpecCheckerSummary.t InterproceduralAnalysis.t
+    ; patch: Patch.t option
+    ; npe_list: NullPoint.t list option }
 
   let analysis_data interproc : analysis_data =
     let program = Program.from_marshal () in
-    match Utils.read_json_file Config.npex_patch_json_name with
-    | Ok _ ->
-        let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
-        {program; interproc; patch= Some patch}
-    | Error _ ->
-        {program; interproc; patch= None}
+    if Config.npex_launch_spec_inference then
+      {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None}
+    else if Config.npex_launch_spec_verifier then
+      let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
+      {program; interproc; npe_list= None; patch= Some patch}
+    else {program; interproc; npe_list= None; patch= None}
 
 
-  let check_npe_alternative {patch} node instr astate =
-    match patch with
-    | Some {conditional= Some (null_cond, _)} when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
-        Domain.mark_npe_alternative astate
-    | _ ->
-        astate
+  let check_npe_alternative {npe_list; patch} node instr astate =
+    if Config.npex_launch_spec_inference then
+      let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
+      match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
+      | Some NullPoint.{null_exp} ->
+          let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
+          let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
+          let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
+          let astate_replaced =
+            List.fold existing_nullvalues ~init:astate ~f:(fun astate_acc existing_nullvalue ->
+                Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
+          in
+          let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
+          let null_state, non_null_state =
+            ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
+            , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
+          in
+          null_state @ non_null_state
+      | None ->
+          [astate]
+    else if Config.npex_launch_spec_verifier then
+      match patch with
+      | Some {conditional= Some (null_cond, _)} when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
+          [Domain.mark_npe_alternative astate]
+      | _ ->
+          [astate]
+    else [astate]
 
 
   let init_uninitialized_fields mthd arg_typs node instr astate =
@@ -51,14 +75,26 @@ module DisjReady = struct
 
 
   let exec_prune astate node instr bexp =
-    try
+    let is_equal_predicate = function
+      | Exp.BinOp (Binop.Eq, _, _)
+      | Exp.BinOp (Binop.Ne, _, _)
+      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Eq, _, _), _)
+      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Ne, _, _), _)
+      | Exp.Var _
+      | Exp.UnOp (Unop.LNot, Exp.Var _, _) ->
+          true
+      | _ ->
+          false
+    in
+    if is_equal_predicate bexp then (
       let pathcond =
         match bexp with
-        | Exp.BinOp (binop, e1, e2) ->
+        | Exp.BinOp ((Binop.Eq as binop), e1, e2) | Exp.BinOp ((Binop.Ne as binop), e1, e2) ->
             let value1 = Domain.eval ~pos:0 astate node instr e1 in
             let value2 = Domain.eval ~pos:0 astate node instr e2 in
             Domain.PathCond.make_physical_equals binop value1 value2
-        | Exp.UnOp (Unop.LNot, Exp.BinOp (binop, e1, e2), _) ->
+        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Eq as binop), e1, e2), _)
+        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Ne as binop), e1, e2), _) ->
             let value1 = Domain.eval ~pos:0 astate node instr e1 in
             let value2 = Domain.eval ~pos:0 astate node instr e2 in
             Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation
@@ -75,8 +111,11 @@ module DisjReady = struct
       L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
       if Domain.PathCond.is_false pathcond then []
       else if Domain.PathCond.is_true pathcond then [astate]
-      else Domain.add_pc astate pathcond
-    with TODO _ -> [astate]
+      else Domain.add_pc astate pathcond )
+    else
+      (* Non-equal predicaate: just check whether bexp is true, not, or unknown *)
+      let value = Domain.eval astate node instr bexp in
+      if Domain.Val.is_true value then [astate] else if Domain.Val.is_false value then [] else [astate]
 
 
   let add_non_null_constraints node instr e astate =
@@ -119,7 +158,8 @@ module DisjReady = struct
     [Domain.store_reg astate_field_stored ret_id value]
 
 
-  let exec_model_proc astate node instr callee (ret_id, ret_typ) arg_typs =
+  let exec_model_proc astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr callee (ret_id, ret_typ)
+      arg_typs =
     let[@warning "-8"] is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
     let instr_node = Node.of_pnode node instr in
     match callee with
@@ -146,7 +186,21 @@ module DisjReady = struct
     | _ when String.equal "__unwrap_exception" (Procname.get_method callee) ->
         let value = Domain.Val.make_extern instr_node Typ.void_star in
         [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-    | _ when is_virtual && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
+    | _ when String.equal "invoke" (Procname.get_method callee) ->
+        let ex_state =
+          let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+          let value = Domain.Val.Vexn (SymDom.SymHeap.make_extern instr_node) in
+          Domain.store_loc astate ret_loc value |> Domain.set_exception
+        in
+        let normal_state =
+          let value = Domain.Val.make_extern instr_node Typ.void_star in
+          Domain.store_reg astate ret_id value
+        in
+        [ex_state; normal_state]
+    | _
+      when is_virtual
+           && String.is_prefix (Procname.get_method callee) ~prefix:"get"
+           && List.hd_exn arg_typs |> snd |> Typ.is_pointer ->
         (* Modeling getter method (e.g., p.getField() returns p.field) *)
         let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
         exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
@@ -159,12 +213,15 @@ module DisjReady = struct
         exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs
 
 
-  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
-      ret_typ arg_typs callee =
-    let ret_id, _ = ret_typ in
+  let exec_interproc_call astate
+      ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} as analysis_data) node instr ret_typ
+      arg_typs callee =
+    let ret_id, ret_type = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
-        L.d_printfln "Found summary from %a" Procname.pp callee ;
+        L.d_printfln "Found %d summaries from %a"
+          (List.length (Summary.get_disjuncts callee_summary))
+          Procname.pp callee ;
         let formals = Procdesc.get_pvar_formals callee_pdesc in
         let formal_pvars = List.map formals ~f:fst in
         let ret_var = Procdesc.get_ret_var callee_pdesc in
@@ -174,9 +231,13 @@ module DisjReady = struct
         let actual_values =
           List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
         in
-        Summary.resolve_summary astate ~actual_values ~formals callee_summary
+        Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary
         |> List.map ~f:(fun astate' ->
-               let return_value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+               let return_value =
+                 let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+                 (* TODO: why this is happening? *)
+                 if Domain.Val.is_top _value then Domain.Val.of_typ ret_type else _value
+               in
                let astate_ret_binded =
                  if Domain.is_exceptional astate' then
                    (* caller_return := callee_return *)
@@ -187,16 +248,52 @@ module DisjReady = struct
                in
                Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals) astate_ret_binded)
     | None ->
-        exec_model_proc astate node instr callee ret_typ arg_typs
+        exec_model_proc astate analysis_data node instr callee ret_typ arg_typs
+
+
+  let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
+    if Config.npex_launch_spec_inference then
+      let instr_node = Node.of_pnode node instr in
+      let arg_values =
+        (* TODO: optimize it *)
+        List.mapi arg_typs ~f:(fun i (arg_exp, _) -> Domain.eval astate node instr arg_exp ~pos:i)
+      in
+      let call_context = NullSpecModel.{arg_values; node; instr; ret_typ; arg_typs; callee} in
+      match NullSpecModel.get (Domain.equal_values astate) call_context with
+      | Some model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr ->
+          let value = Domain.Val.make_null ~pos:NullSpecModel.null_pos instr_node in
+          [Domain.store_reg astate (fst ret_typ) value]
+      | Some (AccessExpr.Primitive (Const.Cstr str)) when String.equal str NullSpecModel.empty_str ->
+          (* empty *)
+          [astate]
+      | Some (AccessExpr.Primitive const) ->
+          let value = Domain.Val.of_const const in
+          [Domain.store_reg astate (fst ret_typ) value]
+      | Some model_aexpr ->
+          (*TODO: *)
+          L.progress "[TODO]: design eval function for %a@." AccessExpr.pp model_aexpr ;
+          [astate]
+      | None ->
+          exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+    else exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
 
 
   let compute_posts astate analysis_data node instr =
     let instr_node = Node.of_pnode node instr in
     match instr with
-    | Sil.Load {id; e} when Ident.is_none id ->
+    | Sil.Load {id; e} when Ident.is_none id -> (
         (* dereference instruction *)
         let loc = Domain.eval_lv astate e in
-        if Domain.Loc.is_null loc then [] else add_non_null_constraints node instr e astate
+        match loc with
+        | Domain.Loc.SymHeap sh ->
+            let equal_values = Domain.equal_values astate (Domain.Val.of_symheap sh) in
+            if List.exists equal_values ~f:NullSpecModel.is_model_null then
+              (* do not dereference null pointer during inferencing null-spec *)
+              [astate]
+            else if List.exists equal_values ~f:Domain.Val.is_null then []
+            else add_non_null_constraints node instr e astate
+        | _ ->
+            [astate] )
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate e in
         if Domain.Loc.is_null loc then []
@@ -243,6 +340,10 @@ module DisjReady = struct
         exec_unknown_call astate node instr ret_typ arg_typs
     | Sil.Prune (bexp, _, _, _) ->
         exec_prune astate node instr bexp
+    (* | Sil.Metadata (ExitScope (vars, _)) ->
+           [Domain.remove_temps astate vars]
+       | Sil.Metadata (Nullify (pv, _)) ->
+           [Domain.remove_pvar astate ~pv] *)
     | Sil.Metadata (ExitScope (vars, _)) ->
         let real_temps =
           List.filter vars ~f:(function Var.LogicalVar _ -> true | Var.ProgramVar pv -> Pvar.is_frontend_tmp pv)
@@ -285,7 +386,7 @@ module DisjReady = struct
       let post_states =
         List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
       in
-      List.map post_states ~f:(check_npe_alternative analysis_data node instr)
+      List.concat_map post_states ~f:(check_npe_alternative analysis_data node instr)
 
 
   let pp_session_name node fmt =
@@ -321,21 +422,24 @@ let cached_compute_invariant_map =
         cache_set pname inv_map ; inv_map
 
 
-let compute_summary : (Pvar.t * Typ.t) list -> CFG.t -> Analyzer.invariant_map -> SpecCheckerSummary.t =
- fun _ cfg inv_map ->
+let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheckerSummary.t =
+ fun proc_desc cfg inv_map ->
   (* don't need to invalidate local information thanks to remove_temps and nullify *)
   let exit_node_id = CFG.exit_node cfg |> CFG.Node.id in
-  match Analyzer.extract_post exit_node_id inv_map with Some exit_state -> exit_state | None -> []
+  match Analyzer.extract_post exit_node_id inv_map with
+  | Some exit_state ->
+      Summary.to_summary proc_desc exit_state
+  | None ->
+      Summary.empty
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
-  match Procdesc.get_proc_name proc_desc with
-  | Procname.Java mthd when Procname.Java.is_autogen_method mthd ->
-      (* TODO: IR of lambda function is incorrect *)
-      None
-  | _ ->
-      let inv_map = cached_compute_invariant_map analysis_data in
-      let formals = Procdesc.get_pvar_formals proc_desc in
-      let cfg = CFG.from_pdesc proc_desc in
-      let summary = compute_summary formals cfg inv_map in
-      Some summary
+  (* match Procdesc.get_proc_name proc_desc with
+     | Procname.Java mthd when Procname.Java.is_autogen_method mthd ->
+         (* TODO: IR of lambda function is incorrect *)
+         None
+     | _ -> *)
+  let inv_map = cached_compute_invariant_map analysis_data in
+  let cfg = CFG.from_pdesc proc_desc in
+  let summary = compute_summary proc_desc cfg inv_map in
+  Some summary

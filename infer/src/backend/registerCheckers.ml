@@ -200,7 +200,7 @@ let all_checkers =
     ; callbacks=
         (let checker =
            interprocedural Payloads.Fields.spec_checker
-             (if Config.npex_launch_spec_synthesizer then SpecSynth.checker else SpecChecker.checker)
+             (if Config.npex_launch_spec_inference then SpecSynth.checker else SpecChecker.checker)
          in
          [(checker, Java)]) } ]
 

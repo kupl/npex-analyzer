@@ -9,6 +9,13 @@ module InstrNode = struct
 
   let equal = [%compare.equal: t]
 
+  let make inode instr = {inode; instr}
+
+  let of_pnode pnode instr =
+    let inode = InterNode.of_pnode pnode in
+    {inode; instr}
+
+
   let dummy = {inode= InterNode.dummy Procname.empty_block; instr= Sil.skip_instr}
 
   let default = dummy
@@ -65,12 +72,12 @@ module InstrNode = struct
       [{inode; instr}]
 
 
-  let of_pnode pnode instr =
-    let inode = InterNode.of_pnode pnode in
-    {inode; instr}
+  let get_exn (n : t) =
+    let exn_pnodes = Procdesc.Node.get_exn (InterNode.pnode_of n.inode) in
+    List.map exn_pnodes ~f:(fun pnode ->
+        let instr = Instrs.nth_exn (Procdesc.Node.get_instrs pnode) 0 in
+        of_pnode pnode instr)
 
-
-  let make inode instr = {inode; instr}
 
   let get_kind {inode} = InterNode.get_kind inode
 

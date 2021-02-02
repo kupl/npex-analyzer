@@ -38,9 +38,8 @@ let find_npe program loc deref_field =
              L.progress "%s is not matched to %s: %b@." deref_field aexpr_field (String.equal deref_field aexpr_field) ; *)
           None
       | None ->
-          L.progress "%a:%a is unconvertable at %a@." Exp.pp exp
-            (Sil.pp_instr ~print_types:true Pp.text)
-            instr InterNode.pp_pnode node ;
+          L.progress "[Warning]: %a is unconvertable at %a@." Exp.pp exp InstrNode.pp
+            (InstrNode.of_pnode node instr) ;
           None
     in
     List.find_map_exn instr_nodes ~f:(fun instr_node ->
@@ -99,7 +98,12 @@ let from_alarm_report program filepath : t =
 let nullpoint_list = ref []
 
 let get_nullpoint_list program =
-  if List.is_empty !nullpoint_list then List.map Config.error_report_json ~f:(from_error_report program)
+  if List.is_empty !nullpoint_list then
+    let results = List.map Config.error_report_json ~f:(from_error_report program) in
+    if List.is_empty results then L.(die ExternalError) "No NullPoint Matched to error report@."
+    else (
+      nullpoint_list := results ;
+      results )
   else !nullpoint_list
 
 

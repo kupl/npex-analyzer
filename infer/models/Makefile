@@ -13,7 +13,7 @@ OBJC_MODELS_DIR = objc/src
 
 RESULTS_DIR = infer-out
 RESULTS_DB = $(RESULTS_DIR)/results.db
-INFER_OPTIONS = --jobs 1 --biabduction-only --results-dir $(RESULTS_DIR) --biabduction-models-mode
+INFER_OPTIONS = --jobs 1 -g --spec-checker-only --results-dir $(RESULTS_DIR) --biabduction-models-mode
 
 JAVA_MODELS_OUT = java/models
 MODELS_JAR = models.jar

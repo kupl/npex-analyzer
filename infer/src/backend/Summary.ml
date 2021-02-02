@@ -240,9 +240,14 @@ module OnDisk = struct
       match spec_of_procname proc_name with
       | None when BiabductionModels.mem proc_name ->
           spec_of_model proc_name
-      | None when Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier ->
-          Filename.concat Config.npex_summary_dir (specs_filename proc_name)
-          |> DB.filename_from_string |> load_from_file
+      | None when Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier -> (
+        match Procdesc.load proc_name with
+        | Some _ ->
+            (* if proc_name is captured, do not load from DB *)
+            None
+        | None ->
+            Filename.concat Config.npex_summary_dir (specs_filename proc_name)
+            |> DB.filename_from_string |> load_from_file )
       | summ_opt ->
           summ_opt
     in
@@ -275,16 +280,15 @@ module OnDisk = struct
     let proc_name = get_proc_name summary in
     (* Make sure the summary in memory is identical to the saved one *)
     add proc_name summary ;
-    if Config.npex_launch_spec_synthesizer || Config.npex_launch_spec_verifier then
+    if Config.npex_launch_spec_inference then
       DB.filename_from_string (Config.npex_summary_dir ^/ specs_filename proc_name)
-      |> Serialization.write_to_file summary_serializer ~data:summary
-    else
-      let analysis_summary = AnalysisSummary.of_full_summary summary in
-      let report_summary = ReportSummary.of_full_summary summary in
-      DBWriter.store_spec ~proc_uid:(Procname.to_unique_id proc_name)
-        ~proc_name:(Procname.SQLite.serialize proc_name)
-        ~analysis_summary:(AnalysisSummary.SQLite.serialize analysis_summary)
-        ~report_summary:(ReportSummary.SQLite.serialize report_summary)
+      |> Serialization.write_to_file summary_serializer ~data:summary ;
+    let analysis_summary = AnalysisSummary.of_full_summary summary in
+    let report_summary = ReportSummary.of_full_summary summary in
+    DBWriter.store_spec ~proc_uid:(Procname.to_unique_id proc_name)
+      ~proc_name:(Procname.SQLite.serialize proc_name)
+      ~analysis_summary:(AnalysisSummary.SQLite.serialize analysis_summary)
+      ~report_summary:(ReportSummary.SQLite.serialize report_summary)
 
 
   let store_analyzed summary = store {summary with status= Status.Analyzed}
