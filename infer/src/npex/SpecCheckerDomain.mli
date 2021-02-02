@@ -11,8 +11,6 @@ module SymTbl : module type of PrettyPrintable.MakePPMonoMap (Loc) (Val)
 
 type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
-type get_summary = Procname.t -> t option
-
 val pp : Format.formatter -> t -> unit
 
 val leq : lhs:t -> rhs:t -> bool

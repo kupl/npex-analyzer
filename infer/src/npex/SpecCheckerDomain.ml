@@ -53,7 +53,7 @@ let bottom =
 
 let fold_memory {mem} ~init ~f = Mem.fold (fun l v acc -> f acc l v) mem init
 
-type get_summary = Procname.t -> t option
+(* type get_summary = Procname.t -> t option *)
 
 (* Basic Queries *)
 
@@ -164,6 +164,8 @@ module SymResolvedMap = struct
       match resolve_symheap sym_resolved_map sheap with
       | Val.Vheap sh ->
           Loc.SymHeap sh
+      | Val.Vint (Symbol s) ->
+          Loc.SymHeap (SymHeap.Symbol s)
       | _ as v ->
           raise (Unexpected (F.asprintf "%a is cannot resolved as loc" Val.pp v)) )
     | Loc.Field (l, fn) ->
@@ -179,8 +181,11 @@ module SymResolvedMap = struct
         raise (Unexpected (F.asprintf "%a is not resolved" SymDom.Symbol.pp s))
     | SymHeap.Symbol s ->
         find s sym_resolved_map
-    | _ as sheap ->
+    | (SymHeap.Allocsite _ | SymHeap.String _ | SymHeap.Null _) as sheap ->
         Val.Vheap sheap
+    | _ ->
+        (* TODO: some extern values are required at caller *)
+        Val.unknown
 
 
   let rec resolve_val sym_resolved_map = function
@@ -307,7 +312,11 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
         SymTbl.pp callee_summary.symtbl Mem.pp callee_summary.mem SymResolvedMap.pp sym_resolved_map msg
   in
   let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
-  if PC.exists PathCond.is_invalid pc' then None
+  if PC.exists PathCond.is_invalid pc' then (
+    L.d_printfln " - symtbl: %a@. - memory: %a@. - invalid pc: %a@." SymTbl.pp symtbl' Mem.pp mem' PC.pp pc' ;
+    L.d_printfln " - original pc: %a@. - symresolved_map: %a@." PC.pp callee_summary.pc SymResolvedMap.pp
+      sym_resolved_map ;
+    None )
   else
     Some
       { astate with
