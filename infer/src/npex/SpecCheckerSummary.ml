@@ -151,15 +151,16 @@ let remove_local (Domain.{mem; pc} as astate) ~formals ~ret_var =
 
 
 let to_summary proc_desc disjuncts =
-  L.progress "Converting to summary... of %a@." Procname.pp (Procdesc.get_proc_name proc_desc) ;
-  let formals = Procdesc.get_pvar_formals proc_desc in
-  let ret_var = Procdesc.get_ret_var proc_desc in
-  let disjuncts_local_removed = List.map disjuncts ~f:(remove_local ~formals ~ret_var) in
+  (* L.progress "Converting to summary... of %a@." Procname.pp (Procdesc.get_proc_name proc_desc) ; *)
+  (* let formals = Procdesc.get_pvar_formals proc_desc in
+     let ret_var = Procdesc.get_ret_var proc_desc in
+     let disjuncts_local_removed = List.map disjuncts ~f:(remove_local ~formals ~ret_var) in *)
+  let disjuncts_local_removed = (* TODO: is it necessary? *) disjuncts in
   let summary =
     List.map ~f:(StateWithFeature.from_state proc_desc) disjuncts_local_removed |> SFSet.of_list |> SFSet.elements
   in
-  L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)
-    Procname.pp (Procdesc.get_proc_name proc_desc) ;
+  (* L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)
+     Procname.pp (Procdesc.get_proc_name proc_desc) ; *)
   summary
 
 
