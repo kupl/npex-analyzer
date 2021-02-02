@@ -1,4 +1,5 @@
 open! IStd
+open! Vocab
 module F = Format
 module L = Logging
 
@@ -10,6 +11,7 @@ module S = struct
   and t = AccessExpr of Pvar.t * access list | Primitive of Const.t [@@deriving compare]
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
+  [@@deriving compare]
 
   let dummy = AccessExpr (Pvar.mk_tmp "" Procname.empty_block, [])
 
@@ -25,6 +27,8 @@ module S = struct
     | _ ->
         compare x y
 
+
+  let equal_access = [%compare.equal: access]
 
   let rec pp fmt = function
     | AccessExpr (base, accesses) ->
@@ -69,6 +73,8 @@ module S = struct
 
   let of_pvar pv = AccessExpr (pv, [])
 
+  let of_const const = Primitive const
+
   let equal_base t pv = match t with AccessExpr (base, _) -> Pvar.equal base pv | _ -> false
 
   let equal = [%compare.equal: t]
@@ -84,6 +90,19 @@ module S = struct
         "null"
     | _ ->
         ""
+
+
+  let is_local pdesc =
+    let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
+    function
+    | AccessExpr (pv, _) when Pvar.is_global pv ->
+        false
+    | AccessExpr (pv, _) when List.mem formals ~equal:Pvar.equal pv ->
+        false
+    | AccessExpr _ ->
+        true
+    | _ ->
+        false
 
 
   let is_sub_expr ~(sub : t) aexpr =
@@ -224,7 +243,11 @@ module S = struct
         let work = InstrNode.Set.choose worklist in
         let rest = InstrNode.Set.remove work worklist in
         ignore (do_instr pdesc (InstrNode.get_instr work)) ;
-        let next = InstrNode.get_succs work |> InstrNode.Set.of_list |> InstrNode.Set.union rest in
+        let next =
+          let succs = InstrNode.get_succs work in
+          let exns = InstrNode.get_exn work in
+          InstrNode.Set.of_list (succs @ exns) |> InstrNode.Set.union rest
+        in
         let new_worklist = InstrNode.Set.diff next doneset in
         let new_doneset = InstrNode.Set.add work doneset in
         do_worklist new_worklist new_doneset
@@ -260,3 +283,12 @@ end
 include S
 module Set = PrettyPrintable.MakePPSet (S)
 module Map = PrettyPrintable.MakePPMap (S)
+
+let is_abstract = function
+  | AccessExpr (_, accesses) ->
+      List.exists accesses ~f:(function ArrayAccess _ -> true | _ -> false)
+  | _ ->
+      false
+
+
+let is_concrete = function AccessExpr _ -> false | Primitive _ -> true

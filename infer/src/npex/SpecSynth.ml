@@ -21,7 +21,7 @@ let checker = SpecChecker.checker
 
 module Terms = AccessExpr.Set
 
-let rec synthesize ~nullpoint ~summary ~pdesc =
+(* let rec synthesize ~nullpoint ~summary ~pdesc =
   let terms_from_summary = collect_terms_from_summary summary in
   let terms_from_pdesc = collect_terms_from_pdesc pdesc in
   let all_terms =
@@ -115,14 +115,15 @@ and enumerate_binaries terms =
       List.map arguments ~f:(fun terms -> (Binary binop, terms)))
     [Equals; IsFunctionOf]
 
+*)
+let launch ~get_summary = ()
 
-let launch ~get_summary =
-  let program = Program.build () in
-  let nullpoints = get_nullpoint_list () in
-  let specs =
-    List.fold nullpoints ~init:[] ~f:(fun acc nullpoint ->
-        let pdesc = Program.pdesc_of program (NullPoint.get_procname nullpoint) in
-        let summary = get_summary (Procdesc.get_proc_name pdesc) in
-        acc @ synthesize ~nullpoint ~summary ~pdesc)
-  in
-  Specification.to_marshal_all specs
+(* let program = Program.build () in
+   let nullpoints = get_nullpoint_list () in
+   let specs =
+     List.fold nullpoints ~init:[] ~f:(fun acc nullpoint ->
+         let pdesc = Program.pdesc_of program (NullPoint.get_procname nullpoint) in
+         let summary = get_summary (Procdesc.get_proc_name pdesc) in
+         acc @ synthesize ~nullpoint ~summary ~pdesc)
+   in
+   Specification.to_marshal_all specs *)

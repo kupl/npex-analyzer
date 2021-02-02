@@ -43,22 +43,34 @@ let identify_nodes_at_patched_lines program json =
 
 let from_json program json : t =
   let patched_nodes = identify_nodes_at_patched_lines program json in
-  let mthd = List.hd_exn patched_nodes |> Node.get_proc_name in
+  L.progress "Patched nodes: %a@." (Pp.seq Node.pp) patched_nodes ;
+  let deref_fields =
+    List.map Config.error_report_json ~f:(fun filepath ->
+        let open Yojson.Basic.Util in
+        read_json_file_exn filepath |> member "deref_field" |> to_string)
+  in
   let is_checking_nullness, null_exp = (ref false, ref AccessExpr.dummy) in
   let null_cond =
     List.find_map patched_nodes ~f:(fun node ->
+        let mthd = Node.get_proc_name node in
         let f instr =
           match instr with
           | Sil.Prune (UnOp (Unop.LNot, BinOp (Binop.Ne, null_ptr, Const (Cint intlit)), _), _, _, _)
             when IntLit.isnull intlit ->
               (* TODO: deref_field should be provided to find null_cond *)
-              is_checking_nullness := false ;
-              null_exp := AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr ;
-              Some (InstrNode.make node instr)
+              let null_aexpr = AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr in
+              if List.mem deref_fields (AccessExpr.get_deref_field null_aexpr) ~equal:String.equal then (
+                is_checking_nullness := false ;
+                null_exp := null_aexpr ;
+                Some (InstrNode.make node instr) )
+              else None
           | Sil.Prune (BinOp (Binop.Eq, null_ptr, Const (Cint lit)), _, _, _) when IntLit.isnull lit ->
-              is_checking_nullness := true ;
-              null_exp := AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr ;
-              Some (InstrNode.make node instr)
+              let null_aexpr = AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr in
+              if List.mem deref_fields (AccessExpr.get_deref_field null_aexpr) ~equal:String.equal then (
+                is_checking_nullness := true ;
+                null_exp := null_aexpr ;
+                Some (InstrNode.make node instr) )
+              else None
           | _ ->
               None
         in
@@ -88,7 +100,7 @@ let from_json program json : t =
             (NSet.singleton (InstrNode.inode_of null_cond)) )
       in
       let conditional = Some (null_cond, non_null_cond) in
-      { mthd
+      { mthd= InstrNode.get_proc_name null_cond
       ; conditional
       ; is_checking_nullness= !is_checking_nullness
       ; null_exp= !null_exp
@@ -105,8 +117,8 @@ let from_json program json : t =
                 msg :: acc))
       in
       L.(die ExternalError) "Could not find patch@.%s@." (String.concat ~sep:"\n" msgs)
-  | _ ->
-      L.(die InternalError) "Only one prune instr of null checking is found"
+  | Some cond, None | None, Some cond ->
+      L.(die InternalError) "Only one prune instr of null checking is found@. - %a@." InstrNode.pp cond
 
 
 let get_method {mthd} = mthd

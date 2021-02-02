@@ -56,6 +56,10 @@ module SymHeap = struct
     | Unknown
   [@@deriving compare]
 
+  let compare x y =
+    match (x, y) with Null _, Null _ -> 0 | Null _, _ -> 1 | _, Null _ -> -1 | _, _ -> compare x y
+
+
   let equal = [%compare.equal: t]
 
   let make_allocsite node = Allocsite (Allocsite.make node)
@@ -132,9 +136,27 @@ module SymExp = struct
         F.fprintf fmt "IntTop"
 
 
-  (* let is_concrete = function IntTop -> false | _ -> true *)
-
   let equal = [%compare.equal: t]
+
+  let lt x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        if IntLit.lt x y then IntLit IntLit.one else IntLit IntLit.zero
+    | _ ->
+        IntTop
+
+
+  let lte x y =
+    match (x, y) with
+    | Symbol _, Symbol _ when equal x y ->
+        IntLit IntLit.one
+    | IntLit _, IntLit _ when equal x y ->
+        IntLit IntLit.one
+    | IntLit _, IntLit _ ->
+        lt x y
+    | _ ->
+        IntTop
+
 
   let of_intlit intlit : t = IntLit intlit
 
@@ -150,6 +172,10 @@ module SymExp = struct
 
   let is_symbolic = function Symbol _ -> true | _ -> false
 
+  let add x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.add x y) | _ -> IntTop
+
+  let sub x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.sub x y) | _ -> IntTop
+
   let rec get_intlit = function
     | IntLit il ->
         Some il
@@ -159,7 +185,7 @@ module SymExp = struct
         None
 end
 
-module Loc = struct
+module LocCore = struct
   type t = Var of Pvar.t | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t [@@deriving compare]
 
   let rec pp fmt = function
@@ -180,6 +206,12 @@ module Loc = struct
     | _ ->
         compare x y
 
+
+  let equal = [%compare.equal: t]
+end
+
+module Loc = struct
+  include LocCore
 
   let rec get_symbol_opt = function
     | Var _ ->
@@ -234,8 +266,6 @@ module Loc = struct
         false
 
 
-  let equal = [%compare.equal: t]
-
   let unknown = SymHeap SymHeap.unknown
 
   let make_extern node = SymHeap (SymHeap.make_extern node)
@@ -246,16 +276,17 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let rec append_index = function (Var _ | SymHeap _ | Field _) as l -> Index l | Index _ as l -> l
+  let append_index l = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l
 
   let append_field ~fn l = Field (l, fn)
 
   let of_pvar pv : t = Var pv
 
   let rec base_of = function Field (l, _) -> base_of l | Index l -> base_of l | _ as l -> l
-end
 
-module LocSet = PrettyPrintable.MakePPSet (Loc)
+  module Set = AbstractDomain.FiniteSet (LocCore)
+  module Map = PrettyPrintable.MakePPMap (LocCore)
+end
 
 module Val = struct
   type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Bot | Top [@@deriving compare]
@@ -272,6 +303,22 @@ module Val = struct
     | Top ->
         F.fprintf fmt "Top"
 
+
+  let compare x y =
+    match (x, y) with
+    | Vheap s1, Vheap s2 ->
+        SymHeap.compare s1 s2
+    | Vheap _, _ ->
+        1
+    | _, Vheap _ ->
+        -1
+    | _ ->
+        compare x y
+
+
+  let lt v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lt s1 s2) | _ -> Vint IntTop
+
+  let lte v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lte s1 s2) | _ -> Vint IntTop
 
   let bottom = Bot (* undefined *)
 
@@ -328,6 +375,10 @@ module Val = struct
 
   let one = Vint (SymExp.of_intlit IntLit.one)
 
+  let add x y = match (x, y) with Vint x, Vint y -> Vint (SymExp.add x y) | _ -> Top
+
+  let sub x y = match (x, y) with Vint x, Vint y -> Vint (SymExp.sub x y) | _ -> Top
+
   let make_allocsite node = Vheap (SymHeap.make_allocsite node)
 
   let make_extern node typ =
@@ -343,6 +394,8 @@ module Val = struct
   let intTop = Vint SymExp.intTop
 
   let unknown = Vheap SymHeap.unknown
+
+  let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
   let is_abstract = function
     | Vint symexp ->
@@ -425,131 +478,5 @@ module Val = struct
         raise (Unexpected (F.asprintf "Non-locational value %a cannot be converted to location" pp v))
 end
 
-module PathCond = struct
-  type t = PEquals of Val.t * Val.t | Not of t | Equals of Val.t * Val.t [@@deriving compare]
-
-  let equal = [%compare.equal: t]
-
-  let true_cond = PEquals (Val.zero, Val.zero) (* top *)
-
-  let false_cond = Not true_cond
-
-  let is_true = equal true_cond
-
-  let is_false = equal false_cond
-
-  let rec is_unknown = function
-    | (PEquals (v1, v2) | Equals (v1, v2)) when Val.is_abstract v1 || Val.is_abstract v2 ->
-        true
-    | Not x ->
-        is_unknown x
-    | _ ->
-        false
-
-
-  let rec is_valid = function
-    | _ as x when is_unknown x ->
-        false
-    | PEquals (v1, v2) ->
-        Val.equal v1 v2
-    | Not cond ->
-        is_invalid cond
-    | _ ->
-        (* TODO: add *)
-        false
-
-
-  and is_invalid = function
-    | _ as x when is_unknown x ->
-        false
-    | PEquals (v1, v2) when Val.is_concrete v1 && Val.is_concrete v2 ->
-        not (Val.equal v1 v2)
-    | Not cond ->
-        is_valid cond
-    | _ ->
-        (* TODO: add *)
-        false
-
-
-  let make_negation = function Not x -> x | _ as x -> Not x
-
-  let make_physical_equals binop v1 v2 =
-    (* if v1 or v2 contain symbol, then make condition
-       else if no symbol in v1 or v2, it evaluates to true or false *)
-    let[@warning "-8"] [v1; v2] = List.sort [v1; v2] ~compare:Val.compare in
-    L.d_printfln "Make physical equals from (%s, %a, %a)" (Binop.str Pp.text binop) Val.pp v1 Val.pp v2 ;
-    match (binop, v1, v2) with
-    | Binop.Eq, v1, v2 ->
-        PEquals (v1, v2)
-    | Binop.Ne, v1, v2 ->
-        Not (PEquals (v1, v2))
-    | _ ->
-        (* TODO: implement less than, greater than, etc.*)
-        raise (TODO (F.asprintf "non equal condition(%s) are not supported" (Binop.str Pp.text binop)))
-
-
-  (* TODO: do it *)
-  let rec pp fmt = function
-    | PEquals (v1, v2) ->
-        F.fprintf fmt "%a == %a" Val.pp v1 Val.pp v2
-    | Not (PEquals (v1, v2)) ->
-        F.fprintf fmt "%a != %a" Val.pp v1 Val.pp v2
-    | Not pc ->
-        F.fprintf fmt "Not (%a)" pp pc
-    | Equals (v1, v2) ->
-        F.fprintf fmt "Equals (%a, %a)" Val.pp v1 Val.pp v2
-
-
-  let rec vals_of_path_cond = function
-    | PEquals (v1, v2) | Equals (v1, v2) ->
-        [v1; v2]
-    | Not pc ->
-        vals_of_path_cond pc
-end
-
-module PC = struct
-  include AbstractDomain.FiniteSet (PathCond)
-
-  let compute_transitives pathcond pc =
-    let open PathCond in
-    fold
-      (fun cond acc ->
-        match (pathcond, cond) with
-        | PEquals (v1, v2), PEquals (v1', v2') when Val.equal v1 v1' ->
-            add (PEquals (v2, v2')) acc
-        | PEquals (v1, v2), PEquals (v2', v1') when Val.equal v1 v1' ->
-            add (PEquals (v2, v2')) acc
-        | PEquals (v2, v1), PEquals (v1', v2') when Val.equal v1 v1' ->
-            add (PEquals (v2, v2')) acc
-        | PEquals (v2, v1), PEquals (v2', v1') when Val.equal v1 v1' ->
-            add (PEquals (v2, v2')) acc
-        | PEquals (v1, v2), Not (PEquals (v1', v2')) when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | PEquals (v1, v2), Not (PEquals (v2', v1')) when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | PEquals (v2, v1), Not (PEquals (v1', v2')) when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | PEquals (v2, v1), Not (PEquals (v2', v1')) when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | Not (PEquals (v1, v2)), PEquals (v1', v2') when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | Not (PEquals (v1, v2)), PEquals (v2', v1') when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | Not (PEquals (v2, v1)), PEquals (v1', v2') when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | Not (PEquals (v2, v1)), PEquals (v2', v1') when Val.equal v1 v1' ->
-            add (Not (PEquals (v2, v2'))) acc
-        | _ ->
-            acc)
-      pc (singleton pathcond)
-
-
-  let is_valid pathcond pc = PathCond.is_valid pathcond || mem pathcond pc
-
-  let add pathcond pc =
-    if PathCond.is_unknown pathcond || PathCond.is_valid pathcond then pc
-    else if PathCond.is_invalid pathcond then singleton PathCond.false_cond
-    else
-      let transitives = compute_transitives pathcond pc in
-      union pc (filter (fun cond -> not (PathCond.is_valid cond)) transitives)
-end
+module PathCond = Constraint.Make (Val)
+module PC = Constraint.MakePC (Val)

@@ -2270,19 +2270,19 @@ and npex_specifications_directory =
 
 
 and npex_launch_localizer =
-  CLOpt.mk_bool ~default:false ~long:"launch-localizer"
+  CLOpt.mk_bool ~default:false ~long:"localizer"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
     "Launch NPE localizer"
 
 
-and npex_launch_spec_synthesizer =
-  CLOpt.mk_bool ~default:false ~long:"launch-spec-synthesizer"
+and npex_launch_spec_inference =
+  CLOpt.mk_bool ~default:false ~long:"spec-inference"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
-    "Launch specification synthesizer"
+    "Launch specification inference"
 
 
 and npex_launch_spec_verifier =
-  CLOpt.mk_bool ~default:false ~long:"launch-spec-verifier"
+  CLOpt.mk_bool ~default:false ~long:"spec-verifier"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
     "Launch specification verifier"
 
@@ -3215,7 +3215,7 @@ and npex_specifications_directory = !npex_specifications_directory
 
 and npex_launch_localizer = !npex_launch_localizer
 
-and npex_launch_spec_synthesizer = !npex_launch_spec_synthesizer
+and npex_launch_spec_inference = !npex_launch_spec_inference
 
 and npex_launch_spec_verifier = !npex_launch_spec_verifier
 

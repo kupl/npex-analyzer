@@ -24,6 +24,11 @@ public abstract class LinkedList<T> extends AbstractList<T>
   }
 
   @Override
+  public boolean add(T toAdd) {
+    return super.add(toAdd);
+  }
+
+  @Override
   public T remove(int index) {
     return super.remove(index);
   }

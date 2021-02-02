@@ -23,7 +23,10 @@ module SymTbl = struct
 end
 
 module Reg = WeakMap.Make (Ident) (Val)
-module Mem = WeakMap.Make (Loc) (Val)
+
+module Mem = struct
+  include WeakMap.Make (Loc) (Val)
+end
 
 type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
@@ -50,7 +53,7 @@ let bottom =
 
 let fold_memory {mem} ~init ~f = Mem.fold (fun l v acc -> f acc l v) mem init
 
-type get_summary = Procname.t -> t option
+(* type get_summary = Procname.t -> t option *)
 
 (* Basic Queries *)
 
@@ -60,10 +63,26 @@ let is_unknown_id {reg} id = Val.is_bottom (Reg.find id reg)
 
 let is_exceptional {is_exceptional} = is_exceptional
 
+let is_npe_alternative {is_npe_alternative} = is_npe_alternative
+
+let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
+
 (* Read & Write *)
 let read_loc {mem} l = Mem.find l mem
 
 let read_symtbl {symtbl} l = SymTbl.find l symtbl
+
+let equal_values astate v =
+  PC.fold
+    (function
+      | PathCond.PEquals (v1, v2) when Val.equal v1 v ->
+          fun acc -> v2 :: acc
+      | PathCond.PEquals (v1, v2) when Val.equal v2 v ->
+          fun acc -> v1 :: acc
+      | _ ->
+          fun acc -> acc)
+    astate.pc [v]
+
 
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
 
@@ -92,15 +111,19 @@ let add_pc astate pathcond : t list =
   if PC.exists PathCond.is_invalid pc' then [] else [{astate with pc= pc'}]
 
 
-let get_path_conditions {pc} = PC.elements pc
-
-let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
-
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
 
 let set_exception astate = {astate with is_exceptional= true}
 
 let unwrap_exception astate = {astate with is_exceptional= false}
+
+let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
+  let pc' = PC.replace_value astate.pc ~src ~dst in
+  (* let pc' = PC.remove src astate.pc |> PC.add dst in *)
+  let mem' = Mem.map (fun v -> if phys_equal v src then dst else v) astate.mem in
+  let reg' = Reg.map (fun v -> if phys_equal v src then dst else v) astate.reg in
+  {astate with pc= pc'; mem= mem'; reg= reg'}
+
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
@@ -141,6 +164,8 @@ module SymResolvedMap = struct
       match resolve_symheap sym_resolved_map sheap with
       | Val.Vheap sh ->
           Loc.SymHeap sh
+      | Val.Vint (Symbol s) ->
+          Loc.SymHeap (SymHeap.Symbol s)
       | _ as v ->
           raise (Unexpected (F.asprintf "%a is cannot resolved as loc" Val.pp v)) )
     | Loc.Field (l, fn) ->
@@ -152,10 +177,15 @@ module SymResolvedMap = struct
 
 
   and resolve_symheap sym_resolved_map = function
+    | SymHeap.Symbol s when not (mem s sym_resolved_map) ->
+        raise (Unexpected (F.asprintf "%a is not resolved" SymDom.Symbol.pp s))
     | SymHeap.Symbol s ->
         find s sym_resolved_map
-    | _ as sheap ->
+    | (SymHeap.Allocsite _ | SymHeap.String _ | SymHeap.Null _) as sheap ->
         Val.Vheap sheap
+    | _ ->
+        (* TODO: some extern values are required at caller *)
+        Val.unknown
 
 
   let rec resolve_val sym_resolved_map = function
@@ -167,7 +197,13 @@ module SymResolvedMap = struct
         v
 
 
-  and resolve_symexp sym_resolved_map = function SymExp.Symbol s -> find s sym_resolved_map | _ -> Val.top
+  and resolve_symexp sym_resolved_map = function
+    | SymExp.Symbol s ->
+        find s sym_resolved_map
+    | _ as x ->
+        (* TODO: s1 + s2 -> resolve(s1) + resolve(s2) *)
+        Val.Vint x
+
 
   let rec resolve_symtbl astate callee_symtbl acc works =
     if IntSet.is_empty works then acc
@@ -240,7 +276,13 @@ module SymResolvedMap = struct
 
 
   let replace_pc sym_resolved_map pc_to_resolve pc_to_update =
-    PC.fold (fun pc -> PC.add (resolve_pc sym_resolved_map pc)) pc_to_resolve pc_to_update
+    PC.fold
+      (fun pc acc ->
+        let cond_to_add = resolve_pc sym_resolved_map pc in
+        if PC.mem cond_to_add acc then acc
+        else (* L.progress "%a is already in set!@." PathCond.pp cond_to_add ; *)
+          PC.add cond_to_add acc)
+      pc_to_resolve pc_to_update
 end
 
 let init_with_formals formals : t =
@@ -261,9 +303,20 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
         (SymResolvedMap.next_works init_sym_resolved_map callee_summary.symtbl)
     with Unexpected msg -> L.(die InternalError) "%s@.%a" msg Mem.pp callee_summary.mem
   in
-  let mem' = SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem in
+  let mem' =
+    try SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
+    with Unexpected msg ->
+      L.(die InternalError)
+        "Failed to resolve callee memory@. Callee symtbl : %a@. Callee mem : %a@. Sym_resolved_map : %a@. Msg: \
+         %s@."
+        SymTbl.pp callee_summary.symtbl Mem.pp callee_summary.mem SymResolvedMap.pp sym_resolved_map msg
+  in
   let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
-  if PC.exists PathCond.is_invalid pc' then None
+  if PC.exists PathCond.is_invalid pc' then (
+    L.d_printfln " - symtbl: %a@. - memory: %a@. - invalid pc: %a@." SymTbl.pp symtbl' Mem.pp mem' PC.pp pc' ;
+    L.d_printfln " - original pc: %a@. - symresolved_map: %a@." PC.pp callee_summary.pc SymResolvedMap.pp
+      sym_resolved_map ;
+    None )
   else
     Some
       { astate with
@@ -275,9 +328,33 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
 
 
 (* Eval functions *)
-let eval_uop unop v = Val.top
+let eval_uop unop v =
+  match unop with
+  | Unop.LNot when Val.is_true v ->
+      Val.zero
+  | Unop.LNot when Val.is_false v ->
+      Val.one
+  | _ ->
+      Val.top
 
-let eval_binop binop v1 v2 = Val.top
+
+let eval_binop binop v1 v2 =
+  match binop with
+  | Binop.PlusA _ ->
+      Val.add v1 v2
+  | Binop.MinusA _ ->
+      Val.sub v1 v2
+  | Binop.Lt ->
+      Val.lt v1 v2
+  | Binop.Gt ->
+      Val.lt v2 v1
+  | Binop.Le ->
+      Val.lte v1 v1
+  | Binop.Ge ->
+      Val.lte v2 v1
+  | _ ->
+      Val.top
+
 
 let rec eval ?(pos = 0) astate node instr exp =
   match exp with
@@ -340,85 +417,3 @@ let rec eval_lv astate exp =
          Loc.of_pvar cls_var *)
   | _ ->
       L.(die InternalError) "%a is not allowed as lvalue expression in java" Exp.pp exp
-
-
-let is_npe_alternative {is_npe_alternative} = is_npe_alternative
-
-let pc_to_formula astate =
-  let exception Not_Convertable of Val.t in
-  let open Specification.Formula in
-  let rec convert_val_to_aexpr : Val.t -> AccessExpr.t = function
-    (* Convert symbolic values *)
-    | (Val.Vint (SymExp.Symbol _) | Val.Vheap (SymHeap.Symbol _)) as v -> (
-      match SymTbl.find_first (fun l -> Val.equal v (SymTbl.find l astate.symtbl)) astate.symtbl with
-      | Loc.Field (Loc.Var pv, f), _ ->
-          AccessExpr.AccessExpr (pv, [AccessExpr.FieldAccess f])
-      | Loc.Field (Loc.SymHeap h, f), _ ->
-          let[@warning "-8"] (AccessExpr.AccessExpr (pv, accesses)) = convert_val_to_aexpr (Val.Vheap h) in
-          AccessExpr.AccessExpr (pv, accesses @ [AccessExpr.FieldAccess f])
-      | Loc.Var pv, _ ->
-          AccessExpr.AccessExpr (pv, [])
-      | _ ->
-          (* TODO: multiple field access, ... *)
-          raise (Not_Convertable v) )
-    (* Convert constant values *)
-    | Val.Vint (SymExp.IntLit i) ->
-        AccessExpr.Primitive (Const.Cint i)
-    | Val.Vheap (SymHeap.Null _) ->
-        AccessExpr.null
-    | Val.Vheap (SymHeap.String str) ->
-        AccessExpr.Primitive (Const.Cstr str)
-    (* TODO: binary expression of aexpr, ... *)
-    | _ as v ->
-        raise (Not_Convertable v)
-  in
-  let rec convert_cond_to_formula : PathCond.t -> formula = function
-    | PathCond.PEquals (v1, v2) ->
-        Atom (Predicate (Binary Equals, [convert_val_to_aexpr v1; convert_val_to_aexpr v2]))
-    | PathCond.Not cond ->
-        Neg (convert_cond_to_formula cond)
-    | _ ->
-        (* TODO: make Equals formula from Equals PC *)
-        Atom True
-  in
-  PC.fold
-    (fun cond acc ->
-      try
-        let formula = convert_cond_to_formula cond in
-        Specification.Conjunctions.add formula acc
-      with Not_Convertable v ->
-        L.progress "[WARNING]: failed to convert %a since no aepxr found for %a" PathCond.pp cond Val.pp v ;
-        acc)
-    astate.pc Specification.Conjunctions.empty
-
-
-let rec loc_to_access_expr state =
-  let open IOption.Let_syntax in
-  function
-  | Loc.Var pv ->
-      Some (AccessExpr.of_pvar pv)
-  | Loc.Field (l', fld) ->
-      let+ base = loc_to_access_expr state l' in
-      AccessExpr.append_access base (AccessExpr.FieldAccess fld)
-  | Loc.Index l' ->
-      let+ base = loc_to_access_expr state l' in
-      AccessExpr.(append_access base (ArrayAccess dummy))
-  | Loc.SymHeap sh ->
-      symHeap_to_access_expr state sh
-
-
-and symHeap_to_access_expr ({mem} as state) sh =
-  let ae : AccessExpr.t option =
-    Mem.fold
-      (fun l v -> function Some _ as acc -> acc | None ->
-            if Val.equal v (Val.of_symheap sh) then loc_to_access_expr state l else None)
-      mem None
-  in
-  IOption.if_none_evalopt
-    ~f:(fun () ->
-      L.debug_dev
-        "Could not convert %a to access expr@.(Memory does not contain any location whose value matches with the \
-         symbolic heap)"
-        SymHeap.pp sh ;
-      None)
-    ae
