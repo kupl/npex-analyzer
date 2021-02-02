@@ -243,7 +243,11 @@ module S = struct
         let work = InstrNode.Set.choose worklist in
         let rest = InstrNode.Set.remove work worklist in
         ignore (do_instr pdesc (InstrNode.get_instr work)) ;
-        let next = InstrNode.get_succs work |> InstrNode.Set.of_list |> InstrNode.Set.union rest in
+        let next =
+          let succs = InstrNode.get_succs work in
+          let exns = InstrNode.get_exn work in
+          InstrNode.Set.of_list (succs @ exns) |> InstrNode.Set.union rest
+        in
         let new_worklist = InstrNode.Set.diff next doneset in
         let new_doneset = InstrNode.Set.add work doneset in
         do_worklist new_worklist new_doneset
