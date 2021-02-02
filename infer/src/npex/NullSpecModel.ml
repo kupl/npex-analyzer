@@ -121,11 +121,16 @@ let default_models =
   |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" empty_value)
   |> (* null.equals(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "equals" AccessExpr.zero)
   |> (* null.startsWith(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
-  |> (* null.toUpperCase(_) *)
-  add (Key.make ~arg_length:2 Aobject) (Value.default_of "toUpperCase" AccessExpr.null)
   |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "add" empty_value)
   |> (* _.find(null) *)
   add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "find" AccessExpr.null)
+
+
+let add_models_to_learn x =
+  x
+  |> (* null.isFailOnCCE(_) *) add (Key.make ~arg_length:1 Aint) (Value.default_of "isFailOnCCE" AccessExpr.zero)
+  |> (* null.toUpperCase(_) *)
+  add (Key.make ~arg_length:2 Aobject) (Value.default_of "toUpperCase" AccessExpr.null)
   |> (* _.invoke(_, null) *)
   add (Key.make ~arg_length:3 ~model_index:2 Aobject) (Value.default_of "invoke" AccessExpr.null)
 
@@ -140,7 +145,7 @@ let is_model_null = function Val.Vheap (Null (_, pos)) -> Int.equal null_pos pos
 
 let get equal_values callee_context =
   let {arg_values; ret_typ} = callee_context in
-  let model = (* TODO: from_json() *) default_models in
+  let model = (* TODO: from_json() *) default_models |> add_models_to_learn in
   let key_opt =
     List.find_mapi arg_values ~f:(fun index v : Key.t option ->
         let open SymDom.Val in
