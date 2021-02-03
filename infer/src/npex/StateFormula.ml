@@ -90,7 +90,7 @@ let compute_ap_map formals mem =
   _compute init APMap.empty
 
 
-let val_to_ap mem ap_map : Val.t -> APSet.t = function
+let rec val_to_ap mem ap_map : Val.t -> APSet.t = function
   | Val.Vint SymDom.SymExp.(IntLit intlit) ->
       APSet.singleton (AccessExpr.of_const (Const.Cint intlit))
   | (Val.Vint SymDom.SymExp.(Symbol _) | Val.Vint SymDom.SymExp.(Extern _)) as v ->
@@ -107,6 +107,24 @@ let val_to_ap mem ap_map : Val.t -> APSet.t = function
       APMap.find (Loc.SymHeap sh) ap_map
   | Val.Vexn _ ->
       (* TODO *) APSet.empty
+  | Val.Vextern (callee, args) ->
+      let make_ap_call callee arg_aps =
+        let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
+        AccessExpr.append_access AccessExpr.dummy method_call_access
+      in
+      let aps_args_list = List.map args ~f:(fun arg_value -> val_to_ap mem ap_map arg_value |> APSet.elements) in
+      let arg_aps_list =
+        (* [v1, v2]: args
+         * [[ap11, ap12], [ap21, ap22]]: aps_args_list
+         * [ap11, ap21], [ap11, ap22], [ap12, ap21], [ap12, ap22]: arg_aps_list *)
+        List.fold aps_args_list ~init:[[]]
+          ~f:(fun (acc : AccessExpr.t list list) (aps : AccessExpr.t list) : AccessExpr.t list list ->
+            List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])))
+        (* [ap11], [ap12] 
+         * [ap11, ap21], [ap11, ap21] | [ap12, ap21], [ap12, ap22] *)
+      in
+      let results = List.map arg_aps_list ~f:(make_ap_call callee) |> APSet.of_list in
+      results
   | _ ->
       APSet.empty
 
@@ -148,5 +166,4 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
        ==============================@."
       Domain.pp astate Formula.pp summary_formula Formula.pp pc_formula
   in
-  (* L.progress "%s" debug_msg ;  *)
-  (pc_formula, summary_formula)
+  L.progress "%s" debug_msg ; (pc_formula, summary_formula)

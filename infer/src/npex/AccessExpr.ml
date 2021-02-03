@@ -13,7 +13,9 @@ module S = struct
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
   [@@deriving compare]
 
-  let dummy = AccessExpr (Pvar.mk_tmp "" Procname.empty_block, [])
+  let dummy_pvar = Pvar.mk_tmp "" Procname.empty_block
+
+  let dummy = AccessExpr (dummy_pvar, [])
 
   (* Infer IntLit's compare does not distinguish pointernesses *)
   type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
@@ -31,6 +33,8 @@ module S = struct
   let equal_access = [%compare.equal: access]
 
   let rec pp fmt = function
+    | AccessExpr (base, accesses) when Pvar.equal base dummy_pvar ->
+        (Pp.seq pp_access ~sep:".") fmt accesses
     | AccessExpr (base, accesses) ->
         pp_access_expr fmt (base, accesses)
     | Primitive const ->
