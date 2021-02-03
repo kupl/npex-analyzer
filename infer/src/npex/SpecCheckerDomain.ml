@@ -208,7 +208,9 @@ module SymResolvedMap = struct
         find s sym_resolved_map
     | (SymHeap.Allocsite _ | SymHeap.String _ | SymHeap.Null _) as sheap ->
         Val.Vheap sheap
-    | _ ->
+    | SymHeap.Extern _ as sheap ->
+        Val.Vheap sheap
+    | SymHeap.Unknown ->
         (* TODO: some extern values are required at caller *)
         Val.unknown
 
@@ -219,7 +221,7 @@ module SymResolvedMap = struct
     | Val.Vheap sheap ->
         resolve_symheap sym_resolved_map sheap
     | Val.Vexn sheap ->
-        (resolve_symheap sym_resolved_map sheap) |> Val.to_exn
+        resolve_symheap sym_resolved_map sheap |> Val.to_exn
     | Val.Vextern _ ->
         Val.top
     | _ as v ->
