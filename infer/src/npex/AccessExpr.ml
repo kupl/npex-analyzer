@@ -232,6 +232,14 @@ module S = struct
           let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
           let ae = append_access (Cache.find pdesc (Var this)) (MethodCallAccess (mthd, arg_exprs)) in
           Cache.add_id pdesc ret ae
+      | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: args, _, _) ->
+          (* this.mthd(...) is not virtual invocation *)
+          let this_aexpr = Cache.find pdesc (Var this) in
+          if String.equal (to_string this_aexpr) "this" then
+            let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
+            let ae = append_access this_aexpr (MethodCallAccess (mthd, arg_exprs)) in
+            Cache.add_id pdesc ret ae
+          else ()
       | _ ->
           ()
     with _ -> ()
