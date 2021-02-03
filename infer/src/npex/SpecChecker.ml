@@ -441,7 +441,11 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
-  let inv_map = cached_compute_invariant_map analysis_data in
-  let cfg = CFG.from_pdesc proc_desc in
-  let summary = compute_summary proc_desc cfg inv_map in
-  Some summary
+  let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
+  if List.exists formals ~f:Pvar.is_frontend_tmp then (* In this case, IR might be incomplete *)
+    None
+  else
+    let inv_map = cached_compute_invariant_map analysis_data in
+    let cfg = CFG.from_pdesc proc_desc in
+    let summary = compute_summary proc_desc cfg inv_map in
+    Some summary
