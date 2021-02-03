@@ -9,6 +9,8 @@ module Allocsite = struct
 
   let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
 
+  (* let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_file_pos (InstrNode.get_loc instr_node) cnt *)
+
   let _cnt = ref 0
 
   let make node =
@@ -289,15 +291,18 @@ module Loc = struct
 end
 
 module Val = struct
-  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Bot | Top [@@deriving compare]
+  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Vextern of Procname.t * t list | Bot | Top
+  [@@deriving compare]
 
-  let pp fmt = function
+  let rec pp fmt = function
     | Vint i ->
         F.fprintf fmt "(SymExp) %a" SymExp.pp i
     | Vheap h ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp h
     | Vexn sh ->
         F.fprintf fmt "(Exn) %a" SymHeap.pp sh
+    | Vextern (callee, args) ->
+        F.fprintf fmt "(Extern) %s(%a)" (Procname.get_method callee) (Pp.seq pp) args
     | Bot ->
         F.fprintf fmt "Bot"
     | Top ->
@@ -316,6 +321,8 @@ module Val = struct
         compare x y
 
 
+  let equal = [%compare.equal: t]
+
   let lt v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lt s1 s2) | _ -> Vint IntTop
 
   let lte v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lte s1 s2) | _ -> Vint IntTop
@@ -329,19 +336,6 @@ module Val = struct
   let is_bottom = function Bot -> true | _ -> false
 
   let is_top = function Top -> true | _ -> false
-
-  (* TODO: remove it after merge *)
-  let equal x y =
-    match (x, y) with
-    | Vint i1, Vint i2 ->
-        SymExp.equal i1 i2
-    | Vheap h1, Vheap h2 | Vexn h1, Vexn h2 ->
-        SymHeap.equal h1 h2
-    | Bot, Bot | Top, Top ->
-        true
-    | _ ->
-        false
-
 
   let leq ~lhs ~rhs =
     match (lhs, rhs) with
@@ -357,19 +351,16 @@ module Val = struct
         false
 
 
-  let equal lhs rhs =
-    match (lhs, rhs) with
-    | Vint i1, Vint i2 ->
-        SymExp.equal i1 i2
-    | Vheap h1, Vheap h2 | Vexn h1, Vexn h2 ->
-        SymHeap.equal h1 h2
-    | _ ->
-        false
-
-
   let get_class_name_opt = function Vheap sh -> SymHeap.get_class_name_opt sh | _ -> None
 
   let to_exn = function Vheap sh -> Vexn sh | _ as v -> L.(die InternalError) "%a cannot be throwable" pp v
+
+  let unwrap_exn = function
+    | Vexn sh ->
+        Vheap sh
+    | _ as v ->
+        raise (Unexpected (F.asprintf "%a is not throwable" pp v))
+
 
   let zero = Vint (SymExp.of_intlit IntLit.zero)
 

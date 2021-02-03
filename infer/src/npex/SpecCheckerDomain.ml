@@ -70,6 +70,8 @@ let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
 (* Read & Write *)
 let read_loc {mem} l = Mem.find l mem
 
+let read_id {reg} id = Reg.find id reg
+
 let read_symtbl {symtbl} l = SymTbl.find l symtbl
 
 let equal_values astate v =
@@ -151,6 +153,17 @@ let resolve_unknown_loc astate typ loc : t =
   else store_loc astate loc (Val.of_typ typ)
 
 
+let bind_extern_value astate instr_node ret_typ_id callee arg_values =
+  (* ret_id -> extern
+     extern = callee(arg_values) *)
+  let ret_id, ret_typ = ret_typ_id in
+  let value = Val.make_extern instr_node ret_typ in
+  let call_value = Val.Vextern (callee, arg_values) in
+  let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
+  let astate_reg_stored = store_reg astate ret_id value in
+  add_pc astate_reg_stored call_cond
+
+
 (* Summary resolve *)
 module SymResolvedMap = struct
   include PrettyPrintable.MakePPMonoMap (SymDom.Symbol) (Val)
@@ -203,8 +216,12 @@ module SymResolvedMap = struct
   let rec resolve_val sym_resolved_map = function
     | Val.Vint symexp ->
         resolve_symexp sym_resolved_map symexp
-    | Val.Vheap sheap | Val.Vexn sheap ->
+    | Val.Vheap sheap ->
         resolve_symheap sym_resolved_map sheap
+    | Val.Vexn sheap ->
+        (resolve_symheap sym_resolved_map sheap) |> Val.to_exn
+    | Val.Vextern _ ->
+        Val.top
     | _ as v ->
         v
 

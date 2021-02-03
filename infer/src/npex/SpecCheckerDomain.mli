@@ -37,6 +37,8 @@ val resolve_unknown_loc : t -> Typ.t -> Loc.t -> t
 
 val resolve_summary : t -> actual_values:Val.t list -> formals:(Pvar.t * Typ.t) list -> t -> t option
 
+val bind_extern_value : t -> InstrNode.t -> Ident.t * Typ.t -> Procname.t -> Val.t list -> t list
+
 val eval : ?pos:int -> t -> Procdesc.Node.t -> Sil.instr -> Exp.t -> Val.t
 
 val eval_lv : t -> Exp.t -> Loc.t
@@ -50,6 +52,8 @@ val remove_locals : t -> locals:Pvar.t list -> t
 val replace_value : t -> src:Val.t -> dst:Val.t -> t
 
 val read_loc : t -> Loc.t -> Val.t
+
+val read_id : t -> Ident.t -> Val.t
 
 val read_symtbl : t -> Loc.t -> Val.t
 

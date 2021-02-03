@@ -172,31 +172,38 @@ module DisjReady = struct
         [Domain.store_reg astate ret_id value]
     | _ when String.equal "__instanceof" (Procname.get_method callee) ->
         (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
-        let (arg_exp, _), (sizeof_exp, _) = (List.nth_exn arg_typs 0, List.nth_exn arg_typs 1) in
+        let (arg_exp, _), (_, _) = (List.nth_exn arg_typs 0, List.nth_exn arg_typs 1) in
         let arg_value = Domain.eval astate node instr arg_exp in
         let null_cond =
           Domain.PathCond.make_physical_equals Binop.Eq arg_value (Domain.Val.make_null instr_node)
         in
-        let value =
-          if Domain.is_valid_pc astate null_cond then (* instanceof(null) = false *)
-            Domain.Val.zero
-          else Domain.Val.make_extern instr_node Typ.void_star
-        in
-        [Domain.store_reg astate ret_id value]
-    | _ when String.equal "__unwrap_exception" (Procname.get_method callee) ->
-        let value = Domain.Val.make_extern instr_node Typ.void_star in
-        [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
+        if Domain.is_valid_pc astate null_cond then
+          (* instanceof(null) = false *)
+          [Domain.store_reg astate ret_id Domain.Val.zero]
+        else Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee [arg_value]
+    | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
+        let arg_exp, _ = List.hd_exn arg_typs in
+        try
+          let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
+          [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
+        with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate )
     | _ when String.equal "invoke" (Procname.get_method callee) ->
         let ex_state =
           let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
-          let value = Domain.Val.Vexn (SymDom.SymHeap.make_extern instr_node) in
-          Domain.store_loc astate ret_loc value |> Domain.set_exception
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          let astates_binded =
+            Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values
+          in
+          List.map astates_binded ~f:(fun astate ->
+              let exn_value = Domain.read_id astate ret_id |> Domain.Val.to_exn in
+              let astate_return_assigned = Domain.store_loc astate ret_loc exn_value in
+              Domain.remove_temps astate_return_assigned [Var.of_id ret_id] |> Domain.set_exception)
         in
         let normal_state =
-          let value = Domain.Val.make_extern instr_node Typ.void_star in
-          Domain.store_reg astate ret_id value
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values
         in
-        [ex_state; normal_state]
+        normal_state @ ex_state
     | _
       when is_virtual
            && String.is_prefix (Procname.get_method callee) ~prefix:"get"
@@ -207,8 +214,8 @@ module DisjReady = struct
     | Procname.Java mthd ->
         (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
         let ret_typ = Procname.Java.get_return_typ mthd in
-        let value = Domain.Val.make_extern instr_node ret_typ in
-        [Domain.store_reg astate ret_id value]
+        let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+        Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
     | _ ->
         exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs
 
@@ -434,11 +441,6 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
-  (* match Procdesc.get_proc_name proc_desc with
-     | Procname.Java mthd when Procname.Java.is_autogen_method mthd ->
-         (* TODO: IR of lambda function is incorrect *)
-         None
-     | _ -> *)
   let inv_map = cached_compute_invariant_map analysis_data in
   let cfg = CFG.from_pdesc proc_desc in
   let summary = compute_summary proc_desc cfg inv_map in
