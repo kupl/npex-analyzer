@@ -106,8 +106,12 @@ let rec val_to_ap mem ap_map : Val.t -> APSet.t = function
       APSet.singleton (AccessExpr.of_const (Const.Cstr str))
   | Val.Vheap sh ->
       APMap.find (Loc.SymHeap sh) ap_map
-  | Val.Vexn _ ->
-      (* TODO *) APSet.empty
+  | Val.Vexn sh -> (
+    match Val.get_class_name_opt (Val.Vheap sh) with
+    | Some cls ->
+        AccessExpr.of_const (Const.Cstr (Typ.Name.to_string cls)) |> APSet.singleton
+    | None ->
+        APSet.empty )
   | Val.Vextern (callee, args) ->
       let make_ap_call callee arg_aps =
         let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
