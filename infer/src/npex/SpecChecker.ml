@@ -170,17 +170,21 @@ module DisjReady = struct
         let value = Domain.eval astate node instr arg_exp in
         (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
         [Domain.store_reg astate ret_id value]
-    | _ when String.equal "__instanceof" (Procname.get_method callee) ->
-        (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
-        let (arg_exp, _), (_, _) = (List.nth_exn arg_typs 0, List.nth_exn arg_typs 1) in
-        let arg_value = Domain.eval astate node instr arg_exp in
-        let null_cond =
-          Domain.PathCond.make_physical_equals Binop.Eq arg_value (Domain.Val.make_null instr_node)
-        in
-        if Domain.is_valid_pc astate null_cond then
-          (* instanceof(null) = false *)
-          [Domain.store_reg astate ret_id Domain.Val.zero]
-        else Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee [arg_value]
+    | _ when String.equal "__instanceof" (Procname.get_method callee) -> (
+      (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
+      match arg_typs with
+      | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
+          let arg_value = Domain.eval astate node instr arg_exp in
+          let typ_value = Typ.to_string typ |> Domain.Val.make_string in
+          let null_cond =
+            Domain.PathCond.make_physical_equals Binop.Eq arg_value (Domain.Val.make_null instr_node)
+          in
+          if Domain.is_valid_pc astate null_cond then
+            (* instanceof(null) = false *)
+            [Domain.store_reg astate ret_id Domain.Val.zero]
+          else Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee [arg_value; typ_value]
+      | _ ->
+          L.(die InternalError) "wrong invariant of instanceof" )
     | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
         let arg_exp, _ = List.hd_exn arg_typs in
         try
