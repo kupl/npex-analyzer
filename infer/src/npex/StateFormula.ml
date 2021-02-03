@@ -64,11 +64,12 @@ let compute_ap_map formals mem =
       else
         let next_locs =
           let field_locs = LocMap.find work field_map in
-          match Domain.Mem.find work mem with
+          ( match Domain.Mem.find work mem with
           | Val.Vheap symheap ->
               Loc.Set.add (Loc.SymHeap symheap) field_locs
           | _ ->
-              field_locs
+              field_locs )
+          |> Loc.Set.filter (not <<< Loc.is_unknown)
         in
         let next_works = Loc.Set.union rest next_locs in
         let next_ap_map = APMap.strong_update work next_aps ap_map in
@@ -166,4 +167,5 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
        ==============================@."
       Domain.pp astate Formula.pp summary_formula Formula.pp pc_formula
   in
-  L.progress "%s" debug_msg ; (pc_formula, summary_formula)
+  if Config.debug_mode then L.progress "%s" debug_msg ;
+  (pc_formula, summary_formula)
