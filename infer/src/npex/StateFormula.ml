@@ -37,7 +37,7 @@ let compute_ap_map formals mem =
       let cur_aps = APMap.find work ap_map in
       let next_aps =
         match work with
-        | Loc.Var pv ->
+        | Loc.Var (pv, _) ->
             (* add (pv, []) *)
             APSet.singleton (AccessExpr.of_pvar pv)
         | Loc.Field (l, fn) ->
@@ -79,10 +79,10 @@ let compute_ap_map formals mem =
     Domain.Mem.fold
       (fun l _ acc ->
         match l with
-        | (Loc.Var pv | Loc.Field (Loc.Var pv, _)) when Pvar.is_global pv ->
+        | (Loc.Var (pv, _) | Loc.Field (Loc.Var (pv, _), _)) when Pvar.is_global pv ->
             (* Global variable may have no pvar as location *)
             Loc.Set.add l acc
-        | Loc.Var pv when List.mem formals pv ~equal:Pvar.equal ->
+        | Loc.Var (pv, _) when List.mem formals pv ~equal:Pvar.equal ->
             Loc.Set.add l acc
         | _ ->
             acc)

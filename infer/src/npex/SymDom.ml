@@ -9,8 +9,6 @@ module Allocsite = struct
 
   let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
 
-  (* let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_file_pos (InstrNode.get_loc instr_node) cnt *)
-
   let _cnt = ref 0
 
   let make node =
@@ -100,17 +98,17 @@ module SymHeap = struct
 
   let pp fmt = function
     | Allocsite allocsite ->
-        F.fprintf fmt "(Allocsite) %a" Allocsite.pp allocsite
+        F.fprintf fmt "Allocsite %a" Allocsite.pp allocsite
     | Extern allocsite ->
-        F.fprintf fmt "(Extern) %a" Allocsite.pp allocsite
+        F.fprintf fmt "Extern %a" Allocsite.pp allocsite
     | Null null ->
-        F.fprintf fmt "(Null) %a" Null.pp null
+        F.fprintf fmt "Null %a" Null.pp null
     | String str ->
-        F.fprintf fmt "(String) %s" str
+        F.fprintf fmt "String %s" str
     | Symbol s ->
         F.fprintf fmt "%a" Symbol.pp s
     | Unknown ->
-        F.fprintf fmt "(Unknown)"
+        F.fprintf fmt "Unknown"
 end
 
 module SymExp = struct
@@ -188,22 +186,25 @@ module SymExp = struct
 end
 
 module LocCore = struct
-  type t = Var of Pvar.t | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t [@@deriving compare]
+  type t = Var of Pvar.t * int | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t * SymExp.t
+  [@@deriving compare]
 
   let rec pp fmt = function
-    | Var v ->
+    | Var (v, line) when Int.equal 0 line ->
         F.fprintf fmt "(Pvar) %a" Pvar.pp_value v
+    | Var (v, line) ->
+        F.fprintf fmt "(TempVar) %a_%d" Pvar.pp_value v line
     | SymHeap s ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp s
     | Field (l, f) ->
         F.fprintf fmt "(Field) (%a).(%a)" pp l Fieldname.pp f
-    | Index l ->
-        F.fprintf fmt "(Index) (%a)[*]" pp l
+    | Index (l, s) ->
+        F.fprintf fmt "(Index) (%a)[%a]" pp l SymExp.pp s
 
 
   let compare x y =
     match (x, y) with
-    | Var v1, Var v2 when Pvar.is_global v1 && Pvar.is_global v2 ->
+    | Var (v1, _), Var (v2, _) when Pvar.is_global v1 && Pvar.is_global v2 ->
         if String.equal (Pvar.to_string v1) (Pvar.to_string v2) then 0 else compare x y
     | _ ->
         compare x y
@@ -224,19 +225,37 @@ module Loc = struct
         None
     | Field (l, _) ->
         get_symbol_opt l
-    | Index l ->
+    | Index (l, _) ->
         get_symbol_opt l
 
 
-  let rec is_heap = function SymHeap _ -> true | Field (l, _) -> is_heap l | Index l -> is_heap l | _ -> false
+  let is_frontend_tmp = function
+    | Var (pv, _) ->
+        let pv_string = Pvar.to_string pv in
+        String.contains pv_string ~pos:0 '$' && not (String.is_prefix (Pvar.to_string pv) ~prefix:"$bcvar")
+    | _ ->
+        false
 
+
+  let rec is_heap = function
+    | SymHeap _ ->
+        true
+    | Field (l, _) ->
+        is_heap l
+    | Index (l, _) ->
+        is_heap l
+    | _ ->
+        false
+
+
+  (* check whether location is abstract *)
   let rec is_unknown = function
     | SymHeap sh ->
         SymHeap.is_unknown sh
     | Field (l, _) ->
         is_unknown l
-    | Index l ->
-        is_unknown l
+    | Index (l, s) ->
+        is_unknown l || not (SymExp.is_constant s)
     | _ ->
         false
 
@@ -246,7 +265,7 @@ module Loc = struct
         SymHeap.is_extern sh
     | Field (l, _) ->
         is_extern l
-    | Index l ->
+    | Index (l, _) ->
         is_extern l
     | _ ->
         false
@@ -278,13 +297,22 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let append_index l = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l
+  let append_index l s =
+    match (l, s) with
+    | Var _, SymExp.IntLit _
+    | SymHeap _, SymExp.IntLit _
+    | Field _, SymExp.IntLit _
+    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
+        Index (l, s)
+    | _ ->
+        Index (l, SymExp.IntTop)
+
 
   let append_field ~fn l = Field (l, fn)
 
-  let of_pvar pv : t = Var pv
+  let of_pvar ?(line = 0) pv : t = if is_frontend_tmp (Var (pv, line)) then Var (pv, line) else Var (pv, 0)
 
-  let rec base_of = function Field (l, _) -> base_of l | Index l -> base_of l | _ as l -> l
+  let rec base_of = function Field (l, _) -> base_of l | Index (l, _) -> base_of l | _ as l -> l
 
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
@@ -302,7 +330,7 @@ module Val = struct
     | Vexn sh ->
         F.fprintf fmt "(Exn) %a" SymHeap.pp sh
     | Vextern (callee, args) ->
-        F.fprintf fmt "(Extern) %s(%a)" (Procname.get_method callee) (Pp.seq pp) args
+        F.fprintf fmt "(Extern) %s(%a)" (Procname.get_method callee) (Pp.seq pp ~sep:",") args
     | Bot ->
         F.fprintf fmt "Bot"
     | Top ->

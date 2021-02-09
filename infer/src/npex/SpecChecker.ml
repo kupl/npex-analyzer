@@ -61,7 +61,7 @@ module DisjReady = struct
       match Tenv.lookup tenv cls with
       | Some Struct.{fields} ->
           let base_exp, _ = List.hd_exn arg_typs in
-          let base_loc = Domain.eval_lv astate base_exp in
+          let base_loc = Domain.eval_lv astate node instr base_exp in
           List.fold fields ~init:astate ~f:(fun acc (fn, fn_typ, _) ->
               let field_loc = Domain.Loc.append_field ~fn base_loc in
               if Domain.is_unknown_loc acc field_loc then
@@ -144,7 +144,7 @@ module DisjReady = struct
     let this_type_loc =
       let this_loc =
         let arg_exp, _ = List.hd_exn arg_typs in
-        Domain.eval_lv astate arg_exp
+        Domain.eval_lv astate node instr arg_exp
       in
       let field_class = Typ.Name.Java.from_string (String.capitalize fieldname) in
       let field_name = Fieldname.make field_class fieldname in
@@ -201,7 +201,7 @@ module DisjReady = struct
           List.map astates_binded ~f:(fun astate ->
               let exn_value = Domain.read_id astate ret_id |> Domain.Val.to_exn in
               let astate_return_assigned = Domain.store_loc astate ret_loc exn_value in
-              Domain.remove_temps astate_return_assigned [Var.of_id ret_id] |> Domain.set_exception)
+              Domain.remove_temps astate_return_assigned ~line:0 [Var.of_id ret_id] |> Domain.set_exception)
         in
         let normal_state =
           let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
@@ -294,7 +294,7 @@ module DisjReady = struct
     match instr with
     | Sil.Load {id; e} when Ident.is_none id -> (
         (* dereference instruction *)
-        let loc = Domain.eval_lv astate e in
+        let loc = Domain.eval_lv astate node instr e in
         match loc with
         | Domain.Loc.SymHeap sh ->
             let equal_values = Domain.equal_values astate (Domain.Val.of_symheap sh) in
@@ -305,8 +305,14 @@ module DisjReady = struct
             else add_non_null_constraints node instr e astate
         | _ ->
             [astate] )
+    | Sil.Load {id; e= Exp.Lvar pv} when Pvar.is_frontend_tmp pv && not (is_catch_var pv) ->
+        (* CatchVar could be undefined if there is no catch statement *)
+        let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
+        if Domain.is_unknown_loc astate loc then L.(die InternalError) "%a is unknown@." Domain.Loc.pp loc ;
+        let value = Domain.read_loc astate loc in
+        [Domain.store_reg astate id value]
     | Sil.Load {id; e; typ} ->
-        let loc = Domain.eval_lv astate e in
+        let loc = Domain.eval_lv astate node instr e in
         if Domain.Loc.is_null loc then []
         else if Domain.is_unknown_loc astate loc then
           (* symbolic location is introduced at load instr *)
@@ -317,11 +323,15 @@ module DisjReady = struct
           let value = Domain.read_loc astate loc in
           [Domain.store_reg astate id value]
     | Sil.Store {e1; e2= Exp.Exn _ as e2} ->
-        let loc = Domain.eval_lv astate e1 in
+        let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
         [Domain.set_exception (Domain.store_loc astate loc value)]
+    | Sil.Store {e1= Exp.Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
+        let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
+        let value = Domain.eval astate node instr e2 ~pos:0 in
+        [Domain.store_loc astate loc value]
     | Sil.Store {e1; e2} ->
-        let loc = Domain.eval_lv astate e1 in
+        let loc = Domain.eval_lv astate node instr e1 in
         if Domain.Loc.is_null loc then []
         else
           let value = Domain.eval astate node instr e2 ~pos:0 in
@@ -357,11 +367,15 @@ module DisjReady = struct
            [Domain.remove_pvar astate ~pv] *)
     | Sil.Metadata (ExitScope (vars, _)) ->
         let real_temps =
-          List.filter vars ~f:(function Var.LogicalVar _ -> true | Var.ProgramVar pv -> Pvar.is_frontend_tmp pv)
+          List.filter vars ~f:(function
+            | Var.LogicalVar _ ->
+                true
+            | Var.ProgramVar _ ->
+                (* Pvar.is_frontend_tmp pv *) false)
         in
-        [Domain.remove_temps astate real_temps]
-    | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
-        [Domain.remove_pvar astate ~pv]
+        [Domain.remove_temps astate ~line:(get_line node) real_temps]
+    (* | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
+        [Domain.remove_pvar astate ~line:(get_line node) ~pv] *)
     | Sil.Metadata (Nullify (_, _)) ->
         [astate]
     | Sil.Metadata (Abstract _) | Sil.Metadata Skip | Sil.Metadata (VariableLifetimeBegins _) ->
