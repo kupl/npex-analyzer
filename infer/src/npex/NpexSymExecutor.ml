@@ -261,8 +261,16 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
     let open IOption.Let_syntax in
     (* NPEX: to handle exceptional flow *)
     match Procdesc.Node.get_kind (CFG.Node.underlying_node node) with
-    | Exit_node ->
-        compute_pre cfg node inv_map
+    | Exit_node -> (
+        let result_opt = compute_pre cfg node inv_map in
+        match result_opt with
+        | Some result ->
+            Some result
+        | None ->
+            L.progress "%a is not valid procedure@." Procname.pp (CFG.proc_desc cfg |> Procdesc.get_proc_name) ;
+            CFG.fold_preds cfg node ~init:(Some []) ~f:(fun acc pred ->
+                L.progress "pred node: %a@." InterNode.pp_pnode (CFG.Node.underlying_node pred) ;
+                acc) )
     | Stmt_node ExceptionHandler | Stmt_node ExceptionsSink ->
         L.d_printfln "ExceptionHandler Node: invalidate non-exceptional states" ;
         let+ pre_disjuncts = compute_pre cfg node inv_map in
