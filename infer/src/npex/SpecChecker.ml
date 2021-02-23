@@ -184,13 +184,17 @@ module DisjReady = struct
       | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
           let arg_value = Domain.eval astate node instr arg_exp in
           let typ_value = Typ.to_string typ |> Domain.Val.make_string in
-          let null_cond =
-            Domain.PathCond.make_physical_equals Binop.Eq arg_value (Domain.Val.make_null instr_node)
+          let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
+          let null_states =
+            Domain.add_pc astate (null_cond Binop.Eq)
+            |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
           in
-          if Domain.is_valid_pc astate null_cond then
-            (* instanceof(null) = false *)
-            [Domain.store_reg astate ret_id Domain.Val.zero]
-          else Domain.bind_extern_value astate instr_node (ret_id, Typ.int) callee [arg_value; typ_value]
+          let non_null_states =
+            Domain.add_pc astate (null_cond Binop.Ne)
+            |> List.concat_map ~f:(fun astate' ->
+                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+          in
+          null_states @ non_null_states
       | _ ->
           L.(die InternalError) "wrong invariant of instanceof" )
     | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
