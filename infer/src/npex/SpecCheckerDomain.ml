@@ -7,49 +7,29 @@ module Loc = SymDom.Loc
 module Val = SymDom.Val
 module PathCond = SymDom.PathCond
 module PC = SymDom.PC
+module Symbol = SymDom.Symbol
 module SymExp = SymDom.SymExp
 module SymHeap = SymDom.SymHeap
-
-module SymTbl = struct
-  include PrettyPrintable.MakePPMonoMap (Loc) (Val)
-
-  let add l v t = if Val.is_top v then t else add l v t
-
-  let to_symbol = function
-    | Val.Vint (SymExp.Symbol s) | Val.Vheap (SymHeap.Symbol s) ->
-        s
-    | _ as v ->
-        L.(die InternalError) "SymTbl has non-symbolic value %a@." Val.pp v
-end
-
 module Reg = WeakMap.Make (Ident) (Val)
 
 module Mem = struct
   include WeakMap.Make (Loc) (Val)
 end
 
-type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
+type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
-let pp fmt {symtbl; reg; mem; pc; is_npe_alternative; is_exceptional} =
+let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional} =
   F.fprintf fmt
-    "@[<v 2> - Symbol Table:@,\
-    \ %a@]@. @[<v 2> - Register:@,\
+    "@[<v 2> - Register:@,\
     \ %a@]@. @[<v 2> - Memory:@,\
     \ %a@]@. @[<v 2> - Path Conditions:@,\
     \ %a@]@. @[<v 2> - Is NPE Alternative? Is Exceptional?@,\
-    \ %b,%b@]@." SymTbl.pp symtbl Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
+    \ %b,%b@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
 
 
 let leq ~lhs ~rhs = phys_equal lhs rhs
 
-let bottom =
-  { reg= Reg.bottom
-  ; mem= Mem.bottom
-  ; pc= PC.empty
-  ; symtbl= SymTbl.empty
-  ; is_npe_alternative= false
-  ; is_exceptional= false }
-
+let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}
 
 let fold_memory {mem} ~init ~f = Mem.fold (fun l v acc -> f acc l v) mem init
 
@@ -72,31 +52,9 @@ let read_loc {mem} l = Mem.find l mem
 
 let read_id {reg} id = Reg.find id reg
 
-let read_symtbl {symtbl} l = SymTbl.find l symtbl
+let equal_values astate v = PC.equal_values astate.pc v
 
-let equal_values astate v =
-  PC.fold
-    (function
-      | PathCond.PEquals (v1, v2) when Val.equal v1 v ->
-          fun acc -> v2 :: acc
-      | PathCond.PEquals (v1, v2) when Val.equal v2 v ->
-          fun acc -> v1 :: acc
-      | _ ->
-          fun acc -> acc)
-    astate.pc [v]
-
-
-let inequal_values astate v =
-  PC.fold
-    (function
-      | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.equal v1 v ->
-          fun acc -> v2 :: acc
-      | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.equal v2 v ->
-          fun acc -> v1 :: acc
-      | _ ->
-          fun acc -> acc)
-    astate.pc []
-
+let inequal_values astate v = PC.inequal_values astate.pc v
 
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
 
@@ -107,22 +65,29 @@ let remove_id astate id =
   else (* OPTIMIZATION: to enable physical equality *) astate
 
 
-let remove_pvar astate ~pv =
-  let pvar_loc = Loc.of_pvar pv in
-  if Mem.mem pvar_loc astate.mem then {astate with mem= Mem.remove (Loc.of_pvar pv) astate.mem}
+let remove_pvar astate ~line ~pv =
+  let pvar_loc = Loc.of_pvar pv ~line in
+  if Mem.mem pvar_loc astate.mem then {astate with mem= Mem.remove pvar_loc astate.mem}
   else (* OPTIMIZATION: to enable physical equality *) astate
 
 
-let remove_locals astate ~locals = List.fold locals ~init:astate ~f:(fun acc pv -> remove_pvar acc ~pv)
+let remove_locals astate ~locals =
+  List.fold locals ~init:astate ~f:(fun acc pv -> (* No temp variables in summary *)
+                                                  remove_pvar acc ~line:0 ~pv)
 
-let remove_temps astate vars =
+
+let remove_temps astate ~line vars =
   List.fold vars ~init:astate ~f:(fun astate' var ->
-      match var with Var.LogicalVar id -> remove_id astate' id | Var.ProgramVar pv -> remove_pvar astate' ~pv)
+      match var with
+      | Var.LogicalVar id ->
+          remove_id astate' id
+      | Var.ProgramVar pv ->
+          remove_pvar astate' ~line ~pv)
 
 
 let add_pc astate pathcond : t list =
   let pc' = PC.add pathcond astate.pc in
-  if PC.exists PathCond.is_invalid pc' then [] else [{astate with pc= pc'}]
+  if PC.is_invalid pc' then [] else [{astate with pc= pc'}]
 
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
@@ -133,7 +98,6 @@ let unwrap_exception astate = {astate with is_exceptional= false}
 
 let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
   let pc' = PC.replace_value astate.pc ~src ~dst in
-  (* let pc' = PC.remove src astate.pc |> PC.add dst in *)
   let mem' = Mem.map (fun v -> if phys_equal v src then dst else v) astate.mem in
   let reg' = Reg.map (fun v -> if phys_equal v src then dst else v) astate.reg in
   {astate with pc= pc'; mem= mem'; reg= reg'}
@@ -141,16 +105,27 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
-  if Loc.is_symbolizable loc then
-    let symval =
-      if Typ.is_pointer typ then SymHeap.make_symbol () |> Val.of_symheap
-      else if Typ.is_int typ then SymExp.make_symbol () |> Val.of_symexp
-      else (* maybe float *) Val.of_typ typ
-    in
-    let symtbl' = SymTbl.add loc symval astate.symtbl in
-    let mem' = Mem.add loc symval astate.mem in
-    {astate with symtbl= symtbl'; mem= mem'}
-  else store_loc astate loc (Val.of_typ typ)
+  match Val.symbol_from_loc_opt typ loc with
+  | Some symval ->
+      let mem' = Mem.add loc symval astate.mem in
+      {astate with mem= mem'}
+  | None ->
+      store_loc astate loc (Val.of_typ typ)
+
+
+let bind_exn_extern astate instr_node ret_var callee arg_values =
+  (* return -> Exn extern
+     Exn extern = callee(arg_values) *)
+  let ret_loc = Loc.of_pvar ret_var in
+  let value = Val.make_extern instr_node Typ.void_star |> Val.to_exn in
+  let arg_values =
+    List.map arg_values ~f:(fun v ->
+        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v)
+  in
+  let call_value = Val.Vextern (callee, arg_values) in
+  let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
+  let astate_reg_stored = store_loc astate ret_loc value |> set_exception in
+  add_pc astate_reg_stored call_cond
 
 
 let bind_extern_value astate instr_node ret_typ_id callee arg_values =
@@ -158,6 +133,10 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
      extern = callee(arg_values) *)
   let ret_id, ret_typ = ret_typ_id in
   let value = Val.make_extern instr_node ret_typ in
+  let arg_values =
+    List.map arg_values ~f:(fun v ->
+        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v)
+  in
   let call_value = Val.Vextern (callee, arg_values) in
   let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
   let astate_reg_stored = store_reg astate ret_id value in
@@ -168,20 +147,10 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
 module SymResolvedMap = struct
   include PrettyPrintable.MakePPMonoMap (SymDom.Symbol) (Val)
 
-  let get_symbols sym_resolved_map = fold (fun s _ -> IntSet.add s) sym_resolved_map IntSet.empty
-
-  let is_resolvable sym_resolved_map loc =
-    match Loc.get_symbol_opt loc with Some symbol -> mem symbol sym_resolved_map | None -> true
-
-
-  let next_works sym_resolved_map callee_symtbl =
-    let resolved_symbols = get_symbols sym_resolved_map in
-    let resolvable_symbols =
-      SymTbl.fold
-        (fun l v acc -> if is_resolvable sym_resolved_map l then IntSet.add (SymTbl.to_symbol v) acc else acc)
-        callee_symtbl IntSet.empty
-    in
-    IntSet.diff resolvable_symbols resolved_symbols
+  let find k t =
+    try find k t
+    with _ ->
+      raise (Unexpected (F.asprintf "%a is not resolved...@.current sym_resolved_map : %a@." Symbol.pp k pp t))
 
 
   let rec resolve_loc sym_resolved_map = function
@@ -195,9 +164,9 @@ module SymResolvedMap = struct
           raise (Unexpected (F.asprintf "%a is cannot resolved as loc" Val.pp v)) )
     | Loc.Field (l, fn) ->
         Loc.Field (resolve_loc sym_resolved_map l, fn)
-    | Loc.Index l ->
-        Loc.Index (resolve_loc sym_resolved_map l)
-    | Loc.Var _ as l ->
+    | Loc.Index (l, s) ->
+        Loc.Index (resolve_loc sym_resolved_map l, s)
+    | (Loc.TempVar _ | Loc.IllTempVar _ | Loc.Var _) as l ->
         l
 
 
@@ -210,9 +179,9 @@ module SymResolvedMap = struct
         Val.Vheap sheap
     | SymHeap.Extern _ as sheap ->
         Val.Vheap sheap
-    | SymHeap.Unknown ->
+    | SymHeap.Unknown as s ->
         (* TODO: some extern values are required at caller *)
-        Val.unknown
+        Val.Vheap s
 
 
   let rec resolve_val sym_resolved_map = function
@@ -229,6 +198,8 @@ module SymResolvedMap = struct
 
 
   and resolve_symexp sym_resolved_map = function
+    | SymExp.Symbol s when not (mem s sym_resolved_map) ->
+        raise (Unexpected (F.asprintf "%a is not resolved" SymDom.Symbol.pp s))
     | SymExp.Symbol s ->
         find s sym_resolved_map
     | _ as x ->
@@ -236,61 +207,67 @@ module SymResolvedMap = struct
         Val.Vint x
 
 
-  let rec resolve_symtbl astate callee_symtbl acc works =
-    if IntSet.is_empty works then acc
-    else
-      let symtbl_new, sym_resolved_map_new =
-        SymTbl.fold
-          (* input: loc_to_resolve, symbol
-             1. resolve loc_to_resolve by sym_resolved_map
-             2. if resolved_loc is known to caller state, bind symbol -> mem(resolved_loc)
-             3. if resolved_loc is unknown to caller state,
-                introduce new symbol, update symtbl, and bind symbol -> new_symbol *)
-            (fun l v (symtbl, sym_resolved_map) ->
-            let symbol_of_v = SymTbl.to_symbol v in
-            if IntSet.mem symbol_of_v works then
-              let resolved_loc =
-                try resolve_loc sym_resolved_map l
-                with Unexpected msg ->
-                  raise
-                    (Unexpected
-                       (F.asprintf "%s@.Failed to resolve loc %a by %a@." msg Loc.pp l pp sym_resolved_map))
-              in
-              if is_unknown_loc astate resolved_loc then
-                if SymTbl.mem resolved_loc symtbl then
-                  (* There already exists an introduced symbol to resolved_loc *)
-                  let sym_resolved_map' = add symbol_of_v (SymTbl.find resolved_loc symtbl) sym_resolved_map in
-                  (symtbl, sym_resolved_map')
-                else if Loc.is_symbolizable resolved_loc then
-                  let new_symbolic_value =
-                    match v with
-                    | Vint _ ->
-                        Val.of_symexp (SymExp.make_symbol ())
-                    | Vheap _ ->
-                        Val.of_symheap (SymHeap.make_symbol ())
-                    | _ ->
-                        L.(die InternalError) "%a has non symbolic value %a" Loc.pp l Val.pp v
-                  in
-                  let symtbl' = SymTbl.add resolved_loc new_symbolic_value symtbl in
-                  let sym_resolved_map' = add symbol_of_v new_symbolic_value sym_resolved_map in
-                  (symtbl', sym_resolved_map')
-                else
-                  (* unknown, but is not symbolizable location *)
-                  let new_symbolic_value =
-                    match v with Vint _ -> Val.intTop | Vheap _ -> Val.unknown | _ -> Val.top
-                  in
-                  (* TODO: figure out when this happens *)
-                  let sym_resolved_map' = add symbol_of_v new_symbolic_value sym_resolved_map in
-                  (symtbl, sym_resolved_map')
-              else (symtbl, add symbol_of_v (read_loc astate resolved_loc) sym_resolved_map)
-            else (symtbl, sym_resolved_map))
-          callee_symtbl acc
+  let construct astate callee_state init =
+    let symvals_to_resolve =
+      let add_if_symbol v acc_symvals =
+        match v with
+        | Val.Vint (SymExp.Symbol _) ->
+            Val.Set.add v acc_symvals
+        | Val.Vheap (SymHeap.Symbol _) ->
+            Val.Set.add v acc_symvals
+        | _ ->
+            acc_symvals
       in
-      let nextworks = next_works sym_resolved_map_new callee_symtbl in
-      resolve_symtbl astate callee_symtbl (symtbl_new, sym_resolved_map_new) nextworks
+      Mem.fold (fun _ v acc_symvals -> add_if_symbol v acc_symvals) callee_state.mem Val.Set.empty
+      |> PC.PCSet.fold
+           (fun cond acc_symvals ->
+             match cond with
+             | PathCond.PEquals (v1, v2)
+             | PathCond.Equals (v1, v2)
+             | PathCond.Not (PathCond.PEquals (v1, v2))
+             | PathCond.Not (PathCond.Equals (v1, v2)) ->
+                 add_if_symbol v1 acc_symvals |> add_if_symbol v2
+             | _ ->
+                 L.(die InternalError) "Invalid path-codition : %a@." PathCond.pp cond)
+           (PC.to_pc_set callee_state.pc)
+    in
+    let symvals = List.sort (Val.Set.elements symvals_to_resolve) ~compare:Val.compare in
+    let update_resolved_loc s typ resolved_loc acc =
+      if is_unknown_loc astate resolved_loc then
+        match Val.symbol_from_loc_opt typ resolved_loc with
+        | Some symval ->
+            add s symval acc
+        | None ->
+            add s (Val.of_typ typ) acc
+      else add s (read_loc astate resolved_loc) acc
+    in
+    List.fold symvals ~init ~f:(fun acc v ->
+        let typ, (base, accesses) =
+          match v with
+          | Val.Vint (SymExp.Symbol s) ->
+              (Typ.int, s)
+          | Val.Vheap (SymHeap.Symbol s) ->
+              (Typ.void_star, s)
+          | _ ->
+              L.(die InternalError) "nonono"
+        in
+        match (base, List.rev accesses) with
+        | Symbol.Global (pv, Symbol.Field fn), [] ->
+            update_resolved_loc (base, accesses) typ (Loc.of_pvar pv |> Loc.append_field ~fn) acc
+        | Symbol.Param pv, [] ->
+            acc
+        | base, Symbol.Field fn :: remain' ->
+            let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
+            update_resolved_loc (base, accesses) typ (Loc.append_field base_loc ~fn) acc
+        | base, Symbol.Index index :: remain' ->
+            let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
+            let index = SymExp.of_intlit index in
+            update_resolved_loc (base, accesses) typ (Loc.append_index base_loc ~index) acc
+        | Symbol.Global (_, _), _ ->
+            L.(die InternalError) "Invalid symbol: %a@." Symbol.pp (base, accesses))
 
 
-  and resolve_pc sym_resolved_map = function
+  let rec resolve_pc sym_resolved_map = function
     | PathCond.PEquals (v1, v2) ->
         PathCond.PEquals (resolve_val sym_resolved_map v1, resolve_val sym_resolved_map v2)
     | PathCond.Not pc ->
@@ -307,44 +284,36 @@ module SymResolvedMap = struct
 
 
   let replace_pc sym_resolved_map pc_to_resolve pc_to_update =
-    PC.fold
-      (fun pc acc ->
-        let cond_to_add = resolve_pc sym_resolved_map pc in
-        if PC.mem cond_to_add acc then acc
-        else (* L.progress "%a is already in set!@." PathCond.pp cond_to_add ; *)
-          PC.add cond_to_add acc)
-      pc_to_resolve pc_to_update
+    PC.replace_by_map pc_to_resolve ~f:(resolve_val sym_resolved_map) |> PC.join pc_to_update
 end
-
-let init_with_formals formals : t =
-  List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
-
 
 let resolve_summary astate ~actual_values ~formals callee_summary =
   let init_sym_resolved_map =
     List.fold2_exn formals actual_values ~init:SymResolvedMap.empty ~f:(fun sym_resolved_map (fv, typ) v ->
-        if Typ.is_pointer typ || Typ.is_int typ then
-          let symbol_of_fv = SymTbl.find (Loc.of_pvar fv) callee_summary.symtbl |> SymTbl.to_symbol in
-          SymResolvedMap.add symbol_of_fv v sym_resolved_map
+        if Typ.is_pointer typ || Typ.is_int typ then SymResolvedMap.add (Symbol.of_pvar fv) v sym_resolved_map
         else sym_resolved_map)
   in
-  let symtbl', sym_resolved_map =
-    try
-      SymResolvedMap.resolve_symtbl astate callee_summary.symtbl (astate.symtbl, init_sym_resolved_map)
-        (SymResolvedMap.next_works init_sym_resolved_map callee_summary.symtbl)
+  (* L.progress "[DEBUG]: init sym_resolved_map: %a@." SymResolvedMap.pp init_sym_resolved_map ; *)
+  let sym_resolved_map =
+    try SymResolvedMap.construct astate callee_summary init_sym_resolved_map
     with Unexpected msg -> L.(die InternalError) "%s@.%a" msg Mem.pp callee_summary.mem
   in
-  let mem' =
-    try SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
+  L.d_printfln "[DEBUG]: init sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+    init_sym_resolved_map ;
+  L.d_printfln "[DEBUG]: sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+    sym_resolved_map ;
+  let mem', pc' =
+    try
+      ( SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
+      , SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc )
     with Unexpected msg ->
       L.(die InternalError)
-        "Failed to resolve callee memory@. Callee symtbl : %a@. Callee mem : %a@. Sym_resolved_map : %a@. Msg: \
-         %s@."
-        SymTbl.pp callee_summary.symtbl Mem.pp callee_summary.mem SymResolvedMap.pp sym_resolved_map msg
+        "Failed to resolve callee memory@. Callee mem : %a@. Init_resolved_map : %a@. Sym_resolved_map : %a@. \
+         Caller mem: %a@. Msg: %s@."
+        pp callee_summary SymResolvedMap.pp init_sym_resolved_map SymResolvedMap.pp sym_resolved_map pp astate msg
   in
-  let pc' = SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc in
-  if PC.exists PathCond.is_invalid pc' then (
-    L.d_printfln " - symtbl: %a@. - memory: %a@. - invalid pc: %a@." SymTbl.pp symtbl' Mem.pp mem' PC.pp pc' ;
+  if PC.is_invalid pc' then (
+    L.d_printfln " - memory: %a@. - invalid pc: %a@." Mem.pp mem' PC.pp pc' ;
     L.d_printfln " - original pc: %a@. - symresolved_map: %a@." PC.pp callee_summary.pc SymResolvedMap.pp
       sym_resolved_map ;
     None )
@@ -353,7 +322,6 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
       { astate with
         mem= mem'
       ; pc= pc'
-      ; symtbl= symtbl'
       ; is_exceptional= callee_summary.is_exceptional
       ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
 
@@ -420,7 +388,7 @@ let rec eval ?(pos = 0) astate node instr exp =
       Val.top
 
 
-let rec eval_lv astate exp =
+let rec eval_lv astate node instr exp =
   match exp with
   | Exp.Var id when Reg.mem id astate.reg -> (
     match Reg.find id astate.reg with
@@ -433,13 +401,14 @@ let rec eval_lv astate exp =
   | Exp.Const (Cstr str) ->
       Loc.make_string str
   | Exp.Cast (_, e) ->
-      eval_lv astate e
-  | Exp.Lindex (e1, _) ->
-      eval_lv astate e1 |> Loc.append_index
+      eval_lv astate node instr e
+  | Exp.Lindex (e1, e2) ->
+      let index = eval astate node instr e2 |> Val.to_symexp in
+      eval_lv astate node instr e1 |> Loc.append_index ~index
   | Exp.Lvar pv ->
-      Loc.of_pvar pv
+      Loc.of_pvar pv ~line:(get_line node)
   | Exp.Lfield (e, fn, _) ->
-      eval_lv astate e |> Loc.append_field ~fn
+      eval_lv astate node instr e |> Loc.append_field ~fn
   | Exp.Const (Cclass _) ->
       (* value of the class variable is unknown, so init by global *)
       Loc.unknown
@@ -448,3 +417,7 @@ let rec eval_lv astate exp =
          Loc.of_pvar cls_var *)
   | _ ->
       L.(die InternalError) "%a is not allowed as lvalue expression in java" Exp.pp exp
+
+
+let init_with_formals formals : t =
+  List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))

@@ -5,15 +5,29 @@ module L = Logging
 module Node = InstrNode
 
 module Allocsite = struct
+  module Counter = struct
+    include PrettyPrintable.MakePPMonoMap (Node) (Int)
+
+    let _counter = ref empty
+
+    let get line =
+      match find_opt line !_counter with
+      | Some cnt ->
+          _counter := add line (cnt + 1) !_counter ;
+          cnt
+      | None ->
+          _counter := add line 1 !_counter ;
+          0
+  end
+
   type t = InstrNode.t * int [@@deriving compare]
 
-  let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
+  let pp fmt (instr_node, cnt) =
+    if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc instr_node)
+    else F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
 
-  let _cnt = ref 0
 
-  let make node =
-    _cnt := !_cnt + 1 ;
-    (node, !_cnt)
+  let make node = (node, Counter.get node)
 end
 
 module Null = struct
@@ -32,18 +46,47 @@ module Null = struct
   let make ?(pos = 0) node : t = (node, pos)
 end
 
+module SymbolCore = struct
+  type access = Field of Fieldname.t | Index of IntLit.t [@@deriving compare]
+
+  type base = Global of Pvar.t * access | Param of Pvar.t [@@deriving compare]
+
+  type t = base * access list [@@deriving compare]
+
+  let pp_access fmt = function
+    | Field fn ->
+        F.fprintf fmt ".%a" Fieldname.pp fn
+    | Index i ->
+        F.fprintf fmt "[%a]" IntLit.pp i
+
+
+  let pp_base fmt = function
+    | Global (pv, access) ->
+        F.fprintf fmt "G$(%a%a)" (Pvar.pp Pp.text) pv pp_access access
+    | Param pv ->
+        F.fprintf fmt "P(%a)" (Pvar.pp Pp.text) pv
+
+
+  let pp fmt (base, accesses) = F.fprintf fmt "$(%a%a)" pp_base base (Pp.seq pp_access) accesses
+
+  (* sort to resolve pvar first *)
+  let compare (base1, accs1) (base2, accs2) =
+    let len1, len2 = (List.length accs1, List.length accs2) in
+    if Int.equal len1 len2 then compare (base1, accs1) (base2, accs2) else if len1 < len2 then -1 else 1
+
+
+  let make_global pv fn = (Global (pv, Field fn), [])
+
+  let of_pvar pv = (Param pv, [])
+
+  let append_field ~fn (base, accs) = (base, accs @ [Field fn])
+
+  let append_index ~index (base, accs) = (base, accs @ [Index index])
+end
+
 module Symbol = struct
-  (* Symbol is simply implemented as int 
-   * If domain requires join operation, symbol cannot be implemented as int *)
-  type t = int [@@deriving compare]
-
-  let pp fmt x = F.fprintf fmt "$%d" x
-
-  let _counter = ref (-1)
-
-  let make_fresh () =
-    _counter := !_counter + 1 ;
-    !_counter
+  include SymbolCore
+  module Set = PrettyPrintable.MakePPSet (SymbolCore)
 end
 
 module SymHeap = struct
@@ -70,7 +113,7 @@ module SymHeap = struct
 
   let make_string str = String str
 
-  let make_symbol () = Symbol (Symbol.make_fresh ())
+  let of_symbol symbol = Symbol symbol
 
   let unknown = Unknown
 
@@ -131,7 +174,7 @@ module SymExp = struct
     | Binary (sexp1, sexp2, binop) ->
         F.fprintf fmt "(%a) %s (%a)" pp sexp1 (Binop.str Pp.text binop) pp sexp2
     | Extern allocsite ->
-        F.fprintf fmt "(ExVal) %a" Allocsite.pp allocsite
+        F.fprintf fmt "ExVal %a" Allocsite.pp allocsite
     | IntTop ->
         F.fprintf fmt "IntTop"
 
@@ -160,7 +203,7 @@ module SymExp = struct
 
   let of_intlit intlit : t = IntLit intlit
 
-  let make_symbol () : t = Symbol (Symbol.make_fresh ())
+  let of_symbol symbol : t = Symbol symbol
 
   let make_extern node = Extern (Allocsite.make node)
 
@@ -186,14 +229,22 @@ module SymExp = struct
 end
 
 module LocCore = struct
-  type t = Var of Pvar.t * int | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t * SymExp.t
+  type t =
+    | IllTempVar of Pvar.t * int
+    | TempVar of Pvar.t
+    | Var of Pvar.t
+    | SymHeap of SymHeap.t
+    | Field of t * Fieldname.t
+    | Index of t * SymExp.t
   [@@deriving compare]
 
   let rec pp fmt = function
-    | Var (v, line) when Int.equal 0 line ->
+    | IllTempVar (v, line) ->
+        F.fprintf fmt "(IilTempPvar) %a%d" Pvar.pp_value v line
+    | TempVar v ->
+        F.fprintf fmt "(TempPvar) %a" Pvar.pp_value v
+    | Var v ->
         F.fprintf fmt "(Pvar) %a" Pvar.pp_value v
-    | Var (v, line) ->
-        F.fprintf fmt "(TempVar) %a_%d" Pvar.pp_value v line
     | SymHeap s ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp s
     | Field (l, f) ->
@@ -204,38 +255,40 @@ module LocCore = struct
 
   let compare x y =
     match (x, y) with
-    | Var (v1, _), Var (v2, _) when Pvar.is_global v1 && Pvar.is_global v2 ->
+    | Var v1, Var v2 when Pvar.is_global v1 && Pvar.is_global v2 ->
         if String.equal (Pvar.to_string v1) (Pvar.to_string v2) then 0 else compare x y
     | _ ->
         compare x y
 
 
   let equal = [%compare.equal: t]
+
+  let append_index l ~index =
+    match (l, index) with
+    | Var _, SymExp.IntLit _
+    | SymHeap _, SymExp.IntLit _
+    | Field _, SymExp.IntLit _
+    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
+        Index (l, index)
+    | _ ->
+        Index (l, SymExp.IntTop)
+
+
+  let append_field ~fn l = Field (l, fn)
+
+  let of_pvar ?(line = 0) pv : t =
+    if Pvar.is_frontend_tmp pv then if is_ill_temp_var pv then IllTempVar (pv, line) else TempVar pv else Var pv
+
+
+  let rec base_of = function Field (l, _) -> base_of l | Index (l, _) -> base_of l | _ as l -> l
 end
 
 module Loc = struct
   include LocCore
 
-  let rec get_symbol_opt = function
-    | Var _ ->
-        None
-    | SymHeap (Symbol s) ->
-        Some s
-    | SymHeap _ ->
-        None
-    | Field (l, _) ->
-        get_symbol_opt l
-    | Index (l, _) ->
-        get_symbol_opt l
+  let is_temp = function TempVar _ -> true | _ -> false
 
-
-  let is_frontend_tmp = function
-    | Var (pv, _) ->
-        let pv_string = Pvar.to_string pv in
-        String.contains pv_string ~pos:0 '$' && not (String.is_prefix (Pvar.to_string pv) ~prefix:"$bcvar")
-    | _ ->
-        false
-
+  let is_ill_temp = function IllTempVar _ -> true | _ -> false
 
   let rec is_heap = function
     | SymHeap _ ->
@@ -273,20 +326,6 @@ module Loc = struct
 
   let is_null = function SymHeap h -> SymHeap.is_null h | _ -> false
 
-  let rec is_symbolizable = function
-    | Var _ ->
-        true
-    | SymHeap (Symbol _) ->
-        true
-    | SymHeap _ ->
-        (* concrete heap is not symbolizable *)
-        false
-    | Field (l, _) ->
-        is_symbolizable l
-    | Index _ ->
-        false
-
-
   let unknown = SymHeap SymHeap.unknown
 
   let make_extern node = SymHeap (SymHeap.make_extern node)
@@ -297,28 +336,11 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let append_index l s =
-    match (l, s) with
-    | Var _, SymExp.IntLit _
-    | SymHeap _, SymExp.IntLit _
-    | Field _, SymExp.IntLit _
-    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
-        Index (l, s)
-    | _ ->
-        Index (l, SymExp.IntTop)
-
-
-  let append_field ~fn l = Field (l, fn)
-
-  let of_pvar ?(line = 0) pv : t = if is_frontend_tmp (Var (pv, line)) then Var (pv, line) else Var (pv, 0)
-
-  let rec base_of = function Field (l, _) -> base_of l | Index (l, _) -> base_of l | _ as l -> l
-
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
 end
 
-module Val = struct
+module ValCore = struct
   type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Vextern of Procname.t * t list | Bot | Top
   [@@deriving compare]
 
@@ -342,9 +364,9 @@ module Val = struct
     | Vheap s1, Vheap s2 ->
         SymHeap.compare s1 s2
     | Vheap _, _ ->
-        1
-    | _, Vheap _ ->
         -1
+    | _, Vheap _ ->
+        1
     | _ ->
         compare x y
 
@@ -374,6 +396,14 @@ module Val = struct
     | Bot, _ ->
         true
     | _, Top ->
+        true
+    | _ ->
+        false
+
+
+  let is_different_type x y =
+    match (x, y) with
+    | Vint _, Vheap _ | Vint _, Vexn _ | Vheap _, Vint _ | Vheap _, Vexn _ | Vexn _, Vint _ | Vexn _, Vheap _ ->
         true
     | _ ->
         false
@@ -490,11 +520,53 @@ module Val = struct
 
   let widen ~prev ~next ~num_iters:_ = join prev next
 
+  let symbol_from_loc_opt typ loc =
+    let open IOption.Let_syntax in
+    let+ symbol =
+      match loc with
+      | Loc.Var pv ->
+          Some (Symbol.of_pvar pv)
+      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
+          Some (Symbol.make_global pv fn)
+      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
+          Some (Symbol.make_global pv fn)
+      | Loc.Field (Loc.SymHeap (Symbol s), fn) ->
+          Some (Symbol.append_field s ~fn)
+      | Loc.Index (Loc.SymHeap (Symbol s), SymExp.IntLit index) ->
+          Some (Symbol.append_index s ~index)
+      | _ ->
+          None
+    in
+    if Typ.is_pointer typ then Vheap (SymHeap.of_symbol symbol)
+    else if Typ.is_int typ then Vint (SymExp.of_symbol symbol)
+    else of_typ typ
+
+
   let to_loc = function
     | Vheap h ->
         Loc.SymHeap h
     | _ as v ->
         raise (Unexpected (F.asprintf "Non-locational value %a cannot be converted to location" pp v))
+
+
+  let to_symexp = function
+    | Vint s ->
+        s
+    | Top ->
+        SymExp.intTop
+    | _ as v ->
+        raise (Unexpected (F.asprintf "Non-integer value %a cannot be converted to symexp" pp v))
+
+
+  let rec replace_sub (x : t) ~(src : t) ~(dst : t) =
+    if equal x src then dst
+    else match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst)) | _ -> x
+end
+
+module Val = struct
+  include ValCore
+  module Set = PrettyPrintable.MakePPSet (ValCore)
+  module Map = PrettyPrintable.MakePPMap (ValCore)
 end
 
 module PathCond = Constraint.Make (Val)

@@ -7,9 +7,7 @@ module Reg : module type of WeakMap.Make (Ident) (Val)
 
 module Mem : module type of WeakMap.Make (Loc) (Val)
 
-module SymTbl : module type of PrettyPrintable.MakePPMonoMap (Loc) (Val)
-
-type t = {reg: Reg.t; mem: Mem.t; symtbl: SymTbl.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
+type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
 
 val pp : Format.formatter -> t -> unit
 
@@ -37,15 +35,17 @@ val resolve_unknown_loc : t -> Typ.t -> Loc.t -> t
 
 val resolve_summary : t -> actual_values:Val.t list -> formals:(Pvar.t * Typ.t) list -> t -> t option
 
+val bind_exn_extern : t -> InstrNode.t -> Pvar.t -> Procname.t -> Val.t list -> t list
+
 val bind_extern_value : t -> InstrNode.t -> Ident.t * Typ.t -> Procname.t -> Val.t list -> t list
 
 val eval : ?pos:int -> t -> Procdesc.Node.t -> Sil.instr -> Exp.t -> Val.t
 
-val eval_lv : t -> Exp.t -> Loc.t
+val eval_lv : t -> Procdesc.Node.t -> Sil.instr -> Exp.t -> Loc.t
 
-val remove_temps : t -> Var.t list -> t
+val remove_temps : t -> line:int -> Var.t list -> t
 
-val remove_pvar : t -> pv:Pvar.t -> t
+val remove_pvar : t -> line:int -> pv:Pvar.t -> t
 
 val remove_locals : t -> locals:Pvar.t list -> t
 
@@ -54,8 +54,6 @@ val replace_value : t -> src:Val.t -> dst:Val.t -> t
 val read_loc : t -> Loc.t -> Val.t
 
 val read_id : t -> Ident.t -> Val.t
-
-val read_symtbl : t -> Loc.t -> Val.t
 
 val store_loc : t -> Loc.t -> Val.t -> t
 
