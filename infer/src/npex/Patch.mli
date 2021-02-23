@@ -6,7 +6,7 @@ type t =
   { mthd: Procname.t
   ; conditional: (InstrNode.t * InstrNode.t) option
   ; is_checking_nullness: bool
-  ; null_exp: AccessExpr.t
+  ; null_exp: Exp.t
   ; skipped_nodes: NSet.t
   ; null_exec_nodes: NSet.t }
 
@@ -14,7 +14,7 @@ val pp : Format.formatter -> t -> unit
 
 val get_method : t -> Procname.t
 
-val get_null_exp : t -> AccessExpr.t
+val get_null_exp : t -> Exp.t
 
 val get_interesting_nodes : t -> Node.t list
 

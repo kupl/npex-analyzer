@@ -111,7 +111,7 @@ let reachable_locs mem formals =
         match l with
         | Loc.Field (l', _) ->
             LocMap.weak_update l' (Loc.Set.singleton l) acc
-        | Loc.Index l' ->
+        | Loc.Index (l', _) ->
             LocMap.weak_update l' (Loc.Set.singleton l) acc
         | _ ->
             acc)
@@ -161,30 +161,43 @@ let reachable_values mem reachable_locs =
 
 
 let remove_local (Domain.{mem; pc} as astate) ~formals ~ret_var =
-  let reachable_locs = reachable_locs mem (ret_var :: List.map formals ~f:fst) in
-  let reachable_values = reachable_values mem reachable_locs in
-  let unreachable_locs =
-    Mem.fold (fun l _ acc -> if Loc.Set.mem l reachable_locs then acc else Loc.Set.add l acc) mem Loc.Set.empty
-  in
+  (* let reachable_locs = reachable_locs mem (ret_var :: List.map formals ~f:fst) in
+     let reachable_values = reachable_values mem reachable_locs in
+     let unreachable_locs =
+       Mem.fold (fun l _ acc -> if Loc.Set.mem l reachable_locs then acc else Loc.Set.add l acc) mem Loc.Set.empty
+     in *)
   (* L.d_printf " - reachable_locs : %a@. - unreachable_locs : %a@." Loc.Set.pp reachable_locs Loc.Set.pp
      unreachable_locs ; *)
+  let unreachable_locs =
+    Mem.fold
+      (fun l _ acc -> if Loc.is_temp l || Loc.is_ill_temp l then Loc.Set.add l acc else acc)
+      mem Loc.Set.empty
+  in
   let mem' = Loc.Set.fold Mem.remove unreachable_locs mem in
-  let pc' = PC.filter_by_pred pc ~f:(fun v -> Val.is_constant v || ValSet.mem v reachable_values) in
+  (* let pc' = PC.filter_by_pred pc ~f:(fun v -> Val.is_constant v || ValSet.mem v reachable_values) in *)
+  let pc' = pc in
   Domain.{astate with mem= mem'; pc= pc'}
 
 
 let to_summary proc_desc disjuncts =
   (* L.progress "Converting to summary... of %a@." Procname.pp (Procdesc.get_proc_name proc_desc) ; *)
-  (* let formals = Procdesc.get_pvar_formals proc_desc in
-     let ret_var = Procdesc.get_ret_var proc_desc in
-     let disjuncts_local_removed = List.map disjuncts ~f:(remove_local ~formals ~ret_var) in *)
-  let disjuncts_local_removed = (* TODO: is it necessary? *) disjuncts in
+  let formals = Procdesc.get_pvar_formals proc_desc in
+  let ret_var = Procdesc.get_ret_var proc_desc in
+  let disjuncts_local_removed = List.map disjuncts ~f:(remove_local ~formals ~ret_var) in
+  (* let disjuncts_local_removed = (* TODO: is it necessary? *) disjuncts in *)
   let summary =
     List.map ~f:(StateWithFeature.from_state proc_desc) disjuncts_local_removed |> SFSet.of_list |> SFSet.elements
   in
   (* L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)
      Procname.pp (Procdesc.get_proc_name proc_desc) ; *)
   summary
+
+
+let _cnt = ref 0
+
+let get_counter () =
+  _cnt := !_cnt + 1 ;
+  !_cnt - 1
 
 
 let resolve_summary astate ~actual_values ~callee_pdesc callee_summaries =

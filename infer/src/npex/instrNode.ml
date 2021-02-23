@@ -7,6 +7,11 @@ module Hashtbl = Caml.Hashtbl
 module InstrNode = struct
   type t = {inode: InterNode.t; instr: Sil.instr} [@@deriving compare]
 
+  let compare x y =
+    if InterNode.equal x.inode y.inode then Sil.compare_instr x.instr y.instr
+    else InterNode.compare x.inode y.inode
+
+
   let equal = [%compare.equal: t]
 
   let make inode instr = {inode; instr}

@@ -26,6 +26,7 @@ let find_npe program loc deref_field =
     Program.find_node_with_location program loc
     |> List.map ~f:InterNode.pnode_of
     |> List.concat_map ~f:InstrNode.list_of_pnode
+    |> List.sort ~compare:InstrNode.compare
   in
   let node, instr, null_exp, null_access_expr =
     let find_aexpr_from_exp_opt pdesc node instr ~deref_field exp =
@@ -55,6 +56,8 @@ let find_npe program loc deref_field =
           | Sil.Call ((ret_id, _), _, arg_typs, _, _) as instr ->
               let exprs = Exp.Var ret_id :: List.map ~f:fst arg_typs in
               List.find_map exprs ~f:(find_aexpr_from_exp_opt pdesc node instr ~deref_field)
+          | Sil.Load {id} when Ident.is_none id ->
+              None
           | Sil.Load {id} as instr ->
               find_aexpr_from_exp_opt pdesc node instr ~deref_field (Exp.Var id)
           | Sil.Store {e2= Exp.Const (Const.Cint intlit) as e2} as instr
