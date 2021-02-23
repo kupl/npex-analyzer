@@ -26,29 +26,38 @@ module DisjReady = struct
 
 
   let check_npe_alternative {npe_list; patch} node instr astate =
-    if Config.npex_launch_spec_inference then
+    if Domain.is_exceptional astate then [astate]
+    else if Config.npex_launch_spec_inference then
       let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
       | Some NullPoint.{null_exp} ->
           let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
-          let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
-          let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
-          let astate_replaced =
-            List.fold existing_nullvalues ~init:astate ~f:(fun astate_acc existing_nullvalue ->
-                Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
-          in
-          let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
-          let null_state, non_null_state =
-            ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
-            , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
-          in
-          null_state @ non_null_state
+          if Domain.Val.is_abstract nullvalue then (* This state cannot be applied to null-model *) [astate]
+          else
+            let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
+            let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
+            let astate_replaced =
+              let astate_pc_replaced =
+                Domain.{astate with pc= Domain.PC.replace_value astate.pc ~src:nullvalue ~dst:null}
+              in
+              List.fold existing_nullvalues ~init:astate_pc_replaced ~f:(fun astate_acc existing_nullvalue ->
+                  Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
+            in
+            let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
+            let null_state, non_null_state =
+              ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
+              , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
+            in
+            null_state @ non_null_state
       | None ->
           [astate]
     else if Config.npex_launch_spec_verifier then
       match patch with
-      | Some {conditional= Some (null_cond, _)} when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
-          [Domain.mark_npe_alternative astate]
+      | Some {conditional= Some (null_cond, _); null_exp}
+        when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
+          let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
+          if Domain.Val.is_abstract nullvalue then (* This state is not comparable *) [astate]
+          else [Domain.mark_npe_alternative astate]
       | _ ->
           [astate]
     else [astate]
@@ -100,8 +109,7 @@ module DisjReady = struct
             Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation
         | Exp.Var _ as e ->
             let value = Domain.eval ~pos:0 astate node instr e in
-            (* TODO: make e == 1 *)
-            Domain.PathCond.make_physical_equals Binop.Ne value Domain.Val.zero
+            Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.one
         | Exp.UnOp (Unop.LNot, (Exp.Var _ as e), _) ->
             let value = Domain.eval ~pos:0 astate node instr e in
             Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.zero
@@ -139,7 +147,7 @@ module DisjReady = struct
     [Domain.store_reg astate ret_id value]
 
 
-  let exec_unknown_get_proc astate node instr fieldname (ret_id, _) arg_typs =
+  let exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs =
     let instr_node = Node.of_pnode node instr in
     let this_type_loc =
       let this_loc =
@@ -151,7 +159,7 @@ module DisjReady = struct
       Domain.Loc.append_field this_loc ~fn:field_name
     in
     let value =
-      if Domain.is_unknown_loc astate this_type_loc then Domain.Val.make_extern instr_node Typ.void_star
+      if Domain.is_unknown_loc astate this_type_loc then Domain.Val.make_extern instr_node ret_typ
       else Domain.read_loc astate this_type_loc
     in
     let astate_field_stored = Domain.store_loc astate this_type_loc value in
@@ -182,7 +190,7 @@ module DisjReady = struct
           if Domain.is_valid_pc astate null_cond then
             (* instanceof(null) = false *)
             [Domain.store_reg astate ret_id Domain.Val.zero]
-          else Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee [arg_value; typ_value]
+          else Domain.bind_extern_value astate instr_node (ret_id, Typ.int) callee [arg_value; typ_value]
       | _ ->
           L.(die InternalError) "wrong invariant of instanceof" )
     | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
@@ -191,22 +199,25 @@ module DisjReady = struct
           let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
           [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
         with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate )
-    | _ when String.equal "invoke" (Procname.get_method callee) ->
-        let ex_state =
-          let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
-          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-          let astates_binded =
-            Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values
+    | _ when String.equal "invoke" (Procname.get_method callee) && Int.equal (List.length arg_typs) 3 ->
+        let[@warning "-8"] ((mthd_exp, _) :: (this_exp, _) :: (arg_arr_exp, _) :: _) = arg_typs in
+        let mthd_value = Domain.eval astate node instr mthd_exp in
+        let this_value = Domain.eval astate node instr this_exp in
+        let arg_arr_value = Domain.eval astate node instr arg_arr_exp in
+        let arg_values =
+          let arg_arr_loc = Domain.Val.to_loc arg_arr_value in
+          let rec collect_arg_values acc i loc =
+            let index_loc = Domain.Loc.append_index ~index:(SymDom.SymExp.of_intlit (IntLit.of_int i)) loc in
+            if Domain.is_unknown_loc astate index_loc then acc
+            else collect_arg_values (acc @ [Domain.read_loc astate index_loc]) (i + 1) index_loc
           in
-          List.map astates_binded ~f:(fun astate ->
-              let exn_value = Domain.read_id astate ret_id |> Domain.Val.to_exn in
-              let astate_return_assigned = Domain.store_loc astate ret_loc exn_value in
-              Domain.remove_temps astate_return_assigned ~line:0 [Var.of_id ret_id] |> Domain.set_exception)
+          let arg_values = collect_arg_values [] 0 arg_arr_loc in
+          mthd_value :: this_value :: arg_values
         in
-        let normal_state =
-          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-          Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values
+        let ex_state =
+          Domain.bind_exn_extern astate instr_node (Procdesc.get_ret_var proc_desc) callee arg_values
         in
+        let normal_state = Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values in
         normal_state @ ex_state
     | _
       when is_virtual
@@ -370,12 +381,16 @@ module DisjReady = struct
           List.filter vars ~f:(function
             | Var.LogicalVar _ ->
                 true
+            | Var.ProgramVar pv when Pvar.is_frontend_tmp pv ->
+                Domain.Loc.of_pvar pv |> Domain.Loc.is_temp (* Pvar.is_frontend_tmp pv *)
             | Var.ProgramVar _ ->
-                (* Pvar.is_frontend_tmp pv *) false)
+                false)
         in
         [Domain.remove_temps astate ~line:(get_line node) real_temps]
     (* | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
         [Domain.remove_pvar astate ~line:(get_line node) ~pv] *)
+    | Sil.Metadata (Nullify (pv, _)) when Domain.Loc.of_pvar pv |> Domain.Loc.is_temp ->
+        [Domain.remove_pvar astate ~line:(get_line node) ~pv]
     | Sil.Metadata (Nullify (_, _)) ->
         [astate]
     | Sil.Metadata (Abstract _) | Sil.Metadata Skip | Sil.Metadata (VariableLifetimeBegins _) ->
