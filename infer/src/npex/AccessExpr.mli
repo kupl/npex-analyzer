@@ -33,7 +33,7 @@ val is_local : Procdesc.t -> t -> bool
 
 val is_sub_expr : sub:t -> t -> bool
 
-val replace_sub : src:t -> dst:t -> t -> t
+val replace_sub : t -> src:t -> dst:t -> t
 
 val replace_base : dst:t -> t -> t
 
@@ -62,3 +62,5 @@ module Map : PrettyPrintable.PPMap with type key = t
 val is_abstract : t -> bool
 
 val is_concrete : t -> bool
+
+val is_different_type : t -> t -> bool

@@ -116,20 +116,29 @@ module S = struct
   let rec chop_sub_aexpr ~sub access =
     match (sub, access) with
     | [], remaining ->
-        remaining
-    | _ :: sub', _ :: access' ->
-        chop_sub_aexpr ~sub:sub' access'
-    | _ :: _, [] ->
-        L.(die InternalError) "Not sub expression"
-
-
-  let replace_sub ~src ~dst original =
-    match (src, dst, original) with
-    | AccessExpr (_, src_access), AccessExpr (dst_base, dst_access), AccessExpr (_, access) ->
-        let remaining = chop_sub_aexpr ~sub:src_access access in
-        AccessExpr (dst_base, dst_access @ remaining)
+        Some remaining
+    | sub_base :: sub_accesses, org_base :: org_accesses when equal_access sub_base org_base ->
+        chop_sub_aexpr ~sub:sub_accesses org_accesses
     | _ ->
-        L.(die InternalError) "Cannot replace constant expression"
+        None
+
+
+  let replace_sub original ~src ~dst =
+    match (src, dst, original) with
+    | AccessExpr (src_base, src_access), AccessExpr (dst_base, dst_access), AccessExpr (org_base, org_access)
+      when Pvar.equal src_base org_base -> (
+      (* src:p.f1.f2, dst:q, original: p.f1.f2.f3 
+       * output: q.f3, remaining: [f3] *)
+      match chop_sub_aexpr ~sub:src_access org_access with
+      | Some remaining ->
+          AccessExpr (dst_base, dst_access @ remaining)
+      | None ->
+          original )
+    | _ when equal src original ->
+        (* replace access-path to constant *)
+        dst
+    | _ ->
+        original
 
 
   let replace_base ~dst original =
@@ -304,3 +313,5 @@ let is_abstract = function
 
 
 let is_concrete = function AccessExpr _ -> false | Primitive _ -> true
+
+let is_different_type _ _ = false
