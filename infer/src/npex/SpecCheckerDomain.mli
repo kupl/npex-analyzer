@@ -66,3 +66,5 @@ val add_pc : t -> PathCond.t -> t list
 val mark_npe_alternative : t -> t
 
 val unwrap_exception : t -> t
+
+val append_ctx : t -> int -> t

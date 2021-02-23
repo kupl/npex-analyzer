@@ -4,21 +4,23 @@ module F = Format
 module L = Logging
 module Node = InstrNode
 
+module Counter (Key : PrettyPrintable.PrintableOrderedType) = struct
+  include PrettyPrintable.MakePPMonoMap (Key) (Int)
+
+  let _counter = ref empty
+
+  let get k =
+    match find_opt k !_counter with
+    | Some cnt ->
+        _counter := add k (cnt + 1) !_counter ;
+        cnt
+    | None ->
+        _counter := add k 1 !_counter ;
+        0
+end
+
 module Allocsite = struct
-  module Counter = struct
-    include PrettyPrintable.MakePPMonoMap (Node) (Int)
-
-    let _counter = ref empty
-
-    let get line =
-      match find_opt line !_counter with
-      | Some cnt ->
-          _counter := add line (cnt + 1) !_counter ;
-          cnt
-      | None ->
-          _counter := add line 1 !_counter ;
-          0
-  end
+  module Counter = Counter (Node)
 
   type t = InstrNode.t * int [@@deriving compare]
 
@@ -26,6 +28,8 @@ module Allocsite = struct
     if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc instr_node)
     else F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
 
+
+  let increment (instr_node, cnt) offset = (instr_node, cnt + offset)
 
   let make node = (node, Counter.get node)
 end
@@ -139,6 +143,15 @@ module SymHeap = struct
 
   let is_concrete = function Allocsite _ | String _ | Null _ -> true | _ -> false
 
+  let append_ctx ~offset = function
+    | Allocsite allocsite ->
+        Allocsite (Allocsite.increment allocsite offset)
+    | Extern allocsite ->
+        Extern (Allocsite.increment allocsite offset)
+    | _ as s ->
+        s
+
+
   let pp fmt = function
     | Allocsite allocsite ->
         F.fprintf fmt "Allocsite %a" Allocsite.pp allocsite
@@ -226,6 +239,9 @@ module SymExp = struct
       match get_intlit e with Some il -> Some (IntLit.neg il) | _ -> None )
     | _ ->
         None
+
+
+  let append_ctx ~offset = function Extern x -> Extern (Allocsite.increment x offset) | _ as s -> s
 end
 
 module LocCore = struct
@@ -335,6 +351,17 @@ module Loc = struct
   let make_null ?(pos = 0) node = SymHeap (SymHeap.make_null node ~pos)
 
   let make_string str = SymHeap (SymHeap.make_string str)
+
+  let rec append_ctx ~offset = function
+    | SymHeap sh ->
+        SymHeap (SymHeap.append_ctx ~offset sh)
+    | Field (l, fn) ->
+        Field (append_ctx ~offset l, fn)
+    | Index (l, index) ->
+        Index (append_ctx l ~offset, index)
+    | _ as l ->
+        l
+
 
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
@@ -556,6 +583,17 @@ module ValCore = struct
         SymExp.intTop
     | _ as v ->
         raise (Unexpected (F.asprintf "Non-integer value %a cannot be converted to symexp" pp v))
+
+
+  let rec append_ctx ~offset = function
+    | Vint symexp ->
+        Vint (SymExp.append_ctx ~offset symexp)
+    | Vheap symheap ->
+        Vheap (SymHeap.append_ctx ~offset symheap)
+    | Vextern (pname, vlist) ->
+        Vextern (pname, List.map ~f:(append_ctx ~offset) vlist)
+    | _ as v ->
+        v
 
 
   let rec replace_sub (x : t) ~(src : t) ~(dst : t) =

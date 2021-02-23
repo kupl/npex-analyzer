@@ -421,3 +421,12 @@ let rec eval_lv astate node instr exp =
 
 let init_with_formals formals : t =
   List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
+
+
+let append_ctx astate offset =
+  let reg = Reg.map (Val.append_ctx ~offset) astate.reg in
+  let mem =
+    Mem.fold (fun l v -> Mem.add (Loc.append_ctx ~offset l) (Val.append_ctx ~offset v)) astate.mem Mem.empty
+  in
+  let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
+  {astate with reg; mem; pc}
