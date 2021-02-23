@@ -193,15 +193,16 @@ let to_summary proc_desc disjuncts =
   summary
 
 
-let _cnt = ref 0
+module CtxCounter = SymDom.Counter (InstrNode)
 
-let get_counter () =
-  _cnt := !_cnt + 1 ;
-  !_cnt - 1
+let append_ctx instr_node astate =
+  let cnt = CtxCounter.get instr_node in
+  Domain.append_ctx astate cnt
 
 
-let resolve_summary astate ~actual_values ~callee_pdesc callee_summaries =
+let resolve_summary astate instr_node ~actual_values ~callee_pdesc callee_summaries =
   let formals = Procdesc.get_pvar_formals callee_pdesc in
   List.map ~f:StateWithFeature.get_astate callee_summaries
+  |> List.map ~f:(append_ctx instr_node)
   |> List.filter_map ~f:(fun callee_summary ->
          Domain.resolve_summary astate ~actual_values ~formals callee_summary)

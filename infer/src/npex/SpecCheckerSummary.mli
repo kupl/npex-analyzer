@@ -11,7 +11,8 @@ val pp : Format.formatter -> t -> unit
 
 val empty : t
 
-val resolve_summary : Domain.t -> actual_values:Domain.Val.t list -> callee_pdesc:Procdesc.t -> t -> Domain.t list
+val resolve_summary :
+  Domain.t -> InstrNode.t -> actual_values:Domain.Val.t list -> callee_pdesc:Procdesc.t -> t -> Domain.t list
 
 val to_summary : Procdesc.t -> Domain.t list -> t
 

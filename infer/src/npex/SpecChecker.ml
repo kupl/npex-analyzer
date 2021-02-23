@@ -243,6 +243,7 @@ module DisjReady = struct
       ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} as analysis_data) node instr ret_typ
       arg_typs callee =
     let ret_id, ret_type = ret_typ in
+    let instr_node = InstrNode.of_pnode node instr in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
         L.d_printfln "Found %d summaries from %a"
@@ -257,7 +258,7 @@ module DisjReady = struct
         let actual_values =
           List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
         in
-        Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary
+        Summary.resolve_summary astate instr_node ~actual_values ~callee_pdesc callee_summary
         |> List.map ~f:(fun astate' ->
                let return_value =
                  let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
