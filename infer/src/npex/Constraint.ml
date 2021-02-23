@@ -192,10 +192,18 @@ module MakePC (Val : S) = struct
 
   let compare pc1 pc2 = PCSet.compare (to_pc_set pc1) (to_pc_set pc2)
 
-  let pp fmt {pc_set; const_map} =
-    F.fprintf fmt "@[<v 2> - Constant Map:@, %a@]@. @[<v 2> - Non-const PC:@, %a@]@." ConstMap.pp const_map
-      PCSet.pp pc_set
+  let to_string {pc_set; const_map} =
+    let const_map_str =
+      ConstMap.fold
+        (fun v c acc -> String.concat [acc; F.asprintf "(ConstMap) %a == %a@." Val.pp v Val.pp c])
+        const_map ""
+    in
+    PCSet.fold
+      (fun cond acc -> String.concat [acc; F.asprintf "(NonConst) %a@." PathCond.pp cond])
+      pc_set const_map_str
 
+
+  let pp fmt x = Pp.of_string ~f:to_string fmt x
 
   let compute_transitives pathcond pc =
     let pc_set = to_pc_set pc in
@@ -234,9 +242,9 @@ module MakePC (Val : S) = struct
       PCSet.fold
         (fun cond acc ->
           match cond with
-          | PathCond.PEquals (v1, v2) when Val.is_concrete v1 ->
+          | PathCond.PEquals (v1, v2) when Val.is_concrete v1 && not (Val.is_concrete v2) ->
               ConstMap.add v2 v1 acc
-          | PathCond.PEquals (v1, v2) when Val.is_concrete v2 ->
+          | PathCond.PEquals (v1, v2) when Val.is_concrete v2 && not (Val.is_concrete v1) ->
               ConstMap.add v1 v2 acc
           | _ ->
               acc)
@@ -247,6 +255,7 @@ module MakePC (Val : S) = struct
         (PathCond.replace_by_map ~f:(fun v ->
              match ConstMap.find_opt v const_map with Some const -> const | None -> v))
         transitives
+      |> PCSet.filter (not <<< PathCond.is_valid)
     in
     {pc_set; const_map}
 
@@ -255,7 +264,7 @@ module MakePC (Val : S) = struct
     if PathCond.contains_absval pathcond || PathCond.is_valid pathcond then pc
     else if PathCond.is_invalid pathcond then {pc with pc_set= PCSet.add PathCond.false_cond pc.pc_set}
     else
-      let transitives = compute_transitives pathcond pc |> PCSet.filter (not <<< PathCond.is_valid) in
+      let transitives = compute_transitives pathcond pc in
       update_const_map pc transitives
 
 

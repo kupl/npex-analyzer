@@ -55,7 +55,7 @@ module SymbolCore = struct
 
   let pp_access fmt = function
     | Field fn ->
-        F.fprintf fmt ".%a" Fieldname.pp fn
+        F.fprintf fmt ".%s" (Fieldname.to_simplified_string fn)
     | Index i ->
         F.fprintf fmt "[%a]" IntLit.pp i
 
@@ -248,7 +248,7 @@ module LocCore = struct
     | SymHeap s ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp s
     | Field (l, f) ->
-        F.fprintf fmt "(Field) (%a).(%a)" pp l Fieldname.pp f
+        F.fprintf fmt "(Field) (%a).(%s)" pp l (Fieldname.to_simplified_string f)
     | Index (l, s) ->
         F.fprintf fmt "(Index) (%a)[%a]" pp l SymExp.pp s
 

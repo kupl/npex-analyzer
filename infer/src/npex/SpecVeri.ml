@@ -34,28 +34,28 @@ let verify proc_desc summary_inferenced summary_patched =
       |> List.map ~f:(StateFormula.from_state proc_desc)
       |> clarify_specs [] )
   in
-  (** print specs *)
   let print_spec i spec = L.progress "==== %d-th spec ====@.%a@." i StateFormula.pp spec in
   L.progress " - # of inferenced states: %d@." (List.length specs_inferenced) ;
   if Config.debug_mode then List.iteri specs_inferenced ~f:print_spec ;
   L.progress " - # of patched states: %d@." (List.length specs_patched) ;
-  if Config.debug_mode then List.iteri specs_patched ~f:print_spec ; 
-  let check_sat pc1 pc2 = 
-    let result = Formula.check_sat pc1 pc2 in
-    L.progress "===== check sat =====@. - lhs: %a@. - rhs: %a@. - result: %b@." Formula.pp pc1 Formula.pp pc2 result;
+  if Config.debug_mode then List.iteri specs_patched ~f:print_spec ;
+  let check_sat f1 f2 =
+    let result = Formula.check_sat (fst f1) (fst f2) in
+    L.progress "===== check sat =====@. - lhs:@.%a@. - rhs:@.%a@. - result: %b@." StateFormula.pp f1
+      StateFormula.pp f2 result ;
     result
   in
-let check_valid pc1 pc2 = 
+  let check_valid f1 f2 =
+    let pc1, pc2 = (snd f1, snd f2) in
     let result = Formula.check_valid pc1 pc2 in
-    L.progress "===== check validity =====@. - lhs: %a@. - rhs: %a@. - result: %b@." Formula.pp pc1 Formula.pp pc2 result;
+    L.progress "===== check validity =====@. - lhs: %a@. - rhs: %a@. - result: %b@." Formula.pp pc1 Formula.pp pc2
+      result ;
     result
   in
-  not (List.is_empty specs_inferenced)
+  (not (List.is_empty specs_inferenced))
   && List.for_all specs_inferenced ~f:(fun spec_inferenced ->
-         let pc_inferenced, state_inferenced = spec_inferenced in
-         let satisfiable_specs = List.filter specs_patched ~f:(check_sat pc_inferenced <<< fst) in
-         (not (List.is_empty satisfiable_specs))
-         && List.for_all satisfiable_specs ~f:(check_valid state_inferenced <<< snd))
+         let satisfiable_specs = List.filter specs_patched ~f:(check_sat spec_inferenced) in
+         (not (List.is_empty satisfiable_specs)) && List.for_all satisfiable_specs ~f:(check_valid spec_inferenced))
 
 
 let launch ~get_summary ~get_original_summary =

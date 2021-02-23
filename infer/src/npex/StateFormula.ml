@@ -13,7 +13,7 @@ module LocMap = WeakMap.Make (Loc) (Loc.Set)
 type t = Formula.t * Formula.t [@@deriving compare]
 
 let pp fmt (pc_formula, state_formula) =
-  F.fprintf fmt "- PC Formula: %a@. - State Formula: %a@." Formula.pp pc_formula Formula.pp state_formula
+  F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.pp pc_formula Formula.pp state_formula
 
 
 let compute_ap_map formals mem =
