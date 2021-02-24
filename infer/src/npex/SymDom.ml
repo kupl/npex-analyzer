@@ -47,6 +47,10 @@ module Null = struct
     else F.fprintf fmt "%a-%dth" Location.pp_line (InstrNode.get_loc instr_node) pos
 
 
+  let pp_src fmt (instr_node, pos) =
+    F.fprintf fmt "%a-%dth (%a)" InstrNode.pp instr_node pos Location.pp_file_pos (InstrNode.get_loc instr_node)
+
+
   let make ?(pos = 0) node : t = (node, pos)
 end
 
@@ -165,6 +169,9 @@ module SymHeap = struct
         F.fprintf fmt "%a" Symbol.pp s
     | Unknown ->
         F.fprintf fmt "Unknown"
+
+
+  let to_null = function Null null -> null | _ as s -> L.(die InternalError) "%a is not null heap@." pp s
 end
 
 module SymExp = struct
@@ -362,6 +369,8 @@ module Loc = struct
     | _ as l ->
         l
 
+
+  let to_symheap = function SymHeap s -> s | _ as l -> L.(die InternalError) "%a is not heap location" pp l
 
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
@@ -583,6 +592,15 @@ module ValCore = struct
         SymExp.intTop
     | _ as v ->
         raise (Unexpected (F.asprintf "Non-integer value %a cannot be converted to symexp" pp v))
+
+
+  let to_symheap = function
+    | Vheap s ->
+        s
+    | Top ->
+        SymHeap.unknown
+    | _ as v ->
+        raise (Unexpected (F.asprintf "Non-heap value %a cannot be converted to symheap" pp v))
 
 
   let rec append_ctx ~offset = function

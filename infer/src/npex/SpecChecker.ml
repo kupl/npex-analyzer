@@ -304,6 +304,15 @@ module DisjReady = struct
     else exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
 
 
+  let throw_uncaught_exn astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr null =
+    let instr_node = Node.of_pnode node instr in
+    L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ;
+    let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+    let astate_exn = Domain.set_exception astate in
+    let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
+    [Domain.store_loc astate_exn return_loc exn_value]
+
+
   let compute_posts astate analysis_data node instr =
     let instr_node = Node.of_pnode node instr in
     match instr with
@@ -316,7 +325,10 @@ module DisjReady = struct
             if List.exists equal_values ~f:NullSpecModel.is_model_null then
               (* do not dereference null pointer during inferencing null-spec *)
               [astate]
-            else if List.exists equal_values ~f:Domain.Val.is_null then []
+            else if List.exists equal_values ~f:Domain.Val.is_null then
+              let null_value = List.find_exn equal_values ~f:Domain.Val.is_null in
+              throw_uncaught_exn astate analysis_data node instr
+                (Domain.Val.to_symheap null_value |> SymDom.SymHeap.to_null)
             else add_non_null_constraints node instr e astate
         | _ ->
             [astate] )
@@ -328,7 +340,9 @@ module DisjReady = struct
         [Domain.store_reg astate id value]
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate node instr e in
-        if Domain.Loc.is_null loc then []
+        if Domain.Loc.is_null loc then
+          let null = Domain.Loc.to_symheap loc |> SymDom.SymHeap.to_null in
+          throw_uncaught_exn astate analysis_data node instr null
         else if Domain.is_unknown_loc astate loc then
           (* symbolic location is introduced at load instr *)
           let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
@@ -347,7 +361,9 @@ module DisjReady = struct
         [Domain.store_loc astate loc value]
     | Sil.Store {e1; e2} ->
         let loc = Domain.eval_lv astate node instr e1 in
-        if Domain.Loc.is_null loc then []
+        if Domain.Loc.is_null loc then
+          let null = Domain.Loc.to_symheap loc |> SymDom.SymHeap.to_null in
+          throw_uncaught_exn astate analysis_data node instr null
         else
           let value = Domain.eval astate node instr e2 ~pos:0 in
           Domain.store_loc astate loc value |> add_non_null_constraints node instr e1
