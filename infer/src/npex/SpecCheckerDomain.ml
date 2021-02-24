@@ -218,7 +218,16 @@ module SymResolvedMap = struct
         | _ ->
             acc_symvals
       in
-      Mem.fold (fun _ v acc_symvals -> add_if_symbol v acc_symvals) callee_state.mem Val.Set.empty
+      Mem.fold
+        (fun l v acc_symvals ->
+          let acc_symvals' = add_if_symbol v acc_symvals in
+          match l with
+          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) ->
+              (* If symbolic location is re-defined, symbolic value does not exists on memory values*)
+              add_if_symbol (Val.of_symheap (SymHeap.Symbol s)) acc_symvals'
+          | _ ->
+              acc_symvals')
+        callee_state.mem Val.Set.empty
       |> PC.PCSet.fold
            (fun cond acc_symvals ->
              match cond with
@@ -254,7 +263,7 @@ module SymResolvedMap = struct
         match (base, List.rev accesses) with
         | Symbol.Global (pv, Symbol.Field fn), [] ->
             update_resolved_loc (base, accesses) typ (Loc.of_pvar pv |> Loc.append_field ~fn) acc
-        | Symbol.Param pv, [] ->
+        | Symbol.Param _, [] ->
             acc
         | base, Symbol.Field fn :: remain' ->
             let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
