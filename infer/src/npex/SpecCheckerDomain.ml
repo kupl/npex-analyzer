@@ -85,9 +85,41 @@ let remove_temps astate ~line vars =
           remove_pvar astate' ~line ~pv)
 
 
+let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
+  let pc' = PC.replace_value astate.pc ~src ~dst in
+  let mem' =
+    match (src, dst) with
+    | Vheap a, Vheap b ->
+        Mem.fold
+          (fun l v -> Mem.add (Loc.replace_heap l ~src:a ~dst:b) (Val.replace_sub v ~src ~dst))
+          astate.mem Mem.empty
+    | _ ->
+        Mem.map (Val.replace_sub ~src ~dst) astate.mem
+  in
+  let reg' = Reg.map (Val.replace_sub ~src ~dst) astate.reg in
+  {astate with pc= pc'; mem= mem'; reg= reg'}
+
+
 let add_pc astate pathcond : t list =
   let pc' = PC.add pathcond astate.pc in
-  if PC.is_invalid pc' then [] else [{astate with pc= pc'}]
+  if PC.is_invalid pc' then []
+  else
+    let pc_set = PC.to_pc_set pc' in
+    let astate' =
+      (* TODO: this may introduce scalability issues *)
+      (* replace an extern variable ex1 by ex2 if there exists ex1 = ex2
+                                          also if there exists exn (ex1) = exn (ex2)*)
+      PC.PCSet.fold
+        (fun cond acc ->
+          match cond with
+          | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
+          | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
+              replace_value astate ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
+          | _ ->
+              acc)
+        pc_set {astate with pc= pc'}
+    in
+    [astate']
 
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
@@ -95,13 +127,6 @@ let mark_npe_alternative astate = {astate with is_npe_alternative= true}
 let set_exception astate = {astate with is_exceptional= true}
 
 let unwrap_exception astate = {astate with is_exceptional= false}
-
-let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
-  let pc' = PC.replace_value astate.pc ~src ~dst in
-  let mem' = Mem.map (fun v -> if phys_equal v src then dst else v) astate.mem in
-  let reg' = Reg.map (fun v -> if phys_equal v src then dst else v) astate.reg in
-  {astate with pc= pc'; mem= mem'; reg= reg'}
-
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
@@ -189,8 +214,8 @@ module SymResolvedMap = struct
         resolve_symexp sym_resolved_map symexp
     | Val.Vheap sheap ->
         resolve_symheap sym_resolved_map sheap
-    | Val.Vexn sheap ->
-        resolve_symheap sym_resolved_map sheap |> Val.to_exn
+    | Val.Vexn v ->
+        Val.Vexn (resolve_val sym_resolved_map v)
     | Val.Vextern _ ->
         Val.top
     | _ as v ->
@@ -209,12 +234,14 @@ module SymResolvedMap = struct
 
   let construct astate callee_state init =
     let symvals_to_resolve =
-      let add_if_symbol v acc_symvals =
+      let rec add_if_symbol v acc_symvals =
         match v with
         | Val.Vint (SymExp.Symbol _) ->
             Val.Set.add v acc_symvals
         | Val.Vheap (SymHeap.Symbol _) ->
             Val.Set.add v acc_symvals
+        | Val.Vextern (_, args) ->
+            List.fold args ~init:acc_symvals ~f:(fun acc_symvals' v -> add_if_symbol v acc_symvals')
         | _ ->
             acc_symvals
       in
