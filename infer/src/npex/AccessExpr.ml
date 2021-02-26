@@ -123,6 +123,8 @@ module S = struct
         None
 
 
+  let replace_by_map x ~f = f x
+
   let replace_sub original ~src ~dst =
     match (src, dst, original) with
     | AccessExpr (src_base, src_access), AccessExpr (dst_base, dst_access), AccessExpr (org_base, org_access)

@@ -372,12 +372,23 @@ module Loc = struct
 
   let to_symheap = function SymHeap s -> s | _ as l -> L.(die InternalError) "%a is not heap location" pp l
 
+  let rec replace_heap ~src ~dst = function
+    | SymHeap sh when SymHeap.equal sh src ->
+        SymHeap dst
+    | Field (l, fn) ->
+        Field (replace_heap l ~src ~dst, fn)
+    | Index (l, index) ->
+        Index (replace_heap l ~src ~dst, index)
+    | _ as l ->
+        l
+
+
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
 end
 
 module ValCore = struct
-  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Vextern of Procname.t * t list | Bot | Top
+  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of t | Vextern of Procname.t * t list | Bot | Top
   [@@deriving compare]
 
   let rec pp fmt = function
@@ -385,26 +396,37 @@ module ValCore = struct
         F.fprintf fmt "(SymExp) %a" SymExp.pp i
     | Vheap h ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp h
-    | Vexn sh ->
-        F.fprintf fmt "(Exn) %a" SymHeap.pp sh
+    | Vexn (Vheap h) ->
+        F.fprintf fmt "(Exn) %a" SymHeap.pp h
     | Vextern (callee, args) ->
         F.fprintf fmt "(Extern) %s(%a)" (Procname.get_method callee) (Pp.seq pp ~sep:",") args
     | Bot ->
         F.fprintf fmt "Bot"
     | Top ->
         F.fprintf fmt "Top"
+    | Vexn v ->
+        L.(die InternalError) "Invalid exceptional value: %a@." pp v
 
 
   let compare x y =
-    match (x, y) with
-    | Vheap s1, Vheap s2 ->
-        SymHeap.compare s1 s2
-    | Vheap _, _ ->
-        -1
-    | _, Vheap _ ->
-        1
-    | _ ->
-        compare x y
+    let rec _compare x y =
+      match (x, y) with
+      | Vheap s1, Vheap s2 ->
+          SymHeap.compare s1 s2
+      | Vheap _, _ ->
+          -1
+      | _, Vheap _ ->
+          1
+      | Vexn x, Vexn y ->
+          _compare x y
+      | Vextern (p1, _), Vextern (p2, _) when Procname.equal p1 p2 ->
+          0
+      | Vextern (_, args1), Vextern (_, args2) when Int.equal (List.length args1) (List.length args2) ->
+          List.fold2_exn args1 args2 ~init:0 ~f:(fun acc v1 v2 -> if Int.equal 0 acc then _compare v1 v2 else acc)
+      | _ ->
+          compare x y
+    in
+    _compare x y
 
 
   let equal = [%compare.equal: t]
@@ -447,14 +469,14 @@ module ValCore = struct
 
   let get_class_name_opt = function Vheap sh -> SymHeap.get_class_name_opt sh | _ -> None
 
-  let to_exn = function Vheap sh -> Vexn sh | _ as v -> L.(die InternalError) "%a cannot be throwable" pp v
-
-  let unwrap_exn = function
-    | Vexn sh ->
-        Vheap sh
+  let to_exn = function
+    | Vheap sh ->
+        Vexn (Vheap sh)
     | _ as v ->
-        raise (Unexpected (F.asprintf "%a is not throwable" pp v))
+        L.(die InternalError) "%a cannot be throwable" pp v
 
+
+  let unwrap_exn = function Vexn sh -> sh | _ as v -> raise (Unexpected (F.asprintf "%a is not throwable" pp v))
 
   let zero = Vint (SymExp.of_intlit IntLit.zero)
 
@@ -608,6 +630,8 @@ module ValCore = struct
         Vint (SymExp.append_ctx ~offset symexp)
     | Vheap symheap ->
         Vheap (SymHeap.append_ctx ~offset symheap)
+    | Vexn v ->
+        Vexn (append_ctx ~offset v)
     | Vextern (pname, vlist) ->
         Vextern (pname, List.map ~f:(append_ctx ~offset) vlist)
     | _ as v ->
@@ -616,7 +640,20 @@ module ValCore = struct
 
   let rec replace_sub (x : t) ~(src : t) ~(dst : t) =
     if equal x src then dst
-    else match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst)) | _ -> x
+    else
+      match (x, dst) with
+      | Vextern _, Vextern _ ->
+          (* TODO: support only single function *) x
+      | Vextern (mthd, args), _ ->
+          Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst))
+      | Vexn x, Vheap _ ->
+          Vexn (replace_sub x ~src ~dst)
+      | _ ->
+          x
+
+
+  let rec replace_by_map x ~f =
+    match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_by_map ~f)) | _ -> f x
 end
 
 module Val = struct

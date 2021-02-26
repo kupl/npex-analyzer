@@ -35,6 +35,8 @@ val is_sub_expr : sub:t -> t -> bool
 
 val replace_sub : t -> src:t -> dst:t -> t
 
+val replace_by_map : t -> f:(t -> t) -> t
+
 val replace_base : dst:t -> t -> t
 
 val append_access : t -> access -> t
