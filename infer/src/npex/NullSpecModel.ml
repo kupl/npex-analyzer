@@ -120,7 +120,8 @@ let default_models =
   |> (* null.length() *) add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
   |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" empty_value)
   |> (* null.equals(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "equals" AccessExpr.zero)
-  |> (* null.startsWith(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
+  |> (* null.isEmpty() *) add (Key.default_of Aint) (Value.default_of "isEmpty" AccessExpr.one)
+  |> (* null.booleanValue() *) add (Key.default_of Aint) (Value.default_of "booleanValue" AccessExpr.zero)
   |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "add" empty_value)
   |> (* _.find(null) *)
   add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "find" AccessExpr.null)
@@ -128,11 +129,23 @@ let default_models =
 
 let add_models_to_learn x =
   x
-  |> (* null.isFailOnCCE(_) *) add (Key.make ~arg_length:1 Aint) (Value.default_of "isFailOnCCE" AccessExpr.zero)
+  |> (* null.isStatic(_) *) add (Key.default_of Aint) (Value.default_of "isStatic" AccessExpr.zero)
+  |> (* null.isMemberOf(_, _) *) add (Key.make ~arg_length:3 Aint) (Value.default_of "isMemberOf" AccessExpr.zero)
+  |> (* null.startsWith(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "startsWith" AccessExpr.zero)
+  |> (* null.isFailOnCCE(_) *) add (Key.default_of Aint) (Value.default_of "isFailOnCCE" AccessExpr.zero)
+  |> (* null.hasNext(_) *) add (Key.default_of Aint) (Value.default_of "hasNext" AccessExpr.zero)
   |> (* null.toUpperCase(_) *)
   add (Key.make ~arg_length:2 Aobject) (Value.default_of "toUpperCase" AccessExpr.null)
-  |> (* _.invoke(_, null) *)
-  add (Key.make ~arg_length:3 ~model_index:2 Aobject) (Value.default_of "invoke" AccessExpr.null)
+  |> (* _.assertValid(null) *)
+  add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "assertValid" empty_value)
+  |> (* _.matcher(null) *)
+  add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "matcher" AccessExpr.null)
+  |> (* null.matches() *)
+  add (Key.make ~arg_length:1 ~model_index:0 Aint) (Value.default_of "matches" AccessExpr.zero)
+
+
+let add_models_require_context x =
+  x |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "toString" AccessExpr.null)
 
 
 let is_matchable {callee} Value.({method_name}, _) =
@@ -145,7 +158,7 @@ let is_model_null = function Val.Vheap (Null (_, pos)) -> Int.equal null_pos pos
 
 let get equal_values callee_context =
   let {arg_values; ret_typ} = callee_context in
-  let model = (* TODO: from_json() *) default_models |> add_models_to_learn in
+  let model = (* TODO: from_json() *) default_models |> add_models_to_learn |> add_models_require_context in
   let key_opt =
     List.find_mapi arg_values ~f:(fun index v : Key.t option ->
         let open SymDom.Val in
@@ -168,7 +181,6 @@ let get equal_values callee_context =
   match key_opt with
   | Some key -> (
       L.d_printfln "[NullSpecModel] Find applicable key: %a" Key.pp key ;
-      let open IOption.Let_syntax in
       match find_opt key model with
       | Some values ->
           (* TODO: design similarity function and select most similar one *)
