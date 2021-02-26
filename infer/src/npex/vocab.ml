@@ -8,7 +8,19 @@ exception Unexpected of string
 
 let ( <<< ) f g x = f (g x)
 
+let is_ill_temp_var pv =
+  let pv_string = Pvar.to_string pv in
+  String.contains pv_string ~pos:0 '$'
+  && (not (String.is_prefix pv_string ~prefix:"$bcvar"))
+  && (not (String.is_prefix pv_string ~prefix:"$irvar"))
+  && not (String.contains pv_string '_')
+
+
+let is_catch_var pv = String.is_prefix (Pvar.to_string pv) ~prefix:"CatchVar"
+
 let pp_instr = Sil.pp_instr ~print_types:true Pp.text
+
+let get_line node = Location.(Procdesc.Node.get_loc node).line
 
 let id_func x = x
 

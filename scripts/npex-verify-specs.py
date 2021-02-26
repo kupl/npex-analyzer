@@ -14,90 +14,83 @@ INFER_PATH = os.getenv("INFER_NPEX")
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true"
 ROOT_DIR = os.getcwd()
 
+def infer_spec(project_root_dir, maven_build_command=f"mvn clean test-compile {MVN_OPT}", error_reports=["npe.json"]):
+    capture_cmd = f"{INFER_PATH} capture -- {maven_build_command}"
+    # if (subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
+    #     print(f"[FAIL] compilation")
+    #     return None
+    subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)
+
+    error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in error_reports])
+    spec_inference_cmd = f"{INFER_PATH} npex --spec-checker-only --spec-inference {error_reports_arg}"
+    if (subprocess.run(spec_inference_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
+        print(f"[FAIL] spec inference")
+        return exit(-1)
+    
+    return True
+
+
+def checkout(project_root_dir):
+    if (subprocess.run("git checkout -f", shell=True, cwd=project_root_dir)).returncode != 0:
+        print(f"[FAIL] git checkout")
+        exit(-1)
+     
+
 # Assume original buggy code is analyzed. So we don't need to clean compile it
 def verify_patches(project_root_dir, maven_build_command=f"mvn test-compile {MVN_OPT}", error_reports=["npe.json"]):
     start_time = time.time()
     patches_dir = f"{project_root_dir}/patches"
     dicts = []
     fieldnames = ["patch_id"]
+   
+    checkout(project_root_dir)
+    
+    if infer_spec(project_root_dir, error_reports=error_reports) == None:
+        return None
+    
     for patch in glob.glob(f"{patches_dir}/*"):
         patch_id = os.path.basename(patch)
-        result_path = verify_patch(project_root_dir, patch, maven_build_command, error_reports)
-        if result_path == None:
-            continue
-        with open(result_path, "r", newline="") as csvfile:
-            reader = csv.DictReader(csvfile)
-            if len(fieldnames) == 1:
-                fieldnames.extend(reader.fieldnames)
-            row = next(reader)
-            if len(set(list(row.values()))) < 2:
-                continue
-            row["patch_id"] = patch_id
-            dicts.append(row)
-    worthy_features = extract_interesting_features(dicts, project_root_dir)
-    worthy_features.insert(0, worthy_features.pop(worthy_features.index('patch_id')))
-    for d in dicts:
-        for k in list(d.keys()):
-            if not k in worthy_features:
-                d.pop(k)
+        result_dict = {"patch_id": patch_id, "result": None}
+        result = verify_patch(project_root_dir, patch, maven_build_command, error_reports=error_reports)
+        if result == None or result == -2:
+            result_dict["result"] = "compile-failure"
+        elif result == 0: 
+            result_dict["result"] = "verified"
+        else:
+            result_dict["result"] = "not-verified"
+        dicts.append(result_dict)
+            
     result_path = f"{project_root_dir}/spec-checking-results.csv"
     with open(result_path, 'w', newline="") as f:
-        writer = csv.DictWriter(f, worthy_features)
+        writer = csv.DictWriter(f, ["patch_id", "result"])
         writer.writeheader() 
         writer.writerows(dicts)
-    print(f'Spec sheet has been stored at: {result_path}')
+    print(f'Result has been stored at: {result_path}')
     print(f'time to verify patches: {time.time() - start_time}')
 
-def extract_interesting_features(dicts, project_root_dir):
-    assert (len(dicts) > 0)
-    worthy_features, useless_features = [], []
-    for feature in list(dicts[0].keys()):
-        if len(set([d[feature] for d in dicts])) > 1:
-            worthy_features.append(feature)
-        else:
-            useless_features.append(feature)
-    print(f'Worthy Features (at least two separate patches are distinguished by each feature):')
-    pprint(f'{worthy_features[:-1]}')
-    os.chdir(project_root_dir)
-    for feature in worthy_features[:-1]:
-        os.system(f"cat specs/{feature}.text")
-    return worthy_features
+def apply_patch(project_root_dir, patch_dir):
+    with open(f"{patch_dir}/patch.json", "r") as f:
+        patch_json = json.load(f)
+    source_path_to_patch = f"{project_root_dir}/{patch_json['original_filepath']}"
+    shutil.copy(f"{patch_dir}/patch.java", f"{source_path_to_patch}")
+    shutil.copy(f"{patch_dir}/patch.json", f"{ROOT_DIR}/patch.json")   
 
 def verify_patch(project_root_dir, patch_dir, maven_build_command, error_reports):
-    print(f"Verifying patch in directory: {patch_dir}")
-    patch_source_path = f"{patch_dir}/patch.java"
-    patch_json_path = f"{patch_dir}/patch.json"
-    with open(patch_json_path, "r") as f:
-        patch_json = json.load(f)
+    print(f"[Progress]: Verifying patch in directory {patch_dir}")
+    print(f" - NPE-lists: {error_reports}")
     
-    source_path_to_patch = f"{project_root_dir}/{patch_json['original_filepath']}"
-    with open(f"{project_root_dir}/changed_files", 'w') as f:
-        f.write(source_path_to_patch)
-        f.close()
-        
-    shutil.copyfile(patch_source_path, source_path_to_patch)
-    shutil.copy2(patch_json_path, project_root_dir)
-    
+    apply_patch(project_root_dir, patch_dir)
     capture_cmd = f"{INFER_PATH} capture -- {maven_build_command}"
-    if (subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
-        return None
+    # if (subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
+    #     return None
+    subprocess.run(capture_cmd, shell=True, cwd=project_root_dir)
     
-    npe_jsons = glob.glob(f"{project_root_dir}/{error_reports}")
-    error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in npe_jsons])
+    error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in error_reports])
 
-    launch_spec_veri_cmd = f"{INFER_PATH} npex --launch-spec-verifier --spec-checker-only {error_reports_arg}"
-    if (subprocess.run(launch_spec_veri_cmd, shell=True, cwd=project_root_dir)).returncode != 0:
-        return None
+    launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {error_reports_arg}"
+    print(f" - npex-verifier command: {launch_spec_veri_cmd}")
+    return (subprocess.run(launch_spec_veri_cmd, shell=True, cwd=project_root_dir)).returncode
 
-    debug_files = glob.glob(f"{project_root_dir}/*.debug")
-    for debug_file in debug_files:
-        path_to_store = f"{patch_dir}/{os.path.basename(debug_file)}"
-        shutil.move(debug_file, path_to_store)
-
-
-    return shutil.copy(
-        f"{project_root_dir}/infer-out/verify.csv", f"{patch_dir}/verify.csv"
-    )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -108,13 +101,13 @@ if __name__ == '__main__':
     
     if args.apply_patch:
         patch_dir = f"{ROOT_DIR}/patches/{args.patch_id}"
-        with open(f"{patch_dir}/patch.json", "r") as f:
-            patch_json = json.load(f)
-        source_path_to_patch = f"{ROOT_DIR}/{patch_json['original_filepath']}"
-        shutil.copy(f"{patch_dir}/patch.java", f"{source_path_to_patch}")
-        shutil.copy(f"{patch_dir}/patch.json", f"{ROOT_DIR}/patch.json")
+        apply_patch(ROOT_DIR, patch_dir)
     
-    # elif len(sys.argv) == 3:
-    #     verify_patches(sys.argv[1], sys.argv[2], args.error_reports)
     else:
-        verify_patches(ROOT_DIR, error_reports=args.error_reports)
+        if args.error_reports == None:
+            error_reports = glob.glob("npe*.json")
+            verify_patches(ROOT_DIR, error_reports=error_reports)
+        else:
+            error_reports = glob.glob(args.error_reports)
+            print(f"Start inference by {error_reports}")
+            verify_patches(ROOT_DIR, error_reports=error_reports)

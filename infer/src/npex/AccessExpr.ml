@@ -13,7 +13,9 @@ module S = struct
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
   [@@deriving compare]
 
-  let dummy = AccessExpr (Pvar.mk_tmp "" Procname.empty_block, [])
+  let dummy_pvar = Pvar.mk_tmp "" Procname.empty_block
+
+  let dummy = AccessExpr (dummy_pvar, [])
 
   (* Infer IntLit's compare does not distinguish pointernesses *)
   type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
@@ -31,6 +33,8 @@ module S = struct
   let equal_access = [%compare.equal: access]
 
   let rec pp fmt = function
+    | AccessExpr (base, accesses) when Pvar.equal base dummy_pvar ->
+        (Pp.seq pp_access ~sep:".") fmt accesses
     | AccessExpr (base, accesses) ->
         pp_access_expr fmt (base, accesses)
     | Primitive const ->
@@ -112,20 +116,31 @@ module S = struct
   let rec chop_sub_aexpr ~sub access =
     match (sub, access) with
     | [], remaining ->
-        remaining
-    | _ :: sub', _ :: access' ->
-        chop_sub_aexpr ~sub:sub' access'
-    | _ :: _, [] ->
-        L.(die InternalError) "Not sub expression"
-
-
-  let replace_sub ~src ~dst original =
-    match (src, dst, original) with
-    | AccessExpr (_, src_access), AccessExpr (dst_base, dst_access), AccessExpr (_, access) ->
-        let remaining = chop_sub_aexpr ~sub:src_access access in
-        AccessExpr (dst_base, dst_access @ remaining)
+        Some remaining
+    | sub_base :: sub_accesses, org_base :: org_accesses when equal_access sub_base org_base ->
+        chop_sub_aexpr ~sub:sub_accesses org_accesses
     | _ ->
-        L.(die InternalError) "Cannot replace constant expression"
+        None
+
+
+  let replace_by_map x ~f = f x
+
+  let replace_sub original ~src ~dst =
+    match (src, dst, original) with
+    | AccessExpr (src_base, src_access), AccessExpr (dst_base, dst_access), AccessExpr (org_base, org_access)
+      when Pvar.equal src_base org_base -> (
+      (* src:p.f1.f2, dst:q, original: p.f1.f2.f3 
+       * output: q.f3, remaining: [f3] *)
+      match chop_sub_aexpr ~sub:src_access org_access with
+      | Some remaining ->
+          AccessExpr (dst_base, dst_access @ remaining)
+      | None ->
+          original )
+    | _ when equal src original ->
+        (* replace access-path to constant *)
+        dst
+    | _ ->
+        original
 
 
   let replace_base ~dst original =
@@ -228,6 +243,14 @@ module S = struct
           let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
           let ae = append_access (Cache.find pdesc (Var this)) (MethodCallAccess (mthd, arg_exprs)) in
           Cache.add_id pdesc ret ae
+      | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: args, _, _) ->
+          (* this.mthd(...) is not virtual invocation *)
+          let this_aexpr = Cache.find pdesc (Var this) in
+          if String.equal (to_string this_aexpr) "this" then
+            let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
+            let ae = append_access this_aexpr (MethodCallAccess (mthd, arg_exprs)) in
+            Cache.add_id pdesc ret ae
+          else ()
       | _ ->
           ()
     with _ -> ()
@@ -292,3 +315,5 @@ let is_abstract = function
 
 
 let is_concrete = function AccessExpr _ -> false | Primitive _ -> true
+
+let is_different_type _ _ = false

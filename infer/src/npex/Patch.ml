@@ -8,7 +8,7 @@ type t =
   { mthd: Procname.t
   ; conditional: (InstrNode.t * InstrNode.t) option
   ; is_checking_nullness: bool
-  ; null_exp: AccessExpr.t
+  ; null_exp: Exp.t
   ; skipped_nodes: NSet.t
   ; null_exec_nodes: NSet.t }
 
@@ -22,10 +22,10 @@ let pp fmt {mthd; conditional; is_checking_nullness; null_exp; skipped_nodes; nu
          null_exp: %a@,\
          skipped_nodes: @[<v>%a@]@,\
          null_exec_nodes: @[<v>%a@]@,"
-        Procname.pp mthd InstrNode.pp null_cond is_checking_nullness AccessExpr.pp null_exp NSet.pp skipped_nodes
-        NSet.pp null_exec_nodes
+        Procname.pp mthd InstrNode.pp null_cond is_checking_nullness Exp.pp null_exp NSet.pp skipped_nodes NSet.pp
+        null_exec_nodes
   | None ->
-      F.fprintf fmt "Init-null-src patch (mthd: %a, null_exp: %a)" Procname.pp mthd AccessExpr.pp null_exp
+      F.fprintf fmt "Init-null-src patch (mthd: %a, null_exp: %a)" Procname.pp mthd Exp.pp null_exp
 
 
 let identify_nodes_at_patched_lines program json =
@@ -43,13 +43,13 @@ let identify_nodes_at_patched_lines program json =
 
 let from_json program json : t =
   let patched_nodes = identify_nodes_at_patched_lines program json in
-  L.progress "Patched nodes: %a@." (Pp.seq Node.pp) patched_nodes ;
+  L.progress "Patched nodes: %a@." (Pp.seq Node.pp ~sep:"\n") patched_nodes ;
   let deref_fields =
     List.map Config.error_report_json ~f:(fun filepath ->
         let open Yojson.Basic.Util in
         read_json_file_exn filepath |> member "deref_field" |> to_string)
   in
-  let is_checking_nullness, null_exp = (ref false, ref AccessExpr.dummy) in
+  let is_checking_nullness, null_exp = (ref false, ref Exp.null) in
   let null_cond =
     List.find_map patched_nodes ~f:(fun node ->
         let mthd = Node.get_proc_name node in
@@ -61,14 +61,14 @@ let from_json program json : t =
               let null_aexpr = AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr in
               if List.mem deref_fields (AccessExpr.get_deref_field null_aexpr) ~equal:String.equal then (
                 is_checking_nullness := false ;
-                null_exp := null_aexpr ;
+                null_exp := null_ptr ;
                 Some (InstrNode.make node instr) )
               else None
           | Sil.Prune (BinOp (Binop.Eq, null_ptr, Const (Cint lit)), _, _, _) when IntLit.isnull lit ->
               let null_aexpr = AccessExpr.from_IR_exp (Program.pdesc_of program mthd) null_ptr in
               if List.mem deref_fields (AccessExpr.get_deref_field null_aexpr) ~equal:String.equal then (
                 is_checking_nullness := true ;
-                null_exp := null_aexpr ;
+                null_exp := null_ptr ;
                 Some (InstrNode.make node instr) )
               else None
           | _ ->

@@ -4,16 +4,34 @@ module F = Format
 module L = Logging
 module Node = InstrNode
 
+module Counter (Key : PrettyPrintable.PrintableOrderedType) = struct
+  include PrettyPrintable.MakePPMonoMap (Key) (Int)
+
+  let _counter = ref empty
+
+  let get k =
+    match find_opt k !_counter with
+    | Some cnt ->
+        _counter := add k (cnt + 1) !_counter ;
+        cnt
+    | None ->
+        _counter := add k 1 !_counter ;
+        0
+end
+
 module Allocsite = struct
+  module Counter = Counter (Node)
+
   type t = InstrNode.t * int [@@deriving compare]
 
-  let pp fmt (instr_node, cnt) = F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
+  let pp fmt (instr_node, cnt) =
+    if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc instr_node)
+    else F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
 
-  let _cnt = ref 0
 
-  let make node =
-    _cnt := !_cnt + 1 ;
-    (node, !_cnt)
+  let increment (instr_node, cnt) offset = (instr_node, cnt + offset)
+
+  let make node = (node, Counter.get node)
 end
 
 module Null = struct
@@ -29,21 +47,54 @@ module Null = struct
     else F.fprintf fmt "%a-%dth" Location.pp_line (InstrNode.get_loc instr_node) pos
 
 
+  let pp_src fmt (instr_node, pos) =
+    F.fprintf fmt "%a-%dth (%a)" InstrNode.pp instr_node pos Location.pp_file_pos (InstrNode.get_loc instr_node)
+
+
   let make ?(pos = 0) node : t = (node, pos)
 end
 
+module SymbolCore = struct
+  type access = Field of Fieldname.t | Index of IntLit.t [@@deriving compare]
+
+  type base = Global of Pvar.t * access | Param of Pvar.t [@@deriving compare]
+
+  type t = base * access list [@@deriving compare]
+
+  let pp_access fmt = function
+    | Field fn ->
+        F.fprintf fmt ".%s" (Fieldname.to_simplified_string fn)
+    | Index i ->
+        F.fprintf fmt "[%a]" IntLit.pp i
+
+
+  let pp_base fmt = function
+    | Global (pv, access) ->
+        F.fprintf fmt "G$(%a%a)" (Pvar.pp Pp.text) pv pp_access access
+    | Param pv ->
+        F.fprintf fmt "P(%a)" (Pvar.pp Pp.text) pv
+
+
+  let pp fmt (base, accesses) = F.fprintf fmt "$(%a%a)" pp_base base (Pp.seq pp_access) accesses
+
+  (* sort to resolve pvar first *)
+  let compare (base1, accs1) (base2, accs2) =
+    let len1, len2 = (List.length accs1, List.length accs2) in
+    if Int.equal len1 len2 then compare (base1, accs1) (base2, accs2) else if len1 < len2 then -1 else 1
+
+
+  let make_global pv fn = (Global (pv, Field fn), [])
+
+  let of_pvar pv = (Param pv, [])
+
+  let append_field ~fn (base, accs) = (base, accs @ [Field fn])
+
+  let append_index ~index (base, accs) = (base, accs @ [Index index])
+end
+
 module Symbol = struct
-  (* Symbol is simply implemented as int 
-   * If domain requires join operation, symbol cannot be implemented as int *)
-  type t = int [@@deriving compare]
-
-  let pp fmt x = F.fprintf fmt "$%d" x
-
-  let _counter = ref (-1)
-
-  let make_fresh () =
-    _counter := !_counter + 1 ;
-    !_counter
+  include SymbolCore
+  module Set = PrettyPrintable.MakePPSet (SymbolCore)
 end
 
 module SymHeap = struct
@@ -70,7 +121,7 @@ module SymHeap = struct
 
   let make_string str = String str
 
-  let make_symbol () = Symbol (Symbol.make_fresh ())
+  let of_symbol symbol = Symbol symbol
 
   let unknown = Unknown
 
@@ -96,19 +147,31 @@ module SymHeap = struct
 
   let is_concrete = function Allocsite _ | String _ | Null _ -> true | _ -> false
 
+  let append_ctx ~offset = function
+    | Allocsite allocsite ->
+        Allocsite (Allocsite.increment allocsite offset)
+    | Extern allocsite ->
+        Extern (Allocsite.increment allocsite offset)
+    | _ as s ->
+        s
+
+
   let pp fmt = function
     | Allocsite allocsite ->
-        F.fprintf fmt "(Allocsite) %a" Allocsite.pp allocsite
+        F.fprintf fmt "Allocsite %a" Allocsite.pp allocsite
     | Extern allocsite ->
-        F.fprintf fmt "(Extern) %a" Allocsite.pp allocsite
+        F.fprintf fmt "Extern %a" Allocsite.pp allocsite
     | Null null ->
-        F.fprintf fmt "(Null) %a" Null.pp null
+        F.fprintf fmt "Null %a" Null.pp null
     | String str ->
-        F.fprintf fmt "(String) %s" str
+        F.fprintf fmt "String %s" str
     | Symbol s ->
         F.fprintf fmt "%a" Symbol.pp s
     | Unknown ->
-        F.fprintf fmt "(Unknown)"
+        F.fprintf fmt "Unknown"
+
+
+  let to_null = function Null null -> null | _ as s -> L.(die InternalError) "%a is not null heap@." pp s
 end
 
 module SymExp = struct
@@ -131,7 +194,7 @@ module SymExp = struct
     | Binary (sexp1, sexp2, binop) ->
         F.fprintf fmt "(%a) %s (%a)" pp sexp1 (Binop.str Pp.text binop) pp sexp2
     | Extern allocsite ->
-        F.fprintf fmt "(ExVal) %a" Allocsite.pp allocsite
+        F.fprintf fmt "ExVal %a" Allocsite.pp allocsite
     | IntTop ->
         F.fprintf fmt "IntTop"
 
@@ -160,7 +223,7 @@ module SymExp = struct
 
   let of_intlit intlit : t = IntLit intlit
 
-  let make_symbol () : t = Symbol (Symbol.make_fresh ())
+  let of_symbol symbol : t = Symbol symbol
 
   let make_extern node = Extern (Allocsite.make node)
 
@@ -183,20 +246,34 @@ module SymExp = struct
       match get_intlit e with Some il -> Some (IntLit.neg il) | _ -> None )
     | _ ->
         None
+
+
+  let append_ctx ~offset = function Extern x -> Extern (Allocsite.increment x offset) | _ as s -> s
 end
 
 module LocCore = struct
-  type t = Var of Pvar.t | SymHeap of SymHeap.t | Field of t * Fieldname.t | Index of t [@@deriving compare]
+  type t =
+    | IllTempVar of Pvar.t * int
+    | TempVar of Pvar.t
+    | Var of Pvar.t
+    | SymHeap of SymHeap.t
+    | Field of t * Fieldname.t
+    | Index of t * SymExp.t
+  [@@deriving compare]
 
   let rec pp fmt = function
+    | IllTempVar (v, line) ->
+        F.fprintf fmt "(IilTempPvar) %a%d" Pvar.pp_value v line
+    | TempVar v ->
+        F.fprintf fmt "(TempPvar) %a" Pvar.pp_value v
     | Var v ->
         F.fprintf fmt "(Pvar) %a" Pvar.pp_value v
     | SymHeap s ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp s
     | Field (l, f) ->
-        F.fprintf fmt "(Field) (%a).(%a)" pp l Fieldname.pp f
-    | Index l ->
-        F.fprintf fmt "(Index) (%a)[*]" pp l
+        F.fprintf fmt "(Field) (%a).(%s)" pp l (Fieldname.to_simplified_string f)
+    | Index (l, s) ->
+        F.fprintf fmt "(Index) (%a)[%a]" pp l SymExp.pp s
 
 
   let compare x y =
@@ -208,33 +285,53 @@ module LocCore = struct
 
 
   let equal = [%compare.equal: t]
+
+  let append_index l ~index =
+    match (l, index) with
+    | Var _, SymExp.IntLit _
+    | SymHeap _, SymExp.IntLit _
+    | Field _, SymExp.IntLit _
+    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
+        Index (l, index)
+    | _ ->
+        Index (l, SymExp.IntTop)
+
+
+  let append_field ~fn l = Field (l, fn)
+
+  let of_pvar ?(line = 0) pv : t =
+    if Pvar.is_frontend_tmp pv then if is_ill_temp_var pv then IllTempVar (pv, line) else TempVar pv else Var pv
+
+
+  let rec base_of = function Field (l, _) -> base_of l | Index (l, _) -> base_of l | _ as l -> l
 end
 
 module Loc = struct
   include LocCore
 
-  let rec get_symbol_opt = function
-    | Var _ ->
-        None
-    | SymHeap (Symbol s) ->
-        Some s
+  let is_temp = function TempVar _ -> true | _ -> false
+
+  let is_ill_temp = function IllTempVar _ -> true | _ -> false
+
+  let rec is_heap = function
     | SymHeap _ ->
-        None
+        true
     | Field (l, _) ->
-        get_symbol_opt l
-    | Index l ->
-        get_symbol_opt l
+        is_heap l
+    | Index (l, _) ->
+        is_heap l
+    | _ ->
+        false
 
 
-  let rec is_heap = function SymHeap _ -> true | Field (l, _) -> is_heap l | Index l -> is_heap l | _ -> false
-
+  (* check whether location is abstract *)
   let rec is_unknown = function
     | SymHeap sh ->
         SymHeap.is_unknown sh
     | Field (l, _) ->
         is_unknown l
-    | Index l ->
-        is_unknown l
+    | Index (l, s) ->
+        is_unknown l || not (SymExp.is_constant s)
     | _ ->
         false
 
@@ -244,27 +341,13 @@ module Loc = struct
         SymHeap.is_extern sh
     | Field (l, _) ->
         is_extern l
-    | Index l ->
+    | Index (l, _) ->
         is_extern l
     | _ ->
         false
 
 
   let is_null = function SymHeap h -> SymHeap.is_null h | _ -> false
-
-  let rec is_symbolizable = function
-    | Var _ ->
-        true
-    | SymHeap (Symbol _) ->
-        true
-    | SymHeap _ ->
-        (* concrete heap is not symbolizable *)
-        false
-    | Field (l, _) ->
-        is_symbolizable l
-    | Index _ ->
-        false
-
 
   let unknown = SymHeap SymHeap.unknown
 
@@ -276,45 +359,77 @@ module Loc = struct
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
-  let append_index l = match l with Var _ | SymHeap _ | Field _ -> Index l | Index _ -> l
+  let rec append_ctx ~offset = function
+    | SymHeap sh ->
+        SymHeap (SymHeap.append_ctx ~offset sh)
+    | Field (l, fn) ->
+        Field (append_ctx ~offset l, fn)
+    | Index (l, index) ->
+        Index (append_ctx l ~offset, index)
+    | _ as l ->
+        l
 
-  let append_field ~fn l = Field (l, fn)
 
-  let of_pvar pv : t = Var pv
+  let to_symheap = function SymHeap s -> s | _ as l -> L.(die InternalError) "%a is not heap location" pp l
 
-  let rec base_of = function Field (l, _) -> base_of l | Index l -> base_of l | _ as l -> l
+  let rec replace_heap ~src ~dst = function
+    | SymHeap sh when SymHeap.equal sh src ->
+        SymHeap dst
+    | Field (l, fn) ->
+        Field (replace_heap l ~src ~dst, fn)
+    | Index (l, index) ->
+        Index (replace_heap l ~src ~dst, index)
+    | _ as l ->
+        l
+
 
   module Set = AbstractDomain.FiniteSet (LocCore)
   module Map = PrettyPrintable.MakePPMap (LocCore)
 end
 
-module Val = struct
-  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of SymHeap.t | Bot | Top [@@deriving compare]
+module ValCore = struct
+  type t = Vint of SymExp.t | Vheap of SymHeap.t | Vexn of t | Vextern of Procname.t * t list | Bot | Top
+  [@@deriving compare]
 
-  let pp fmt = function
+  let rec pp fmt = function
     | Vint i ->
         F.fprintf fmt "(SymExp) %a" SymExp.pp i
     | Vheap h ->
         F.fprintf fmt "(SymHeap) %a" SymHeap.pp h
-    | Vexn sh ->
-        F.fprintf fmt "(Exn) %a" SymHeap.pp sh
+    | Vexn (Vheap h) ->
+        F.fprintf fmt "(Exn) %a" SymHeap.pp h
+    | Vextern (callee, args) ->
+        F.fprintf fmt "(Extern) %s(%a)" (Procname.get_method callee) (Pp.seq pp ~sep:",") args
     | Bot ->
         F.fprintf fmt "Bot"
     | Top ->
         F.fprintf fmt "Top"
+    | Vexn v ->
+        L.(die InternalError) "Invalid exceptional value: %a@." pp v
 
 
   let compare x y =
-    match (x, y) with
-    | Vheap s1, Vheap s2 ->
-        SymHeap.compare s1 s2
-    | Vheap _, _ ->
-        1
-    | _, Vheap _ ->
-        -1
-    | _ ->
-        compare x y
+    let rec _compare x y =
+      match (x, y) with
+      | Vheap s1, Vheap s2 ->
+          SymHeap.compare s1 s2
+      | Vheap _, _ ->
+          -1
+      | _, Vheap _ ->
+          1
+      | Vexn x, Vexn y ->
+          _compare x y
+      | Vextern (p1, _), Vextern (p2, _) when Procname.equal p1 p2 ->
+          0
+      | Vextern (_, args1), Vextern (_, args2) when Int.equal (List.length args1) (List.length args2) ->
+          List.fold2_exn args1 args2 ~init:0 ~f:(fun acc v1 v2 -> if Int.equal 0 acc then _compare v1 v2 else acc)
+      | _ ->
+          compare x y
+    in
+    _compare x y
 
+
+  let equal = [%compare.equal: t]
 
   let lt v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lt s1 s2) | _ -> Vint IntTop
 
@@ -330,19 +445,6 @@ module Val = struct
 
   let is_top = function Top -> true | _ -> false
 
-  (* TODO: remove it after merge *)
-  let equal x y =
-    match (x, y) with
-    | Vint i1, Vint i2 ->
-        SymExp.equal i1 i2
-    | Vheap h1, Vheap h2 | Vexn h1, Vexn h2 ->
-        SymHeap.equal h1 h2
-    | Bot, Bot | Top, Top ->
-        true
-    | _ ->
-        false
-
-
   let leq ~lhs ~rhs =
     match (lhs, rhs) with
     | Vint i1, Vint i2 ->
@@ -357,19 +459,24 @@ module Val = struct
         false
 
 
-  let equal lhs rhs =
-    match (lhs, rhs) with
-    | Vint i1, Vint i2 ->
-        SymExp.equal i1 i2
-    | Vheap h1, Vheap h2 | Vexn h1, Vexn h2 ->
-        SymHeap.equal h1 h2
+  let is_different_type x y =
+    match (x, y) with
+    | Vint _, Vheap _ | Vint _, Vexn _ | Vheap _, Vint _ | Vheap _, Vexn _ | Vexn _, Vint _ | Vexn _, Vheap _ ->
+        true
     | _ ->
         false
 
 
   let get_class_name_opt = function Vheap sh -> SymHeap.get_class_name_opt sh | _ -> None
 
-  let to_exn = function Vheap sh -> Vexn sh | _ as v -> L.(die InternalError) "%a cannot be throwable" pp v
+  let to_exn = function
+    | Vheap sh ->
+        Vexn (Vheap sh)
+    | _ as v ->
+        L.(die InternalError) "%a cannot be throwable" pp v
+
+
+  let unwrap_exn = function Vexn sh -> sh | _ as v -> raise (Unexpected (F.asprintf "%a is not throwable" pp v))
 
   let zero = Vint (SymExp.of_intlit IntLit.zero)
 
@@ -471,11 +578,88 @@ module Val = struct
 
   let widen ~prev ~next ~num_iters:_ = join prev next
 
+  let symbol_from_loc_opt typ loc =
+    let open IOption.Let_syntax in
+    let+ symbol =
+      match loc with
+      | Loc.Var pv ->
+          Some (Symbol.of_pvar pv)
+      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
+          Some (Symbol.make_global pv fn)
+      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
+          Some (Symbol.make_global pv fn)
+      | Loc.Field (Loc.SymHeap (Symbol s), fn) ->
+          Some (Symbol.append_field s ~fn)
+      | Loc.Index (Loc.SymHeap (Symbol s), SymExp.IntLit index) ->
+          Some (Symbol.append_index s ~index)
+      | _ ->
+          None
+    in
+    if Typ.is_pointer typ then Vheap (SymHeap.of_symbol symbol)
+    else if Typ.is_int typ then Vint (SymExp.of_symbol symbol)
+    else of_typ typ
+
+
   let to_loc = function
     | Vheap h ->
         Loc.SymHeap h
     | _ as v ->
         raise (Unexpected (F.asprintf "Non-locational value %a cannot be converted to location" pp v))
+
+
+  let to_symexp = function
+    | Vint s ->
+        s
+    | Top ->
+        SymExp.intTop
+    | _ as v ->
+        raise (Unexpected (F.asprintf "Non-integer value %a cannot be converted to symexp" pp v))
+
+
+  let to_symheap = function
+    | Vheap s ->
+        s
+    | Top ->
+        SymHeap.unknown
+    | _ as v ->
+        raise (Unexpected (F.asprintf "Non-heap value %a cannot be converted to symheap" pp v))
+
+
+  let rec append_ctx ~offset = function
+    | Vint symexp ->
+        Vint (SymExp.append_ctx ~offset symexp)
+    | Vheap symheap ->
+        Vheap (SymHeap.append_ctx ~offset symheap)
+    | Vexn v ->
+        Vexn (append_ctx ~offset v)
+    | Vextern (pname, vlist) ->
+        Vextern (pname, List.map ~f:(append_ctx ~offset) vlist)
+    | _ as v ->
+        v
+
+
+  let rec replace_sub (x : t) ~(src : t) ~(dst : t) =
+    if equal x src then dst
+    else
+      match (x, dst) with
+      | Vextern _, Vextern _ ->
+          (* TODO: support only single function *) x
+      | Vextern (mthd, args), _ ->
+          Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst))
+      | Vexn x, Vheap _ ->
+          Vexn (replace_sub x ~src ~dst)
+      | _ ->
+          x
+
+
+  let rec replace_by_map x ~f =
+    match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_by_map ~f)) | _ -> f x
+end
+
+module Val = struct
+  include ValCore
+  module Set = PrettyPrintable.MakePPSet (ValCore)
+  module Map = PrettyPrintable.MakePPMap (ValCore)
 end
 
 module PathCond = Constraint.Make (Val)

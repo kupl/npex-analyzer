@@ -26,10 +26,10 @@ let find_npe program loc deref_field =
     Program.find_node_with_location program loc
     |> List.map ~f:InterNode.pnode_of
     |> List.concat_map ~f:InstrNode.list_of_pnode
+    |> List.sort ~compare:InstrNode.compare
   in
   let node, instr, null_exp, null_access_expr =
-    let find_aexpr_from_exp_opt node instr ~deref_field exp =
-      let pdesc = Procdesc.Node.get_proc_name node |> Program.pdesc_of program in
+    let find_aexpr_from_exp_opt pdesc node instr ~deref_field exp =
       match AccessExpr.from_IR_exp_opt pdesc exp with
       | Some aexpr when String.equal deref_field (AccessExpr.get_deref_field aexpr) ->
           Some (node, instr, exp, aexpr)
@@ -44,18 +44,28 @@ let find_npe program loc deref_field =
     in
     List.find_map_exn instr_nodes ~f:(fun instr_node ->
         let node = InstrNode.inode_of instr_node |> InterNode.pnode_of in
-        match InstrNode.get_instr instr_node with
-        | Sil.Call ((ret_id, _), _, arg_typs, _, _) as instr ->
-            let exprs = Exp.Var ret_id :: List.map ~f:fst arg_typs in
-            List.find_map exprs ~f:(find_aexpr_from_exp_opt node instr ~deref_field)
-        | Sil.Load {id} as instr ->
-            find_aexpr_from_exp_opt node instr ~deref_field (Exp.Var id)
-        | Sil.Store {e2= Exp.Const (Const.Cint intlit) as e2} as instr
-          when IntLit.isnull intlit && String.equal deref_field "null" ->
-            (* Null source *)
-            Some (node, instr, e2, AccessExpr.null)
-        | _ ->
-            None)
+        let instr = InstrNode.get_instr instr_node in
+        let pdesc = Procdesc.Node.get_proc_name node |> Program.pdesc_of program in
+        (* L.progress " - finding nullpoint from %a@." InstrNode.pp instr_node ; *)
+        if Procdesc.Node.equal_nodekind (Procdesc.Node.get_kind node) Procdesc.Node.Start_node then
+          let formals = Procdesc.get_pvar_formals pdesc in
+          List.map ~f:(fun (pv, _) -> Exp.Lvar pv) formals
+          |> List.find_map ~f:(find_aexpr_from_exp_opt pdesc node instr ~deref_field)
+        else
+          match instr with
+          | Sil.Call ((ret_id, _), _, arg_typs, _, _) as instr ->
+              let exprs = Exp.Var ret_id :: List.map ~f:fst arg_typs in
+              List.find_map exprs ~f:(find_aexpr_from_exp_opt pdesc node instr ~deref_field)
+          | Sil.Load {id} when Ident.is_none id ->
+              None
+          | Sil.Load {id} as instr ->
+              find_aexpr_from_exp_opt pdesc node instr ~deref_field (Exp.Var id)
+          | Sil.Store {e2= Exp.Const (Const.Cint intlit) as e2} as instr
+            when IntLit.isnull intlit && String.equal deref_field "null" ->
+              (* Null source *)
+              Some (node, instr, e2, AccessExpr.null)
+          | _ ->
+              None)
   in
   let nullpoint : t = {deref_field; node= InterNode.of_pnode node; instr; null_exp; null_access_expr} in
   nullpoint

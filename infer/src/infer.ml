@@ -283,35 +283,41 @@ let () =
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
           ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
   | NPEX ->
-      let get_summary proc_name =
-        match Summary.OnDisk.get proc_name with
-        | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
-            spec_checker_summary
-        | _ ->
-            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
-      in
-      let serializer = Serialization.create_serializer Serialization.Key.summary in
-      let get_original_summary proc_name =
-        let original_summary_path =
-          Procname.to_filename proc_name ^ ".specs"
-          |> Filename.concat Config.npex_summary_dir
-          |> DB.filename_from_string
+      let compiled_procs = Program.build () |> Program.all_procs in
+      if Procname.Set.is_empty compiled_procs then L.exit (-2)
+      else
+        let get_summary proc_name =
+          match Summary.OnDisk.get proc_name with
+          | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
+              spec_checker_summary
+          | _ ->
+              L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
         in
-        match Serialization.read_from_file serializer original_summary_path with
-        | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
-            spec_checker_summary
-        | _ ->
-            L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
-      in
-      ResultsDir.assert_results_dir "have you run capture before?" ;
-      if Config.npex_launch_localizer then (
-        assert (Int.equal (List.length Config.error_report_json) 1) ;
-        Localizer.launch () )
-      else if Config.npex_launch_spec_inference then (
-        L.progress "launch spec inference" ;
-        InferAnalyze.main ~changed_files:None )
-      else if Config.npex_launch_spec_verifier then (
-        InferAnalyze.main ~changed_files:None ;
-        SpecVeri.launch ~get_summary ~get_original_summary ) ) ;
+        let serializer = Serialization.create_serializer Serialization.Key.summary in
+        let get_original_summary proc_name =
+          let original_summary_path =
+            Procname.to_filename proc_name ^ ".specs"
+            |> Filename.concat Config.npex_summary_dir
+            |> DB.filename_from_string
+          in
+          match Serialization.read_from_file serializer original_summary_path with
+          | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
+              spec_checker_summary
+          | _ ->
+              L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+        in
+        ResultsDir.assert_results_dir "have you run capture before?" ;
+        if Config.npex_launch_localizer then (
+          assert (Int.equal (List.length Config.error_report_json) 1) ;
+          Localizer.launch () )
+        else if Config.npex_launch_spec_inference then (
+          L.progress "launch spec inference" ;
+          let program = Program.from_marshal () in
+          let nullpoints = NullPoint.get_nullpoint_list program in
+          L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
+          InferAnalyze.main ~changed_files:None )
+        else if Config.npex_launch_spec_verifier then (
+          InferAnalyze.main ~changed_files:None ;
+          SpecVeri.launch ~get_summary ~get_original_summary ) ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0

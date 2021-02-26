@@ -13,7 +13,7 @@ module LocMap = WeakMap.Make (Loc) (Loc.Set)
 type t = Formula.t * Formula.t [@@deriving compare]
 
 let pp fmt (pc_formula, state_formula) =
-  F.fprintf fmt "- PC Formula: %a@. - State Formula: %a@." Formula.pp pc_formula Formula.pp state_formula
+  F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.pp pc_formula Formula.pp state_formula
 
 
 let compute_ap_map formals mem =
@@ -23,7 +23,7 @@ let compute_ap_map formals mem =
         match l with
         | Loc.Field (l', _) ->
             LocMap.weak_update l' (Loc.Set.singleton l) acc
-        | Loc.Index l' ->
+        | Loc.Index (l', _) ->
             LocMap.weak_update l' (Loc.Set.singleton l) acc
         | _ ->
             acc)
@@ -37,6 +37,9 @@ let compute_ap_map formals mem =
       let cur_aps = APMap.find work ap_map in
       let next_aps =
         match work with
+        | Loc.IllTempVar _ | Loc.TempVar _ ->
+            (* incomparable *)
+            APSet.empty
         | Loc.Var pv ->
             (* add (pv, []) *)
             APSet.singleton (AccessExpr.of_pvar pv)
@@ -48,7 +51,13 @@ let compute_ap_map formals mem =
                 if List.mem accesses (AccessExpr.FieldAccess fn) ~equal:AccessExpr.equal_access then next_aps_acc
                 else APSet.add (AccessExpr.append_access ap (AccessExpr.FieldAccess fn)) next_aps_acc)
               (APMap.find l ap_map) APSet.empty
-        | Loc.Index _ ->
+        | Loc.Index (l, SymDom.SymExp.IntLit i) ->
+            (* add ap_map(l).fn *)
+            APSet.map
+              (fun ap ->
+                AccessExpr.append_access ap (AccessExpr.ArrayAccess (AccessExpr.Primitive (Const.Cint i))))
+              (APMap.find l ap_map)
+        | Loc.Index (_, _) ->
             (* TODO: skip *)
             APSet.empty
         | Loc.SymHeap symheap ->
@@ -64,11 +73,12 @@ let compute_ap_map formals mem =
       else
         let next_locs =
           let field_locs = LocMap.find work field_map in
-          match Domain.Mem.find work mem with
+          ( match Domain.Mem.find work mem with
           | Val.Vheap symheap ->
               Loc.Set.add (Loc.SymHeap symheap) field_locs
           | _ ->
-              field_locs
+              field_locs )
+          |> Loc.Set.filter (not <<< Loc.is_unknown)
         in
         let next_works = Loc.Set.union rest next_locs in
         let next_ap_map = APMap.strong_update work next_aps ap_map in
@@ -90,7 +100,7 @@ let compute_ap_map formals mem =
   _compute init APMap.empty
 
 
-let val_to_ap mem ap_map : Val.t -> APSet.t = function
+let rec val_to_ap mem ap_map : Val.t -> APSet.t = function
   | Val.Vint SymDom.SymExp.(IntLit intlit) ->
       APSet.singleton (AccessExpr.of_const (Const.Cint intlit))
   | (Val.Vint SymDom.SymExp.(Symbol _) | Val.Vint SymDom.SymExp.(Extern _)) as v ->
@@ -106,7 +116,31 @@ let val_to_ap mem ap_map : Val.t -> APSet.t = function
   | Val.Vheap sh ->
       APMap.find (Loc.SymHeap sh) ap_map
   | Val.Vexn _ ->
-      (* TODO *) APSet.empty
+      (* TODO: modeling exn heap by type *)
+      AccessExpr.of_const (Const.Cstr "Exn") |> APSet.singleton
+      (* ( match Val.get_class_name_opt (Val.Vheap sh) with
+         | Some cls ->
+             AccessExpr.of_const (Const.Cstr (Typ.Name.to_string cls)) |> APSet.singleton
+         | None ->
+             APSet.empty ) *)
+  | Val.Vextern (callee, args) ->
+      let make_ap_call callee arg_aps =
+        let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
+        AccessExpr.append_access AccessExpr.dummy method_call_access
+      in
+      let aps_args_list = List.map args ~f:(fun arg_value -> val_to_ap mem ap_map arg_value |> APSet.elements) in
+      let arg_aps_list =
+        (* [v1, v2]: args
+         * [[ap11, ap12], [ap21, ap22]]: aps_args_list
+         * [ap11, ap21], [ap11, ap22], [ap12, ap21], [ap12, ap22]: arg_aps_list *)
+        List.fold aps_args_list ~init:[[]]
+          ~f:(fun (acc : AccessExpr.t list list) (aps : AccessExpr.t list) : AccessExpr.t list list ->
+            List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])))
+        (* [ap11], [ap12] 
+         * [ap11, ap21], [ap11, ap21] | [ap12, ap21], [ap12, ap22] *)
+      in
+      let results = List.map arg_aps_list ~f:(make_ap_call callee) |> APSet.of_list in
+      results
   | _ ->
       APSet.empty
 
@@ -116,7 +150,8 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
   let ap_map = compute_ap_map formal_pvars mem in
   let make_formula binop ap_set1 ap_set2 =
     let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
-    List.map ap_pairs ~f:(fun (ap1, ap2) -> Predicate.make_physical_equals binop ap1 ap2) |> Formula.of_list
+    List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
+        Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
   in
   let summary_formula =
     let filter_local = APSet.filter (not <<< AccessExpr.is_local proc_desc) in
@@ -126,7 +161,7 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
         (* L.debug_dev "@. - make %a = %a@." APSet.pp aps_loc APSet.pp aps_val ; *)
         let formula = make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) in
         (* L.debug_dev " - formula : %a@." Formula.pp formula ; *)
-        Formula.union formula)
+        Formula.join formula)
       mem Formula.empty
   in
   let pc_formula =
@@ -134,13 +169,14 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
       | Domain.PathCond.PEquals (v1, v2) ->
           let ap_set1, ap_set2 = (val_to_ap mem ap_map v1, val_to_ap mem ap_map v2) in
           make_formula Binop.Eq ap_set1 ap_set2
-      | Domain.PathCond.Not pc ->
-          pathcond_to_formula pc |> Formula.map Predicate.make_negation
-      | Domain.PathCond.Equals _ ->
+      | Domain.PathCond.Not (Domain.PathCond.PEquals (v1, v2)) ->
+          let ap_set1, ap_set2 = (val_to_ap mem ap_map v1, val_to_ap mem ap_map v2) in
+          make_formula Binop.Ne ap_set1 ap_set2
+      | _ ->
           (* TODO: *)
           Formula.empty
     in
-    Domain.PC.fold (fun pc -> pathcond_to_formula pc |> Formula.union) pc Formula.empty
+    Domain.PC.PCSet.fold (fun pc -> pathcond_to_formula pc |> Formula.join) (Domain.PC.to_pc_set pc) Formula.empty
   in
   let debug_msg =
     F.asprintf
@@ -148,5 +184,5 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
        ==============================@."
       Domain.pp astate Formula.pp summary_formula Formula.pp pc_formula
   in
-  (* L.progress "%s" debug_msg ;  *)
+  if Config.debug_mode then L.progress "%s" debug_msg ;
   (pc_formula, summary_formula)

@@ -148,9 +148,9 @@ let add_profile_to_pom_in_directory dir =
      this is unreliable and Maven pretty much always reads from "pom.xml" anyway. So, we replace
      "pom.xml" with a version holding a special profile for infer capture, then put the original
      back in place. *)
-  let maven_pom_path = dir ^/ "pom.xml" in
-  let saved_pom_path = dir ^/ "pom.xml.infer-orig" in
-  let infer_pom_path = dir ^/ "pom.xml.infer" in
+  let maven_pom_path = if String.is_suffix dir ~suffix:"xml" then dir else dir ^/ "pom.xml" in
+  let infer_pom_path = maven_pom_path ^ ".infer" in
+  let saved_pom_path = maven_pom_path ^ ".infer-orig" in
   add_infer_profile maven_pom_path infer_pom_path ;
   Unix.rename ~src:maven_pom_path ~dst:saved_pom_path ;
   Epilogues.register
