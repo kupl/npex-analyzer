@@ -175,24 +175,16 @@ module SymHeap = struct
 end
 
 module SymExp = struct
-  type t =
-    | IntLit of IntLit.t
-    | Symbol of Symbol.t
-    | Unary of t * Unop.t
-    | Binary of t * t * Binop.t
-    | Extern of Allocsite.t
-    | IntTop
+  type t = IntLit of IntLit.t | FloatLit of float | Symbol of Symbol.t | Extern of Allocsite.t | IntTop
   [@@deriving compare]
 
   let rec pp fmt = function
     | IntLit intlit ->
         IntLit.pp fmt intlit
+    | FloatLit flit ->
+        F.fprintf fmt "%f" flit
     | Symbol s ->
         Symbol.pp fmt s
-    | Unary (sexp, uop) ->
-        F.fprintf fmt "%s(%a)" (Unop.to_string uop) pp sexp
-    | Binary (sexp1, sexp2, binop) ->
-        F.fprintf fmt "(%a) %s (%a)" pp sexp1 (Binop.str Pp.text binop) pp sexp2
     | Extern allocsite ->
         F.fprintf fmt "ExVal %a" Allocsite.pp allocsite
     | IntTop ->
@@ -205,23 +197,23 @@ module SymExp = struct
     match (x, y) with
     | IntLit x, IntLit y ->
         if IntLit.lt x y then IntLit IntLit.one else IntLit IntLit.zero
+    | FloatLit x, FloatLit y ->
+        if Int.is_negative (Float.compare x y) then IntLit IntLit.one else IntLit IntLit.zero
     | _ ->
         IntTop
 
 
   let lte x y =
     match (x, y) with
-    | Symbol _, Symbol _ when equal x y ->
+    | (Symbol _, Symbol _ | Extern _, Extern _ | IntLit _, IntLit _ | FloatLit _, FloatLit _) when equal x y ->
         IntLit IntLit.one
-    | IntLit _, IntLit _ when equal x y ->
-        IntLit IntLit.one
-    | IntLit _, IntLit _ ->
-        lt x y
     | _ ->
-        IntTop
+        lt x y
 
 
   let of_intlit intlit : t = IntLit intlit
+
+  let of_float flit : t = FloatLit flit
 
   let of_symbol symbol : t = Symbol symbol
 
@@ -231,7 +223,7 @@ module SymExp = struct
 
   let is_top = equal intTop
 
-  let rec is_constant = function IntLit _ -> true | Unary (e, _) -> is_constant e | _ -> false
+  let is_constant = function IntLit _ | FloatLit _ -> true | _ -> false
 
   let is_symbolic = function Symbol _ -> true | _ -> false
 
@@ -239,14 +231,7 @@ module SymExp = struct
 
   let sub x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.sub x y) | _ -> IntTop
 
-  let rec get_intlit = function
-    | IntLit il ->
-        Some il
-    | Unary (e, Neg) -> (
-      match get_intlit e with Some il -> Some (IntLit.neg il) | _ -> None )
-    | _ ->
-        None
-
+  let get_intlit = function IntLit il -> Some il | _ -> None
 
   let append_ctx ~offset = function Extern x -> Extern (Allocsite.increment x offset) | _ as s -> s
 end
@@ -506,6 +491,8 @@ module ValCore = struct
 
   let unknown = Vheap SymHeap.unknown
 
+  let default_null = make_null ~pos:0 Node.dummy
+
   let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
   let is_abstract = function
@@ -541,6 +528,8 @@ module ValCore = struct
 
   let of_intlit intlit = Vint (SymExp.of_intlit intlit)
 
+  let of_float flit = Vint (SymExp.of_float flit)
+
   let of_symheap sh = Vheap sh
 
   let of_symexp sexp = Vint sexp
@@ -550,8 +539,6 @@ module ValCore = struct
   let get_default_by_typ instr_node typ =
     if Typ.is_pointer typ then make_null ~pos:0 instr_node else if Typ.is_int typ then zero else top
 
-
-  let of_const = function Const.Cint intlit -> of_intlit intlit | Const.Cstr str -> make_string str | _ -> top
 
   let is_true x = equal x one
 
