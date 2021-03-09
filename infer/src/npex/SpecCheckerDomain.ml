@@ -13,7 +13,24 @@ module SymHeap = SymDom.SymHeap
 module Reg = WeakMap.Make (Ident) (Val)
 
 module Mem = struct
+  (* Allocsite[Index] has null as default value 
+   * Other location has bottom as default value *)
   include WeakMap.Make (Loc) (Val)
+
+  let strong_update k v t =
+    match (k, v) with
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _), v when Val.is_null v && not (mem k t) ->
+        t
+    | _ ->
+        strong_update k v t
+
+
+  let find k t =
+    match k with
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
+        Val.default_null
+    | _ ->
+        find k t
 end
 
 type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
