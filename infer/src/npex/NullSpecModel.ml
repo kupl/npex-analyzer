@@ -156,6 +156,10 @@ let is_matchable {callee} Value.({method_name}, _) =
 
 let is_model_null = function Val.Vheap (Null (_, pos)) -> Int.equal null_pos pos | _ -> false
 
+let compute_similarity {callee} Value.({method_name}, _) =
+  String.compare (Procname.get_method callee) method_name |> Int.abs
+
+
 let get equal_values callee_context =
   let {arg_values; ret_typ} = callee_context in
   let model = (* TODO: from_json() *) default_models |> add_models_to_learn |> add_models_require_context in
@@ -185,7 +189,13 @@ let get equal_values callee_context =
       | Some values ->
           (* TODO: design similarity function and select most similar one *)
           L.d_printfln "Model candidates:@.%a" VSet.pp values ;
-          VSet.filter (is_matchable callee_context) values |> VSet.elements |> List.map ~f:snd |> List.hd
+          VSet.filter (is_matchable callee_context) values
+          |> VSet.elements
+          |> List.sort ~compare:(fun v1 v2 ->
+                 (* lower similarity, more similar *)
+                 compute_similarity callee_context v1 - compute_similarity callee_context v2)
+          |> List.map ~f:snd
+          |> List.hd
       | None ->
           None )
   | None ->
