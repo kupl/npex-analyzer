@@ -384,7 +384,7 @@ let eval_binop binop v1 v2 =
   | Binop.Gt ->
       Val.lt v2 v1
   | Binop.Le ->
-      Val.lte v1 v1
+      Val.lte v1 v2
   | Binop.Ge ->
       Val.lte v2 v1
   | _ ->
