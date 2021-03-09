@@ -266,7 +266,7 @@ module SymResolvedMap = struct
         (fun l v acc_symvals ->
           let acc_symvals' = add_if_symbol v acc_symvals in
           match l with
-          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) ->
+          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) | Loc.Index (Loc.SymHeap (SymHeap.Symbol s), _) ->
               (* If symbolic location is re-defined, symbolic value does not exists on memory values*)
               add_if_symbol (Val.of_symheap (SymHeap.Symbol s)) acc_symvals'
           | _ ->
