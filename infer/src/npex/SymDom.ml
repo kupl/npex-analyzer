@@ -419,10 +419,14 @@ module ValCore = struct
           1
       | Vexn x, Vexn y ->
           _compare x y
-      | Vextern (p1, _), Vextern (p2, _) when Procname.equal p1 p2 ->
-          0
-      | Vextern (_, args1), Vextern (_, args2) when Int.equal (List.length args1) (List.length args2) ->
-          List.fold2_exn args1 args2 ~init:0 ~f:(fun acc v1 v2 -> if Int.equal 0 acc then _compare v1 v2 else acc)
+      | Vextern (p1, args1), Vextern (p2, args2) ->
+          let len1, len2 = (List.length args1, List.length args2) in
+          if Int.equal len1 len2 then
+            if Procname.equal p1 p2 then
+              List.fold2_exn args1 args2 ~init:0 ~f:(fun acc v1 v2 ->
+                  if Int.equal 0 acc then _compare v1 v2 else acc)
+            else Procname.compare p1 p2
+          else len1 - len2
       | _ ->
           compare x y
     in
