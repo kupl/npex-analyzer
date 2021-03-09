@@ -7,7 +7,7 @@ let null_pos = -1
 
 let inter_symstr = "NPEX_intermediate"
 
-let empty_str = "NPEX_empty"
+let bot_str = "NPEX_bot"
 
 (** Null Spec Model *)
 type abstract_type = Aint | Afloat | Aobject | Avoid [@@deriving compare]
@@ -108,21 +108,26 @@ let _model = ref None
 
 let from_json () = match !_model with None -> (* TODO: *) empty | Some model -> model
 
-let empty_value = AccessExpr.Primitive (Cstr empty_str)
+let bot_value = AccessExpr.Primitive (Cstr bot_str)
+
+let empty_str_value = AccessExpr.Primitive (Cstr "")
+
+let zero_float_value = AccessExpr.Primitive (Cfloat 0.0)
 
 let default_models =
   empty
   |> (* null.get(_) *) add (Key.make ~arg_length:2 Aobject) (Value.default_of "get" AccessExpr.null)
   |> (* null.get() *) add (Key.default_of Aobject) (Value.default_of "get" AccessExpr.null)
   |> (* null.get() *) add (Key.default_of Aint) (Value.default_of "get" AccessExpr.zero)
-  |> (* null.set(_) *) add (Key.make ~arg_length:2 Avoid) (Value.default_of "set" empty_value)
+  |> (* null.get() *) add (Key.default_of Afloat) (Value.default_of "get" zero_float_value)
+  |> (* null.set(_) *) add (Key.make ~arg_length:2 Avoid) (Value.default_of "set" bot_value)
   |> (* null.size() *) add (Key.default_of Aint) (Value.default_of "size" AccessExpr.zero)
   |> (* null.length() *) add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
-  |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" empty_value)
+  |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" bot_value)
   |> (* null.equals(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "equals" AccessExpr.zero)
   |> (* null.isEmpty() *) add (Key.default_of Aint) (Value.default_of "isEmpty" AccessExpr.one)
   |> (* null.booleanValue() *) add (Key.default_of Aint) (Value.default_of "booleanValue" AccessExpr.zero)
-  |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "add" empty_value)
+  |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "add" bot_value)
   |> (* _.find(null) *)
   add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "find" AccessExpr.null)
 
@@ -137,15 +142,19 @@ let add_models_to_learn x =
   |> (* null.toUpperCase(_) *)
   add (Key.make ~arg_length:2 Aobject) (Value.default_of "toUpperCase" AccessExpr.null)
   |> (* _.assertValid(null) *)
-  add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "assertValid" empty_value)
+  add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "assertValid" bot_value)
   |> (* _.matcher(null) *)
   add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "matcher" AccessExpr.null)
   |> (* null.matches() *)
   add (Key.make ~arg_length:1 ~model_index:0 Aint) (Value.default_of "matches" AccessExpr.zero)
+  |> (* null.matches() *)
+  add (Key.make ~arg_length:2 ~model_index:0 Aint) (Value.default_of "remove" AccessExpr.zero)
 
 
 let add_models_require_context x =
-  x |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "toString" AccessExpr.null)
+  x
+  |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "toString" AccessExpr.null)
+  |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "getString" empty_str_value)
 
 
 let is_matchable {callee} Value.({method_name}, _) =

@@ -289,11 +289,11 @@ module DisjReady = struct
       | Some model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr ->
           let value = Domain.Val.make_null ~pos:NullSpecModel.null_pos instr_node in
           [Domain.store_reg astate (fst ret_typ) value]
-      | Some (AccessExpr.Primitive (Const.Cstr str)) when String.equal str NullSpecModel.empty_str ->
+      | Some (AccessExpr.Primitive (Const.Cstr str)) when String.equal str NullSpecModel.bot_str ->
           (* empty *)
           [astate]
       | Some (AccessExpr.Primitive const) ->
-          let value = Domain.Val.of_const const in
+          let value = Domain.eval astate node instr (Exp.Const const) in
           [Domain.store_reg astate (fst ret_typ) value]
       | Some model_aexpr ->
           (*TODO: *)
