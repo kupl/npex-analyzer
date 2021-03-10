@@ -1,6 +1,7 @@
 open! IStd
 open! Vocab
 module Val = SymDom.Val
+module Domain = SpecCheckerDomain
 
 (** constants *)
 let null_pos = -1
@@ -33,13 +34,21 @@ let abstract_type_from_typ typ =
 
 type abstract_value = ANull | Aintermediate [@@deriving compare]
 
+type method_kind = Static | Constructor | Virtual [@@deriving compare]
+
 let to_string_abstract_value = function ANull -> "Null" | Aintermediate -> "InterVal"
 
 module Key = struct
-  type t = {arg_length: int; model_index: int; ret_type: abstract_type; model_type: abstract_value}
+  type t =
+    { arg_length: int
+    ; model_index: int
+    ; ret_type: abstract_type
+    ; model_type: abstract_value
+    ; method_kind: method_kind }
   [@@deriving compare]
 
   let pp fmt {model_index; ret_type; model_type} =
+    (* TODO: print method kind *)
     let model_type_str = to_string_abstract_value model_type in
     let ret_typ_str = to_string_abstract_type ret_type in
     match model_index with
@@ -55,10 +64,12 @@ module Key = struct
         F.fprintf fmt "%s:....foo(..., ..., ..., %s)" ret_typ_str model_type_str
 
 
-  let default_of ret_type = (* NULL.foo() *) {arg_length= 1; model_index= 0; ret_type; model_type= ANull}
+  let default_of ret_type =
+    (* NULL.foo() *) {arg_length= 1; model_index= 0; ret_type; model_type= ANull; method_kind= Virtual}
 
-  let make ?(arg_length = 1) ?(model_index = 0) ?(model_type = ANull) ret_type =
-    {arg_length; model_index; ret_type; model_type}
+
+  let make ?(arg_length = 1) ?(model_index = 0) ?(model_type = ANull) ?(method_kind = Virtual) ret_type =
+    {arg_length; model_index; ret_type; model_type; method_kind}
 end
 
 module Value = struct
@@ -149,12 +160,24 @@ let add_models_to_learn x =
   add (Key.make ~arg_length:1 ~model_index:0 Aint) (Value.default_of "matches" AccessExpr.zero)
   |> (* null.matches() *)
   add (Key.make ~arg_length:2 ~model_index:0 Aint) (Value.default_of "remove" AccessExpr.zero)
+  |> (* null.isMarkUp() *)
+  add (Key.make ~arg_length:1 ~model_index:0 Aint) (Value.default_of "isMarkup" AccessExpr.zero)
+  |> (* deleteQuietly(null) *)
+  add (Key.make ~method_kind:Static Avoid) (Value.default_of "deleteQuietly" bot_value)
 
 
 let add_models_require_context x =
   x
   |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "toString" AccessExpr.null)
   |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "getString" empty_str_value)
+  |> (* init(this,null) -> null *)
+  add
+    (Key.make Avoid ~arg_length:2 ~model_index:1 ~method_kind:Constructor)
+    (Value.default_of "<init>" AccessExpr.null)
+  |> (* init(this,_,_,null,_,_) -> null *)
+  add
+    (Key.make Avoid ~arg_length:6 ~model_index:3 ~method_kind:Constructor)
+    (Value.default_of "<init>" AccessExpr.null)
 
 
 let is_matchable {callee} Value.({method_name}, _) =
@@ -169,9 +192,20 @@ let compute_similarity {callee} Value.({method_name}, _) =
   String.compare (Procname.get_method callee) method_name |> Int.abs
 
 
+let model = (* TODO: from_json() *) default_models |> add_models_to_learn |> add_models_require_context
+
+let get_method_kind proc =
+  match proc with
+  | Procname.Java mthd when Procname.Java.is_static mthd ->
+      Static
+  | _ when Procname.is_constructor proc ->
+      Constructor
+  | _ ->
+      Virtual
+
+
 let get equal_values callee_context =
-  let {arg_values; ret_typ} = callee_context in
-  let model = (* TODO: from_json() *) default_models |> add_models_to_learn |> add_models_require_context in
+  let {arg_values; ret_typ; callee} = callee_context in
   let key_opt =
     List.find_mapi arg_values ~f:(fun index v : Key.t option ->
         let open SymDom.Val in
@@ -181,13 +215,15 @@ let get equal_values callee_context =
               let model_index = index in
               let ret_type = abstract_type_from_typ (snd ret_typ) in
               let model_type = ANull in
-              Some Key.{arg_length; model_index; ret_type; model_type}
+              let method_kind = get_method_kind callee in
+              Some Key.{arg_length; model_index; ret_type; model_type; method_kind}
           | Vheap (String s) when String.equal s inter_symstr ->
               let arg_length = List.length arg_values in
               let model_index = index in
               let ret_type = abstract_type_from_typ (snd ret_typ) in
               let model_type = Aintermediate in
-              Some Key.{arg_length; model_index; ret_type; model_type}
+              let method_kind = get_method_kind callee in
+              Some Key.{arg_length; model_index; ret_type; model_type; method_kind}
           | _ ->
               None))
   in
@@ -197,7 +233,7 @@ let get equal_values callee_context =
       match find_opt key model with
       | Some values ->
           (* TODO: design similarity function and select most similar one *)
-          L.d_printfln "Model candidates:@.%a" VSet.pp values ;
+          L.d_printfln "Model candidates:@,%a" VSet.pp values ;
           VSet.filter (is_matchable callee_context) values
           |> VSet.elements
           |> List.sort ~compare:(fun v1 v2 ->
@@ -207,5 +243,42 @@ let get equal_values callee_context =
           |> List.hd
       | None ->
           None )
+  | None ->
+      None
+
+
+let exec_null_model astate node instr ret_typ arg_typs callee =
+  let instr_node = InstrNode.of_pnode node instr in
+  function
+  | model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr && Procname.is_constructor callee ->
+      (* new A(null) -> null *)
+      let value = Domain.Val.make_null ~pos:null_pos instr_node in
+      let[@warning "-8"] Exp.Var id, _ = List.hd_exn arg_typs in
+      [Domain.store_reg astate id value]
+  | model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr ->
+      let value = Domain.Val.make_null ~pos:null_pos instr_node in
+      [Domain.store_reg astate (fst ret_typ) value]
+  | AccessExpr.Primitive (Const.Cstr str) when String.equal str bot_str ->
+      (* empty *)
+      [astate]
+  | AccessExpr.Primitive const ->
+      let value = Domain.eval astate node instr (Exp.Const const) in
+      [Domain.store_reg astate (fst ret_typ) value]
+  | model_aexpr ->
+      (*TODO: *)
+      L.progress "[TODO]: design eval function for %a@." AccessExpr.pp model_aexpr ;
+      [astate]
+
+
+let exec_null_model_opt astate node instr ret_typ arg_typs callee =
+  let arg_values =
+    (* TODO: optimize it *)
+    List.mapi arg_typs ~f:(fun i (arg_exp, _) -> Domain.eval astate node instr arg_exp ~pos:i)
+  in
+  let call_context = {arg_values; node; instr; ret_typ; arg_typs; callee} in
+  match get (Domain.equal_values astate) call_context with
+  | Some model_value ->
+      L.d_printfln "Null model found: %a@," AccessExpr.pp model_value ;
+      Some (exec_null_model astate node instr ret_typ arg_typs callee model_value)
   | None ->
       None
