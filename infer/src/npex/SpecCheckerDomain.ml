@@ -351,10 +351,10 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     try SymResolvedMap.construct astate callee_summary init_sym_resolved_map
     with Unexpected msg -> L.(die InternalError) "%s@.%a" msg Mem.pp callee_summary.mem
   in
-  L.d_printfln "[DEBUG]: init sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
-    init_sym_resolved_map ;
-  L.d_printfln "[DEBUG]: sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
-    sym_resolved_map ;
+  (* L.d_printfln "[DEBUG]: init sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+       init_sym_resolved_map ;
+     L.d_printfln "[DEBUG]: sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+       sym_resolved_map ; *)
   let mem', pc' =
     try
       ( SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
@@ -365,18 +365,20 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
          Caller mem: %a@. Msg: %s@."
         pp callee_summary SymResolvedMap.pp init_sym_resolved_map SymResolvedMap.pp sym_resolved_map pp astate msg
   in
+  let astate' =
+    { astate with
+      mem= mem'
+    ; pc= pc'
+    ; is_exceptional= callee_summary.is_exceptional
+    ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
+  in
   if PC.is_invalid pc' then (
-    L.d_printfln " - memory: %a@. - invalid pc: %a@." Mem.pp mem' PC.pp pc' ;
-    L.d_printfln " - original pc: %a@. - symresolved_map: %a@." PC.pp callee_summary.pc SymResolvedMap.pp
+    L.d_printfln "@.===== Summary is invalidated =====@." ;
+    L.d_printfln " - resolved state: %a@." pp astate' ;
+    L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
       sym_resolved_map ;
     None )
-  else
-    Some
-      { astate with
-        mem= mem'
-      ; pc= pc'
-      ; is_exceptional= callee_summary.is_exceptional
-      ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
+  else Some astate'
 
 
 (* Eval functions *)
