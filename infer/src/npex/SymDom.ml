@@ -495,7 +495,7 @@ module ValCore = struct
 
   let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
-  let is_abstract = function
+  let rec is_abstract = function
     | Vint symexp ->
         SymExp.is_top symexp
     | Vheap symheap ->
@@ -504,24 +504,30 @@ module ValCore = struct
         true
     | Bot ->
         true
+    | Vextern (_, args) ->
+        List.exists args ~f:is_abstract
     | _ ->
         false
 
 
-  let is_concrete = function
+  let rec is_concrete = function
     | Vint symexp ->
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_concrete symheap
+    | Vextern (_, args) ->
+        List.for_all args ~f:is_concrete
     | _ ->
         false
 
 
-  let is_constant = function
+  let rec is_constant = function
     | Vint symexp ->
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_null symheap
+    | Vextern (_, args) ->
+        List.for_all args ~f:is_constant
     | _ ->
         false
 
