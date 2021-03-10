@@ -504,6 +504,8 @@ module ValCore = struct
         true
     | Bot ->
         true
+    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
+        true
     | Vextern (_, args) ->
         List.exists args ~f:is_abstract
     | _ ->
@@ -515,6 +517,8 @@ module ValCore = struct
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_concrete symheap
+    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
+        false
     | Vextern (_, args) ->
         List.for_all args ~f:is_concrete
     | _ ->
