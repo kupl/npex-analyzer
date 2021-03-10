@@ -70,7 +70,7 @@ module S = struct
     | MethodCallAccess (proc, _) ->
         Procname.get_method proc
     | ArrayAccess _ ->
-        L.(die InternalError) "Array field is not supported"
+        "TODO"
 
 
   let to_string t = F.asprintf "%a" pp t
@@ -309,7 +309,7 @@ module Map = PrettyPrintable.MakePPMap (S)
 
 let is_abstract = function
   | AccessExpr (_, accesses) ->
-      List.exists accesses ~f:(function ArrayAccess _ -> true | _ -> false)
+      List.exists accesses ~f:(function ArrayAccess (Primitive _) -> false | ArrayAccess _ -> true | _ -> false)
   | _ ->
       false
 

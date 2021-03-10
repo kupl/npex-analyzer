@@ -109,7 +109,10 @@ let nullpoint_list = ref []
 
 let get_nullpoint_list program =
   if List.is_empty !nullpoint_list then
-    let results = List.map Config.error_report_json ~f:(from_error_report program) in
+    let results =
+      List.filter_map Config.error_report_json ~f:(fun json ->
+          try Some (from_error_report program json) with Unexpected _ -> None)
+    in
     if List.is_empty results then L.(die ExternalError) "No NullPoint Matched to error report@."
     else (
       nullpoint_list := results ;

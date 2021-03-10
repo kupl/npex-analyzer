@@ -200,4 +200,11 @@ let read_json_file_exn filepath =
 let source_file_from_string files filename =
   if Char.equal filename.[0] '/' then
     List.find_exn files ~f:(fun source_file -> String.(filename = SourceFile.to_abs_path source_file))
-  else List.find_exn files ~f:(fun source_file -> String.(filename = SourceFile.to_rel_path source_file))
+  else
+    match List.find files ~f:(fun source_file -> String.(filename = SourceFile.to_rel_path source_file)) with
+    | Some source_file ->
+        source_file
+    | None ->
+        raise
+          (Unexpected
+             (F.asprintf "Could not find %s from captured files@. - %a@." filename (Pp.seq SourceFile.pp) files))

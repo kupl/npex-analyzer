@@ -13,7 +13,24 @@ module SymHeap = SymDom.SymHeap
 module Reg = WeakMap.Make (Ident) (Val)
 
 module Mem = struct
+  (* Allocsite[Index] has null as default value 
+   * Other location has bottom as default value *)
   include WeakMap.Make (Loc) (Val)
+
+  let strong_update k v t =
+    match (k, v) with
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _), v when Val.is_null v && not (mem k t) ->
+        t
+    | _ ->
+        strong_update k v t
+
+
+  let find k t =
+    match k with
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
+        Val.default_null
+    | _ ->
+        find k t
 end
 
 type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
@@ -249,7 +266,7 @@ module SymResolvedMap = struct
         (fun l v acc_symvals ->
           let acc_symvals' = add_if_symbol v acc_symvals in
           match l with
-          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) ->
+          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) | Loc.Index (Loc.SymHeap (SymHeap.Symbol s), _) ->
               (* If symbolic location is re-defined, symbolic value does not exists on memory values*)
               add_if_symbol (Val.of_symheap (SymHeap.Symbol s)) acc_symvals'
           | _ ->
@@ -334,10 +351,10 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     try SymResolvedMap.construct astate callee_summary init_sym_resolved_map
     with Unexpected msg -> L.(die InternalError) "%s@.%a" msg Mem.pp callee_summary.mem
   in
-  L.d_printfln "[DEBUG]: init sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
-    init_sym_resolved_map ;
-  L.d_printfln "[DEBUG]: sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
-    sym_resolved_map ;
+  (* L.d_printfln "[DEBUG]: init sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+       init_sym_resolved_map ;
+     L.d_printfln "[DEBUG]: sym_resolved_map@. - %a@.====================================@." SymResolvedMap.pp
+       sym_resolved_map ; *)
   let mem', pc' =
     try
       ( SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
@@ -348,18 +365,20 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
          Caller mem: %a@. Msg: %s@."
         pp callee_summary SymResolvedMap.pp init_sym_resolved_map SymResolvedMap.pp sym_resolved_map pp astate msg
   in
+  let astate' =
+    { astate with
+      mem= mem'
+    ; pc= pc'
+    ; is_exceptional= callee_summary.is_exceptional
+    ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
+  in
   if PC.is_invalid pc' then (
-    L.d_printfln " - memory: %a@. - invalid pc: %a@." Mem.pp mem' PC.pp pc' ;
-    L.d_printfln " - original pc: %a@. - symresolved_map: %a@." PC.pp callee_summary.pc SymResolvedMap.pp
+    L.d_printfln "@.===== Summary is invalidated =====@." ;
+    L.d_printfln " - resolved state: %a@." pp astate' ;
+    L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
       sym_resolved_map ;
     None )
-  else
-    Some
-      { astate with
-        mem= mem'
-      ; pc= pc'
-      ; is_exceptional= callee_summary.is_exceptional
-      ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
+  else Some astate'
 
 
 (* Eval functions *)
@@ -384,7 +403,7 @@ let eval_binop binop v1 v2 =
   | Binop.Gt ->
       Val.lt v2 v1
   | Binop.Le ->
-      Val.lte v1 v1
+      Val.lte v1 v2
   | Binop.Ge ->
       Val.lte v2 v1
   | _ ->
@@ -411,9 +430,8 @@ let rec eval ?(pos = 0) astate node instr exp =
       Val.make_null (Node.of_pnode node instr) ~pos
   | Exp.Const (Cint intlit) ->
       Val.of_intlit intlit
-  | Exp.Const (Cfloat _) ->
-      (* TODO? *)
-      Val.top
+  | Exp.Const (Cfloat flit) ->
+      Val.of_float flit
   | Exp.Const (Cclass _) ->
       Val.unknown
   | Exp.Cast (_, e) ->
