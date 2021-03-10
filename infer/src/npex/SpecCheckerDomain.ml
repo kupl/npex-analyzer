@@ -428,9 +428,8 @@ let rec eval ?(pos = 0) astate node instr exp =
       Val.make_null (Node.of_pnode node instr) ~pos
   | Exp.Const (Cint intlit) ->
       Val.of_intlit intlit
-  | Exp.Const (Cfloat _) ->
-      (* TODO? *)
-      Val.top
+  | Exp.Const (Cfloat flit) ->
+      Val.of_float flit
   | Exp.Const (Cclass _) ->
       Val.unknown
   | Exp.Cast (_, e) ->

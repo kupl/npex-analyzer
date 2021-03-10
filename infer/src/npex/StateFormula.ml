@@ -16,6 +16,15 @@ let pp fmt (pc_formula, state_formula) =
   F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.pp pc_formula Formula.pp state_formula
 
 
+let ap_from_allocsite v =
+  match Val.get_class_name_opt v with
+  | Some name ->
+      let alloc_str = F.asprintf "%a" Typ.Name.pp name in
+      Const.Cstr alloc_str |> AccessExpr.of_const |> APSet.singleton
+  | None ->
+      APSet.empty
+
+
 let compute_ap_map formals mem =
   let field_map =
     Domain.Mem.fold
@@ -38,10 +47,9 @@ let compute_ap_map formals mem =
       let next_aps =
         match work with
         | Loc.IllTempVar _ | Loc.TempVar _ ->
-            (* incomparable *)
+            (* temps cannot be used for semantic equvalent checking *)
             APSet.empty
         | Loc.Var pv ->
-            (* add (pv, []) *)
             APSet.singleton (AccessExpr.of_pvar pv)
         | Loc.Field (l, fn) ->
             (* add ap_map(l).fn *)
@@ -100,21 +108,41 @@ let compute_ap_map formals mem =
   _compute init APMap.empty
 
 
-let rec val_to_ap mem ap_map : Val.t -> APSet.t = function
-  | Val.Vint SymDom.SymExp.(IntLit intlit) ->
+let rec val_to_ap (Domain.{mem} as astate) ap_map : Val.t -> APSet.t =
+  let open SymDom in
+  let compute_aps_pointsto v =
+    Domain.Mem.fold
+      (fun l v' acc -> if Val.equal v' v then APSet.union acc (APMap.find l ap_map) else acc)
+      mem APSet.empty
+  in
+  function
+  | Val.Vint SymExp.(IntLit intlit) ->
       APSet.singleton (AccessExpr.of_const (Const.Cint intlit))
-  | (Val.Vint SymDom.SymExp.(Symbol _) | Val.Vint SymDom.SymExp.(Extern _)) as v ->
-      Domain.Mem.fold
-        (fun l v' acc -> if SymDom.Val.equal v' v then APSet.union acc (APMap.find l ap_map) else acc)
-        mem APSet.empty
-  | Val.Vint _ ->
-      APSet.empty
-  | Val.Vheap SymDom.SymHeap.(Null _) ->
+  | Val.Vint SymExp.(FloatLit flit) ->
+      APSet.singleton (AccessExpr.of_const (Const.Cfloat flit))
+  | Val.Vheap SymHeap.(Null _) ->
       APSet.singleton AccessExpr.null
-  | Val.Vheap SymDom.SymHeap.(String str) ->
+  | Val.Vheap SymHeap.(String str) ->
       APSet.singleton (AccessExpr.of_const (Const.Cstr str))
-  | Val.Vheap sh ->
-      APMap.find (Loc.SymHeap sh) ap_map
+  | Val.Vheap (SymHeap.Allocsite _) as v ->
+      let aps = compute_aps_pointsto v in
+      APSet.union aps (ap_from_allocsite v)
+  | (Val.Vint SymExp.(Symbol _) | Val.Vheap (SymHeap.Symbol _)) as v ->
+      compute_aps_pointsto v
+  | (Val.Vheap SymHeap.(Extern _) | Val.Vint SymExp.(Extern _)) as v ->
+      let ap_of_v = compute_aps_pointsto v in
+      (* to make return = null from return = extern, extern = null *)
+      let equal_values =
+        Domain.equal_values astate v
+        |> Val.Set.of_list
+        |> Val.Set.filter (function
+             | Val.Vextern (_, args) ->
+                 List.for_all ~f:Val.is_concrete args
+             | _ as v ->
+                 Val.is_constant v)
+      in
+      let result = Val.Set.fold (fun v' -> APSet.union (val_to_ap astate ap_map v')) equal_values ap_of_v in
+      result
   | Val.Vexn _ ->
       (* TODO: modeling exn heap by type *)
       AccessExpr.of_const (Const.Cstr "Exn") |> APSet.singleton
@@ -128,7 +156,11 @@ let rec val_to_ap mem ap_map : Val.t -> APSet.t = function
         let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
         AccessExpr.append_access AccessExpr.dummy method_call_access
       in
-      let aps_args_list = List.map args ~f:(fun arg_value -> val_to_ap mem ap_map arg_value |> APSet.elements) in
+      let aps_args_list =
+        List.map args ~f:(fun arg_value ->
+            let arg_aps = val_to_ap astate ap_map arg_value in
+            APSet.elements arg_aps)
+      in
       let arg_aps_list =
         (* [v1, v2]: args
          * [[ap11, ap12], [ap21, ap22]]: aps_args_list
@@ -157,7 +189,7 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
     let filter_local = APSet.filter (not <<< AccessExpr.is_local proc_desc) in
     Domain.Mem.fold
       (fun l v ->
-        let aps_loc, aps_val = (APMap.find l ap_map, val_to_ap mem ap_map v) in
+        let aps_loc, aps_val = (APMap.find l ap_map, val_to_ap astate ap_map v) in
         (* L.debug_dev "@. - make %a = %a@." APSet.pp aps_loc APSet.pp aps_val ; *)
         let formula = make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) in
         (* L.debug_dev " - formula : %a@." Formula.pp formula ; *)
@@ -167,10 +199,10 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
   let pc_formula =
     let rec pathcond_to_formula = function
       | Domain.PathCond.PEquals (v1, v2) ->
-          let ap_set1, ap_set2 = (val_to_ap mem ap_map v1, val_to_ap mem ap_map v2) in
+          let ap_set1, ap_set2 = (val_to_ap astate ap_map v1, val_to_ap astate ap_map v2) in
           make_formula Binop.Eq ap_set1 ap_set2
       | Domain.PathCond.Not (Domain.PathCond.PEquals (v1, v2)) ->
-          let ap_set1, ap_set2 = (val_to_ap mem ap_map v1, val_to_ap mem ap_map v2) in
+          let ap_set1, ap_set2 = (val_to_ap astate ap_map v1, val_to_ap astate ap_map v2) in
           make_formula Binop.Ne ap_set1 ap_set2
       | _ ->
           (* TODO: *)
