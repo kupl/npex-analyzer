@@ -47,7 +47,7 @@ val remove_temps : t -> line:int -> Var.t list -> t
 
 val remove_pvar : t -> line:int -> pv:Pvar.t -> t
 
-val remove_locals : t -> locals:Pvar.t list -> t
+val remove_locals : t -> pdesc:Procdesc.t -> t
 
 val replace_value : t -> src:Val.t -> dst:Val.t -> t
 

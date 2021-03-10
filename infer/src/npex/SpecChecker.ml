@@ -83,47 +83,38 @@ module DisjReady = struct
         astate
 
 
+  let pathcond_from_prune astate node instr bexp =
+    match bexp with
+    | Exp.BinOp ((Binop.Eq as binop), e1, e2) | Exp.BinOp ((Binop.Ne as binop), e1, e2) ->
+        let value1 = Domain.eval ~pos:0 astate node instr e1 in
+        let value2 = Domain.eval ~pos:0 astate node instr e2 in
+        Some (Domain.PathCond.make_physical_equals binop value1 value2)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Eq as binop), e1, e2), _)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Ne as binop), e1, e2), _) ->
+        let value1 = Domain.eval ~pos:0 astate node instr e1 in
+        let value2 = Domain.eval ~pos:0 astate node instr e2 in
+        Some (Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation)
+    | Exp.Var _ as e ->
+        let value = Domain.eval ~pos:0 astate node instr e in
+        Some (Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.one)
+    | Exp.UnOp (Unop.LNot, (Exp.Var _ as e), _) ->
+        let value = Domain.eval ~pos:0 astate node instr e in
+        Some (Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.zero)
+    | _ ->
+        None
+
+
   let exec_prune astate node instr bexp =
-    let is_equal_predicate = function
-      | Exp.BinOp (Binop.Eq, _, _)
-      | Exp.BinOp (Binop.Ne, _, _)
-      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Eq, _, _), _)
-      | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Ne, _, _), _)
-      | Exp.Var _
-      | Exp.UnOp (Unop.LNot, Exp.Var _, _) ->
-          true
-      | _ ->
-          false
-    in
-    if is_equal_predicate bexp then (
-      let pathcond =
-        match bexp with
-        | Exp.BinOp ((Binop.Eq as binop), e1, e2) | Exp.BinOp ((Binop.Ne as binop), e1, e2) ->
-            let value1 = Domain.eval ~pos:0 astate node instr e1 in
-            let value2 = Domain.eval ~pos:0 astate node instr e2 in
-            Domain.PathCond.make_physical_equals binop value1 value2
-        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Eq as binop), e1, e2), _)
-        | Exp.UnOp (Unop.LNot, Exp.BinOp ((Binop.Ne as binop), e1, e2), _) ->
-            let value1 = Domain.eval ~pos:0 astate node instr e1 in
-            let value2 = Domain.eval ~pos:0 astate node instr e2 in
-            Domain.PathCond.make_physical_equals binop value1 value2 |> Domain.PathCond.make_negation
-        | Exp.Var _ as e ->
-            let value = Domain.eval ~pos:0 astate node instr e in
-            Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.one
-        | Exp.UnOp (Unop.LNot, (Exp.Var _ as e), _) ->
-            let value = Domain.eval ~pos:0 astate node instr e in
-            Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.zero
-        | _ as bexp ->
-            raise (Unexpected (F.asprintf "%a is not allowed as boolean expression in java" Exp.pp bexp))
-      in
-      L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
-      if Domain.PathCond.is_false pathcond then []
-      else if Domain.PathCond.is_true pathcond then [astate]
-      else Domain.add_pc astate pathcond )
-    else
-      (* Non-equal predicaate: just check whether bexp is true, not, or unknown *)
-      let value = Domain.eval astate node instr bexp in
-      if Domain.Val.is_true value then [astate] else if Domain.Val.is_false value then [] else [astate]
+    match pathcond_from_prune astate node instr bexp with
+    | Some pathcond ->
+        L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
+        if Domain.PathCond.is_false pathcond then []
+        else if Domain.PathCond.is_true pathcond then [astate]
+        else Domain.add_pc astate pathcond
+    | None ->
+        (* Non-equal predicaate: just check whether bexp is true, not, or unknown *)
+        let value = Domain.eval astate node instr bexp in
+        if Domain.Val.is_true value then [astate] else if Domain.Val.is_false value then [] else [astate]
 
 
   let add_non_null_constraints node instr e astate =
@@ -139,6 +130,7 @@ module DisjReady = struct
 
 
   let exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs =
+    L.d_printfln "no model found. exec unknown call" ;
     (* TODO: binding unknown values to arguments *)
     let _ = arg_typs in
     let instr_node = Node.of_pnode node instr in
@@ -245,35 +237,33 @@ module DisjReady = struct
     let ret_id, ret_type = ret_typ in
     match analyze_dependency callee with
     | Some (callee_pdesc, callee_summary) ->
-        L.d_printfln "Found %d summaries from %a"
-          (List.length (Summary.get_disjuncts callee_summary))
-          Procname.pp callee ;
-        let formals = Procdesc.get_pvar_formals callee_pdesc in
-        let formal_pvars = List.map formals ~f:fst in
         let ret_var = Procdesc.get_ret_var callee_pdesc in
-        let locals =
-          Procdesc.get_locals callee_pdesc |> List.map ~f:(fun ProcAttributes.{name} -> Pvar.mk name callee)
-        in
         let actual_values =
           List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
         in
-        Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary
-        |> List.map ~f:(fun astate' ->
-               let return_value =
-                 let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
-                 (* TODO: why this is happening? *)
-                 if Domain.Val.is_top _value then Domain.Val.of_typ ret_type else _value
-               in
-               let astate_ret_binded =
-                 if Domain.is_exceptional astate' then
-                   (* caller_return := callee_return *)
-                   let caller_ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
-                   Domain.store_loc astate' caller_ret_loc return_value
-                 else (* ret_id := callee_return *)
-                   Domain.store_reg astate' ret_id return_value
-               in
-               Domain.remove_locals ~locals:((ret_var :: formal_pvars) @ locals) astate_ret_binded)
+        let resolved_disjuncts = Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary in
+        L.d_printfln "%d states are instantiated from %d summaries from %a"
+          (List.length (Summary.get_disjuncts callee_summary))
+          (List.length resolved_disjuncts) Procname.pp callee ;
+        let bind_return astate' =
+          let return_value =
+            let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+            (* TODO: why this is happening? *)
+            if Domain.Val.is_top _value then Domain.Val.of_typ ret_type else _value
+          in
+          let astate_ret_binded =
+            if Domain.is_exceptional astate' then
+              (* caller_return := callee_return *)
+              let caller_ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+              Domain.store_loc astate' caller_ret_loc return_value
+            else (* ret_id := callee_return *)
+              Domain.store_reg astate' ret_id return_value
+          in
+          Domain.remove_locals ~pdesc:callee_pdesc astate_ret_binded
+        in
+        List.map resolved_disjuncts ~f:bind_return
     | None ->
+        L.d_printfln "no summary found" ;
         exec_model_proc astate analysis_data node instr callee ret_typ arg_typs
 
 
@@ -417,12 +407,9 @@ module DisjReady = struct
         [astate]
 
 
-  let filter_invalid_states astate = function
-    | Sil.Load {e= Var id} when Domain.is_unknown_id astate id ->
-        (* Undefined behavior (e.g., unhandled exceptional flow) *)
-        []
-    | Sil.Store {e2= Var id} when Domain.is_unknown_id astate id ->
-        (* Undefined behavior (e.g., unhandled exceptional flow) *)
+  let filter_invalid_states astate = (* State with unexpected flow (e.g., unhandled exception) *)
+    function
+    | (Sil.Load {e= Var id} | Sil.Store {e2= Var id}) when Domain.is_unknown_id astate id ->
         []
     | Sil.Call (_, _, arg_typs, _, _) ->
         let contains_unknown_id (arg_exp, _) =
@@ -435,10 +422,10 @@ module DisjReady = struct
 
   let exec_instr astate analysis_data cfg_node instr =
     let node = CFG.Node.underlying_node cfg_node in
-    let is_exn_handler () =
+    let is_exn_handler =
       Procdesc.Node.equal_nodekind Procdesc.Node.exn_handler_kind (Procdesc.Node.get_kind node)
     in
-    if Domain.is_exceptional astate && not (is_exn_handler ()) then
+    if Domain.is_exceptional astate && not is_exn_handler then
       (* If a state is exceptional, stop executing instruction until it met catch statement *)
       [astate]
     else

@@ -88,9 +88,12 @@ let remove_pvar astate ~line ~pv =
   else (* OPTIMIZATION: to enable physical equality *) astate
 
 
-let remove_locals astate ~locals =
-  List.fold locals ~init:astate ~f:(fun acc pv -> (* No temp variables in summary *)
-                                                  remove_pvar acc ~line:0 ~pv)
+let remove_locals astate ~pdesc =
+  let pname = Procdesc.get_proc_name pdesc in
+  let ret_var = Procdesc.get_ret_var pdesc in
+  let formal_pvars = Procdesc.get_pvar_formals pdesc |> List.map ~f:fst in
+  let locals = Procdesc.get_locals pdesc |> List.map ~f:(fun ProcAttributes.{name} -> Pvar.mk name pname) in
+  List.fold ((ret_var :: formal_pvars) @ locals) ~init:astate ~f:(fun acc pv -> remove_pvar acc ~line:0 ~pv)
 
 
 let remove_temps astate ~line vars =
