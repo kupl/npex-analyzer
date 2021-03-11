@@ -6,111 +6,74 @@ module L = Logging
 module S = struct
   exception UnconvertibleExpr of Exp.t
 
-  type method_call = Procname.t * t list
+  type t = base * access list [@@deriving compare]
 
-  and t = AccessExpr of Pvar.t * access list | Primitive of Const.t [@@deriving compare]
+  and base = Variable of Pvar.t | Primitive of Const.t
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
-  [@@deriving compare]
 
-  let dummy_pvar = Pvar.mk_tmp "" Procname.empty_block
+  and method_call = Procname.t * t list
 
-  let dummy = AccessExpr (dummy_pvar, [])
+  let of_pvar pv : t = (Variable pv, [])
 
-  (* Infer IntLit's compare does not distinguish pointernesses *)
-  type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
+  let of_const const : t = (Primitive const, [])
 
-  and pointerness = bool
+  let dummy_base = Primitive (Const.Cstr "NPEX_DUMMY")
 
-  let compare x y =
-    match (x, y) with
-    | Primitive (Cint i), Primitive (Cint j) when IntLit.isnull i || IntLit.isnull j ->
-        compare_literal_with_pointerness (i, IntLit.isnull i) (j, IntLit.isnull j)
-    | _ ->
-        compare x y
+  let dummy = (dummy_base, [])
 
+  let equal = [%compare.equal: t]
 
   let equal_access = [%compare.equal: access]
 
+  let equal_base = [%compare.equal: base]
+
   let rec pp fmt = function
-    | AccessExpr (base, accesses) when Pvar.equal base dummy_pvar ->
+    | base, accesses when equal_base base dummy_base ->
         (Pp.seq pp_access ~sep:".") fmt accesses
-    | AccessExpr (base, accesses) ->
-        pp_access_expr fmt (base, accesses)
-    | Primitive const ->
-        (Const.pp Pp.text) fmt const
-
-
-  and pp_access_expr fmt (base, accesses) =
-    match accesses with
-    | [] ->
+    | base, [] ->
         F.fprintf fmt "%a" pp_base base
-    | _ ->
+    | base, accesses ->
         F.fprintf fmt "%a.%a" pp_base base (Pp.seq pp_access ~sep:".") accesses
 
 
-  and pp_base fmt pv = F.fprintf fmt "%s" (Pvar.get_simplified_name pv)
-
-  and pp_method_call fmt (method_name, args) =
-    F.fprintf fmt "%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
+  and pp_base fmt = function
+    | Variable pv ->
+        F.fprintf fmt "%s" (Pvar.get_simplified_name pv)
+    | Primitive const ->
+        (Const.pp Pp.text) fmt const
 
 
   and pp_access fmt = function
     | FieldAccess fld ->
         Pp.of_string ~f:Fieldname.to_simplified_string fmt fld
-    | MethodCallAccess call ->
-        pp_method_call fmt call
+    | MethodCallAccess (method_name, args) ->
+        F.fprintf fmt "%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
     | ArrayAccess index ->
         F.fprintf fmt "[%a]" pp index
 
 
-  let to_string_access_simple = function
-    | FieldAccess fld ->
-        Fieldname.to_simplified_string fld
-    | MethodCallAccess (proc, _) ->
-        Procname.get_method proc
-    | ArrayAccess _ ->
-        "TODO"
-
-
   let to_string t = F.asprintf "%a" pp t
 
-  let of_pvar pv = AccessExpr (pv, [])
-
-  let of_const const = Primitive const
-
-  let equal_base t pv = match t with AccessExpr (base, _) -> Pvar.equal base pv | _ -> false
-
-  let equal = [%compare.equal: t]
-
-  let get_deref_field = function
-    | AccessExpr (pv, accesses) -> (
-      match List.rev accesses with
-      | hd :: _ ->
-          to_string_access_simple hd |> String.split ~on:'.' |> List.rev |> List.hd_exn
-      | [] ->
-          Pvar.get_simplified_name pv )
-    | Primitive (Cint intlit) when IntLit.isnull intlit ->
-        "null"
-    | _ ->
-        ""
+  let get_deref_field (base, accesses) =
+    match List.rev accesses |> List.hd with
+    | None ->
+        F.asprintf "%a" pp_base base
+    | Some last_access ->
+        F.asprintf "%a" pp_access last_access
 
 
-  let is_local pdesc =
+  let is_local pdesc (base, _) =
     let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
-    function
-    | AccessExpr (pv, _) when Pvar.is_global pv ->
+    match base with
+    | Variable pv when Pvar.is_global pv ->
         false
-    | AccessExpr (pv, _) when List.mem formals ~equal:Pvar.equal pv ->
+    | Variable pv when List.mem formals ~equal:Pvar.equal pv ->
         false
-    | AccessExpr _ ->
+    | Variable _ ->
         true
-    | _ ->
+    | Primitive _ ->
         false
-
-
-  let is_sub_expr ~(sub : t) aexpr =
-    match (aexpr, sub) with AccessExpr (base, _), AccessExpr (base', _) -> Pvar.equal base base' | _, _ -> false
 
 
   let rec chop_sub_aexpr ~sub access =
@@ -126,67 +89,46 @@ module S = struct
   let replace_by_map x ~f = f x
 
   let replace_sub original ~src ~dst =
-    match (src, dst, original) with
-    | AccessExpr (src_base, src_access), AccessExpr (dst_base, dst_access), AccessExpr (org_base, org_access)
-      when Pvar.equal src_base org_base -> (
+    let (src_base, src_access), (dst_base, dst_access), (org_base, org_access) = (src, dst, original) in
+    if equal_base src_base org_base then
       (* src:p.f1.f2, dst:q, original: p.f1.f2.f3 
        * output: q.f3, remaining: [f3] *)
       match chop_sub_aexpr ~sub:src_access org_access with
       | Some remaining ->
-          AccessExpr (dst_base, dst_access @ remaining)
+          (dst_base, dst_access @ remaining)
       | None ->
-          original )
-    | _ when equal src original ->
-        (* replace access-path to constant *)
-        dst
-    | _ ->
-        original
+          original
+    else original
 
 
-  let replace_base ~dst original =
-    match (dst, original) with
-    | AccessExpr (dst_base, dst_access), AccessExpr (_, access) ->
-        AccessExpr (dst_base, dst_access @ access)
-    | _ ->
-        L.(die InternalError) "Cannot replace constant expression"
+  let is_sub_expr ~(sub : t) aexpr = if equal aexpr (replace_sub ~src:sub ~dst:dummy aexpr) then false else true
 
-
-  let append_access t access =
-    match t with
-    | AccessExpr (base, accs) ->
-        AccessExpr (base, accs @ [access])
-    | _ ->
-        L.(die InternalError) "Cannot append access to constant"
-
+  let append_access (base, accs) access = (base, accs @ [access])
 
   module Cache = struct
     let cache = ref ProcVar.Map.empty
+
+    open IOption.Let_syntax
 
     let rec find_opt pdesc : Exp.t -> t option = function
       | Var id ->
           ProcVar.Map.find_opt (ProcVar.of_id (id, Procdesc.get_proc_name pdesc)) !cache
       | Cast (_, e) ->
           find_opt pdesc e
+      | Sizeof _ ->
+          Some (of_const (Cint IntLit.one))
       | Lvar pv when Pvar.is_frontend_tmp pv ->
           ProcVar.Map.find_opt (ProcVar.of_pvar pv) !cache
       | Lvar pv ->
-          Some (AccessExpr (pv, []))
-      | Lfield (e, fn, _) -> (
-        match find_opt pdesc e with
-        | Some (AccessExpr (base, access)) ->
-            Some (AccessExpr (base, access @ [FieldAccess fn]))
-        | Some (Primitive _) ->
-            L.(die InternalError) "Lfield should follow access expression"
-        | None ->
-            None )
+          Some (of_pvar pv)
+      | Lfield (e, fn, _) ->
+          let+ base_aexpr = find_opt pdesc e in
+          append_access base_aexpr (FieldAccess fn)
       | Const const ->
-          Some (Primitive const)
-      | Lindex (e1, e2) -> (
-        match (find_opt pdesc e1, find_opt pdesc e2) with
-        | Some (AccessExpr (base, access)), Some aexpr ->
-            Some (AccessExpr (base, access @ [ArrayAccess aexpr]))
-        | _ ->
-            L.(die InternalError) "Lindex should follow access expression" )
+          Some (of_const const)
+      | Lindex (e1, e2) ->
+          let+ base_aexpr = find_opt pdesc e1 and+ index_aexpr = find_opt pdesc e2 in
+          append_access base_aexpr (ArrayAccess index_aexpr)
       | _ ->
           None
 
@@ -209,27 +151,8 @@ module S = struct
       cache := ProcVar.Map.add (ProcVar.of_id (id, Procdesc.get_proc_name pdesc)) aexpr !cache
   end
 
-  let contain_method_call_access = function
-    | AccessExpr (_, accs) ->
-        List.exists accs ~f:(function MethodCallAccess _ -> true | _ -> false)
-    | _ ->
-        false
-
-
-  let get_base : t -> Pvar.t = function
-    | AccessExpr (base, _) ->
-        base
-    | _ ->
-        L.(die InternalError) "Cannot get base from primitive"
-
-
-  let compose_expr pdesc = function
-    | Exp.Const const ->
-        Primitive const
-    | Exp.Sizeof _ ->
-        Primitive (Cint IntLit.one)
-    | e ->
-        Cache.find pdesc e
+  let contain_method_call_access (_, accs) =
+    List.exists accs ~f:(function MethodCallAccess _ -> true | _ -> false)
 
 
   let do_instr pdesc instr =
@@ -240,14 +163,14 @@ module S = struct
       | Sil.Store {e1= Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
           Cache.add_pv pdesc pv (Cache.find pdesc e2)
       | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: args, _, CallFlags.{cf_virtual= true}) ->
-          let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
+          let arg_exprs = List.map args ~f:(fun (arg, _) -> Cache.find pdesc arg) in
           let ae = append_access (Cache.find pdesc (Var this)) (MethodCallAccess (mthd, arg_exprs)) in
           Cache.add_id pdesc ret ae
       | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: args, _, _) ->
           (* this.mthd(...) is not virtual invocation *)
           let this_aexpr = Cache.find pdesc (Var this) in
           if String.equal (to_string this_aexpr) "this" then
-            let arg_exprs = List.map args ~f:(fun (arg, _) -> compose_expr pdesc arg) in
+            let arg_exprs = List.map args ~f:(fun (arg, _) -> Cache.find pdesc arg) in
             let ae = append_access this_aexpr (MethodCallAccess (mthd, arg_exprs)) in
             Cache.add_id pdesc ret ae
           else ()
@@ -296,24 +219,41 @@ module S = struct
         L.(die InternalError) "Cannot convert %a@.AexprMap: %a@." Exp.pp exp Cache.pp !Cache.cache
 
 
-  let null = Primitive (Cint IntLit.null)
+  let null = of_const (Cint IntLit.null)
 
-  let zero = Primitive (Cint IntLit.zero)
+  let zero = of_const (Cint IntLit.zero)
 
-  let one = Primitive (Cint IntLit.one)
+  let one = of_const (Cint IntLit.one)
 end
 
 include S
 module Set = PrettyPrintable.MakePPSet (S)
 module Map = PrettyPrintable.MakePPMap (S)
 
-let is_abstract = function
-  | AccessExpr (_, accesses) ->
-      List.exists accesses ~f:(function ArrayAccess (Primitive _) -> false | ArrayAccess _ -> true | _ -> false)
-  | _ ->
+let rec is_abstract (base, accesses) = is_abstract_base base || List.exists accesses ~f:is_abstract_access
+
+and is_abstract_base _ = false
+
+and is_abstract_access = function
+  | FieldAccess _ ->
       false
+  | ArrayAccess index ->
+      is_abstract index
+  | MethodCallAccess (callee, args) ->
+      Procname.is_infer_undefined callee || List.exists args ~f:is_abstract
 
 
-let is_concrete = function AccessExpr _ -> false | Primitive _ -> true
+let rec is_concrete (base, accesses) = is_concrete_base base && List.exists accesses ~f:is_concrete_access
+
+and is_concrete_base = function Variable _ -> false | Primitive _ -> true
+
+and is_concrete_access = function
+  | FieldAccess _ ->
+      true
+  | ArrayAccess index ->
+      is_concrete index
+  | MethodCallAccess (callee, args) ->
+      (not (Procname.is_infer_undefined callee)) && List.for_all args ~f:is_concrete
+
 
 let is_different_type _ _ = false

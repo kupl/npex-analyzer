@@ -198,10 +198,7 @@ let all_checkers =
          [(checker, Clang); (checker, Java)]) }
   ; { checker= SpecChecker
     ; callbacks=
-        (let checker =
-           interprocedural Payloads.Fields.spec_checker
-             (if Config.npex_launch_spec_inference then SpecSynth.checker else SpecChecker.checker)
-         in
+        (let checker = interprocedural Payloads.Fields.spec_checker SpecChecker.checker in
          [(checker, Java)]) } ]
 
 

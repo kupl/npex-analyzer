@@ -277,7 +277,7 @@ module MakePC (Val : S) = struct
 
   let add pathcond pc =
     if PathCond.contains_absval pathcond || PathCond.is_valid pathcond then pc
-    else if PathCond.is_invalid pathcond then {pc with pc_set= PCSet.add PathCond.false_cond pc.pc_set}
+    else if PathCond.is_invalid pathcond then {pc with pc_set= PCSet.add pathcond pc.pc_set}
     else
       let transitives = compute_transitives pathcond pc in
       update_const_map pc transitives

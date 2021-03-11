@@ -149,6 +149,7 @@ if __name__ == '__main__':
     if args.apply_patch:
         patch_dir = f"{ROOT_DIR}/patches/{args.patch_id}"
         apply_patch(ROOT_DIR, patch_dir)
+        bug.capture_incremental(patch_dir)
     elif args.capture:
         bug.capture_all()
     elif args.inference:

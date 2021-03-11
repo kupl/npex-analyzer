@@ -1,31 +1,23 @@
 open! IStd
 module F = Format
 
-type t = AccessExpr of Pvar.t * access list | Primitive of Const.t
+type t = base * access list [@@deriving compare]
+
+and base = Variable of Pvar.t | Primitive of Const.t
 
 and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
 
-and method_call = Procname.t * t list [@@deriving compare]
+and method_call = Procname.t * t list
 
 val compare : t -> t -> int
 
 val equal : t -> t -> bool
 
-val equal_base : t -> Pvar.t -> bool
-
-val equal_access : access -> access -> bool
-
 val pp : F.formatter -> t -> unit
-
-val pp_access : F.formatter -> access -> unit
-
-val to_string : t -> string
 
 val of_pvar : Pvar.t -> t
 
 val of_const : Const.t -> t
-
-val get_base : t -> Pvar.t
 
 val get_deref_field : t -> string
 
@@ -36,8 +28,6 @@ val is_sub_expr : sub:t -> t -> bool
 val replace_sub : t -> src:t -> dst:t -> t
 
 val replace_by_map : t -> f:(t -> t) -> t
-
-val replace_base : dst:t -> t -> t
 
 val append_access : t -> access -> t
 
