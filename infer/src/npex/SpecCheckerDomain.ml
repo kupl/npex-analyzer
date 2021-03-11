@@ -48,8 +48,6 @@ let leq ~lhs ~rhs = phys_equal lhs rhs
 
 let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}
 
-let fold_memory {mem} ~init ~f = Mem.fold (fun l v acc -> f acc l v) mem init
-
 (* type get_summary = Procname.t -> t option *)
 
 (* Basic Queries *)
@@ -321,15 +319,6 @@ module SymResolvedMap = struct
             update_resolved_loc (base, accesses) typ (Loc.append_index base_loc ~index) acc
         | Symbol.Global (_, _), _ ->
             L.(die InternalError) "Invalid symbol: %a@." Symbol.pp (base, accesses))
-
-
-  let rec resolve_pc sym_resolved_map = function
-    | PathCond.PEquals (v1, v2) ->
-        PathCond.PEquals (resolve_val sym_resolved_map v1, resolve_val sym_resolved_map v2)
-    | PathCond.Not pc ->
-        PathCond.Not (resolve_pc sym_resolved_map pc)
-    | PathCond.Equals (v1, v2) ->
-        PathCond.Equals (resolve_val sym_resolved_map v1, resolve_val sym_resolved_map v2)
 
 
   let replace_mem sym_resolved_map mem_to_resolve mem_to_update =

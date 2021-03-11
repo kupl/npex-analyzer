@@ -427,14 +427,14 @@ let rec subtyps_of program typ =
   List.fold fields ~init:TypSet.empty ~f:(fun acc (_, typ', _) -> TypSet.union (subtyps_of program typ') acc)
 
 
-let is_primitive_type Typ.{desc} = match desc with Tint _ | Tfloat _ | Tfun _ -> true | _ -> false
+let is_primitive_type Typ.{desc} = match desc with Tint _ | Tfloat _ | Tfun -> true | _ -> false
 
 let is_consistent_type t1 t2 =
   if Typ.is_pointer_to_void t1 || Typ.is_pointer_to_void t2 then true
   else if is_primitive_type t1 && is_primitive_type t2 then true
   else
     match (t1.Typ.desc, t2.Typ.desc) with
-    | Tfun _, Tfun _ ->
+    | Tfun, Tfun ->
         true
     | Tvoid, Tvoid ->
         true

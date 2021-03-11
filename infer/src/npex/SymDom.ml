@@ -178,7 +178,7 @@ module SymExp = struct
   type t = IntLit of IntLit.t | FloatLit of float | Symbol of Symbol.t | Extern of Allocsite.t | IntTop
   [@@deriving compare]
 
-  let rec pp fmt = function
+  let pp fmt = function
     | IntLit intlit ->
         IntLit.pp fmt intlit
     | FloatLit flit ->

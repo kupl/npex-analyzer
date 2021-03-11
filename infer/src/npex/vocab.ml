@@ -20,7 +20,7 @@ let is_catch_var pv = String.is_prefix (Pvar.to_string pv) ~prefix:"CatchVar"
 
 let pp_instr = Sil.pp_instr ~print_types:true Pp.text
 
-let get_line node = Location.(Procdesc.Node.get_loc node).line
+let[@warning "-33"] get_line node = Location.(Procdesc.Node.get_loc node).line
 
 let id_func x = x
 
