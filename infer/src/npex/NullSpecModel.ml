@@ -119,11 +119,11 @@ let _model = ref None
 
 let from_json () = match !_model with None -> (* TODO: *) empty | Some model -> model
 
-let bot_value = AccessExpr.Primitive (Cstr bot_str)
+let bot_value = AccessExpr.of_const (Cstr bot_str)
 
-let empty_str_value = AccessExpr.Primitive (Cstr "")
+let empty_str_value = AccessExpr.of_const (Cstr "")
 
-let zero_float_value = AccessExpr.Primitive (Cfloat 0.0)
+let zero_float_value = AccessExpr.of_const (Cfloat 0.0)
 
 let default_models =
   empty
@@ -258,10 +258,10 @@ let exec_null_model astate node instr ret_typ arg_typs callee =
   | model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr ->
       let value = Domain.Val.make_null ~pos:null_pos instr_node in
       [Domain.store_reg astate (fst ret_typ) value]
-  | AccessExpr.Primitive (Const.Cstr str) when String.equal str bot_str ->
+  | model_aexpr when AccessExpr.equal model_aexpr bot_value ->
       (* empty *)
       [astate]
-  | AccessExpr.Primitive const ->
+  | AccessExpr.Primitive const, [] ->
       let value = Domain.eval astate node instr (Exp.Const const) in
       [Domain.store_reg astate (fst ret_typ) value]
   | model_aexpr ->
