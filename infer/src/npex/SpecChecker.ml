@@ -441,9 +441,32 @@ end
 
 module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
 
-let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> Analyzer.invariant_map =
- fun ({InterproceduralAnalysis.proc_desc} as interproc) ->
-  let analysis_data = DisjReady.analysis_data interproc in
+let summary_serializer : Summary.t Serialization.serializer =
+  Serialization.create_serializer Serialization.Key.summary
+
+
+let is_all_target_funs_analyzed : DisjReady.analysis_data -> bool =
+  let is_analyzed proc =
+    Filename.concat Config.npex_summary_dir (Procname.to_filename proc ^ ".specs")
+    |> DB.filename_from_string
+    |> Serialization.read_from_file summary_serializer
+    |> Option.is_some
+  in
+  fun {npe_list} ->
+    if Config.npex_launch_spec_inference then
+      match npe_list with
+      | Some npe_list ->
+          List.map npe_list ~f:NullPoint.get_procname |> List.for_all ~f:is_analyzed
+      | None ->
+          L.(die ExternalError) "No null point parsed"
+    else if Config.npex_launch_spec_verifier then
+      (* TODO: how to check whether the target method is analyzed? *)
+      false
+    else false
+
+
+let compute_invariant_map : DisjReady.analysis_data -> Analyzer.invariant_map =
+ fun ({interproc= {proc_desc}} as analysis_data) ->
   let formals = Procdesc.get_pvar_formals proc_desc in
   Analyzer.exec_pdesc ~do_narrowing:false
     ~initial:[SpecCheckerDomain.init_with_formals formals]
@@ -452,7 +475,7 @@ let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> An
 
 let cached_compute_invariant_map =
   let cache_get, cache_set = Procname.UnitCache.create () in
-  fun ({InterproceduralAnalysis.proc_desc} as analysis_data) ->
+  fun (DisjReady.{interproc= {proc_desc}} as analysis_data) ->
     let pname = Procdesc.get_proc_name proc_desc in
     match cache_get pname with
     | Some inv_map ->
@@ -473,10 +496,12 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
       Summary.empty
 
 
-let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
+let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
+  let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
   if List.exists formals ~f:Pvar.is_frontend_tmp then (* In this case, IR might be incomplete *)
     None
+  else if is_all_target_funs_analyzed analysis_data then None
   else
     let inv_map = cached_compute_invariant_map analysis_data in
     let cfg = CFG.from_pdesc proc_desc in
