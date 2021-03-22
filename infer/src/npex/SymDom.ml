@@ -512,15 +512,11 @@ module ValCore = struct
         false
 
 
-  let rec is_concrete = function
+  let is_concrete = function
     | Vint symexp ->
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_concrete symheap
-    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
-        false
-    | Vextern (_, args) ->
-        List.for_all args ~f:is_concrete
     | _ ->
         false
 
@@ -530,6 +526,8 @@ module ValCore = struct
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_null symheap
+    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
+        false
     | Vextern (_, args) ->
         List.for_all args ~f:is_constant
     | _ ->
