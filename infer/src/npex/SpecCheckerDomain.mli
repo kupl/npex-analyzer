@@ -27,6 +27,8 @@ val is_npe_alternative : t -> bool
 
 val is_exceptional : t -> bool
 
+val all_values : t -> Val.Set.t
+
 val equal_values : t -> Val.t -> Val.t list
 
 val inequal_values : t -> Val.t -> Val.t list
@@ -68,3 +70,5 @@ val mark_npe_alternative : t -> t
 val unwrap_exception : t -> t
 
 val append_ctx : t -> int -> t
+
+val weak_join : t -> t -> t

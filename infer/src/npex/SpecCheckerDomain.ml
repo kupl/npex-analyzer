@@ -186,6 +186,22 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
   add_pc astate_reg_stored call_cond
 
 
+let all_values {reg; pc; mem} =
+  let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
+  let pc_values = PC.all_values pc |> Val.Set.of_list in
+  let mem_values =
+    Mem.fold
+      (fun l v ->
+        match l with
+        | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
+            Val.Set.add v <<< Val.Set.add (Val.Vheap sh)
+        | _ ->
+            Val.Set.add v)
+      mem Val.Set.empty
+  in
+  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values
+
+
 (* Summary resolve *)
 module SymResolvedMap = struct
   include PrettyPrintable.MakePPMonoMap (SymDom.Symbol) (Val)
@@ -263,27 +279,7 @@ module SymResolvedMap = struct
         | _ ->
             acc_symvals
       in
-      Mem.fold
-        (fun l v acc_symvals ->
-          let acc_symvals' = add_if_symbol v acc_symvals in
-          match l with
-          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) | Loc.Index (Loc.SymHeap (SymHeap.Symbol s), _) ->
-              (* If symbolic location is re-defined, symbolic value does not exists on memory values*)
-              add_if_symbol (Val.of_symheap (SymHeap.Symbol s)) acc_symvals'
-          | _ ->
-              acc_symvals')
-        callee_state.mem Val.Set.empty
-      |> PC.PCSet.fold
-           (fun cond acc_symvals ->
-             match cond with
-             | PathCond.PEquals (v1, v2)
-             | PathCond.Equals (v1, v2)
-             | PathCond.Not (PathCond.PEquals (v1, v2))
-             | PathCond.Not (PathCond.Equals (v1, v2)) ->
-                 add_if_symbol v1 acc_symvals |> add_if_symbol v2
-             | _ ->
-                 L.(die InternalError) "Invalid path-codition : %a@." PathCond.pp cond)
-           (PC.to_pc_set callee_state.pc)
+      Val.Set.fold add_if_symbol (all_values callee_state) Val.Set.empty
     in
     let symvals = List.sort (Val.Set.elements symvals_to_resolve) ~compare:Val.compare in
     let update_resolved_loc s typ resolved_loc acc =
@@ -476,3 +472,44 @@ let append_ctx astate offset =
   in
   let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
   {astate with reg; mem; pc}
+
+
+let weak_join lhs rhs =
+  (* Assumption: reg = empty, flags are equal *)
+  if phys_equal lhs rhs then lhs
+  else
+    let mem_weak_join =
+      let open Mem in
+      fun lhs rhs ->
+        let is_important_loc = function
+          | Loc.Var pv ->
+              Pvar.is_return pv
+          | Loc.Field (Loc.Var gv, _) | Loc.Index (Loc.Var gv, _) ->
+              Pvar.is_global gv
+          | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
+              SymHeap.is_symbolic sh
+          | _ ->
+              false
+        in
+        mapi
+          (fun l v ->
+            if Val.is_constant v && is_important_loc l && mem l rhs then Val.weak_join v (find l rhs) else v)
+          lhs
+    in
+    let pc_weak_join =
+      let open PC in
+      fun lhs rhs ->
+        let is_important_value = Val.is_symbolic in
+        let const_map =
+          ConstMap.mapi
+            (fun v c ->
+              if is_important_value v && Val.is_constant c && ConstMap.mem v rhs.const_map then
+                Val.weak_join v (ConstMap.find v rhs.const_map)
+              else c)
+            lhs.const_map
+        in
+        {lhs with const_map}
+    in
+    let mem = mem_weak_join lhs.mem rhs.mem in
+    let pc = pc_weak_join lhs.pc rhs.pc in
+    {lhs with mem; pc}

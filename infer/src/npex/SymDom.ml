@@ -655,6 +655,28 @@ module ValCore = struct
 
   let rec replace_by_map x ~f =
     match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_by_map ~f)) | _ -> f x
+
+
+  let weak_join lhs rhs =
+    match (lhs, rhs) with
+    | _, _ when equal lhs rhs ->
+        lhs
+    | _, Bot ->
+        lhs
+    | Vint _, Vint _ when is_constant lhs && is_constant rhs ->
+        intTop
+    | _ ->
+        (* TODO: define join case *)
+        lhs
+
+
+  let rec get_subvalues = function
+    | Vextern (_, args) as v ->
+        v :: List.concat_map args ~f:get_subvalues
+    | Vexn v ->
+        v :: get_subvalues v
+    | _ as v ->
+        [v]
 end
 
 module Val = struct
