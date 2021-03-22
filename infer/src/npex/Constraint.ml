@@ -195,6 +195,12 @@ module MakePC (Val : S) = struct
     ConstMap.fold (fun v const -> PCSet.add (PathCond.make_physical_equals Binop.Eq v const)) const_map pc_set
 
 
+  let all_values {pc_set; const_map} =
+    let values_in_non_const = List.concat_map (PCSet.elements pc_set) ~f:PathCond.vals_of_path_cond in
+    let values_in_const = ConstMap.fold (fun v c acc -> v :: c :: acc) const_map [] in
+    values_in_const @ values_in_non_const
+
+
   let empty = {pc_set= PCSet.empty; const_map= ConstMap.empty}
 
   let compare pc1 pc2 = PCSet.compare (to_pc_set pc1) (to_pc_set pc2)
@@ -328,7 +334,7 @@ module MakePC (Val : S) = struct
   let equal_values {pc_set; const_map} v =
     match ConstMap.find_opt v const_map with
     | Some const ->
-        [const]
+        [v; const]
     | None ->
         PCSet.fold
           (function
@@ -351,4 +357,10 @@ module MakePC (Val : S) = struct
         | _ ->
             fun acc -> acc)
       pc_set []
+
+
+  let filter_by_value ~f {pc_set; const_map} =
+    let pc_set = PCSet.filter (PathCond.contains_with_pred ~f) pc_set in
+    let const_map = ConstMap.filter (fun v c -> f v || f c) const_map in
+    {pc_set; const_map}
 end
