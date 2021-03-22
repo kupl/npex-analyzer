@@ -6,9 +6,22 @@ module L = Logging
 module S = struct
   exception UnconvertibleExpr of Exp.t
 
-  type t = base * access list [@@deriving compare]
+  (* Infer IntLit's compare does not distinguish pointernesses *)
+  type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
 
-  and base = Variable of Pvar.t | Primitive of Const.t
+  and pointerness = bool
+
+  type base = Variable of Pvar.t | Primitive of Const.t [@@deriving compare]
+
+  let compare_base x y =
+    match (x, y) with
+    | Primitive (Cint i), Primitive (Cint j) when IntLit.isnull i || IntLit.isnull j ->
+        compare_literal_with_pointerness (i, IntLit.isnull i) (j, IntLit.isnull j)
+    | _ ->
+        compare_base x y
+
+
+  type t = base * access list [@@deriving compare]
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
 
@@ -22,19 +35,19 @@ module S = struct
 
   let dummy = (dummy_base, [])
 
+  let equal_base = [%compare.equal: base]
+
   let equal = [%compare.equal: t]
 
   let equal_access = [%compare.equal: access]
 
-  let equal_base = [%compare.equal: base]
-
   let rec pp fmt = function
     | base, accesses when equal_base base dummy_base ->
-        (Pp.seq pp_access ~sep:".") fmt accesses
+        (Pp.seq pp_access) fmt accesses
     | base, [] ->
         F.fprintf fmt "%a" pp_base base
     | base, accesses ->
-        F.fprintf fmt "%a.%a" pp_base base (Pp.seq pp_access ~sep:".") accesses
+        F.fprintf fmt "%a%a" pp_base base (Pp.seq pp_access) accesses
 
 
   and pp_base fmt = function
@@ -46,9 +59,9 @@ module S = struct
 
   and pp_access fmt = function
     | FieldAccess fld ->
-        Pp.of_string ~f:Fieldname.to_simplified_string fmt fld
+        F.fprintf fmt ".%s" (Fieldname.get_field_name fld)
     | MethodCallAccess (method_name, args) ->
-        F.fprintf fmt "%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
+        F.fprintf fmt ".%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
     | ArrayAccess index ->
         F.fprintf fmt "[%a]" pp index
 
@@ -56,11 +69,15 @@ module S = struct
   let to_string t = F.asprintf "%a" pp t
 
   let get_deref_field (base, accesses) =
-    match List.rev accesses |> List.hd with
-    | None ->
+    match List.rev accesses with
+    | [] ->
         F.asprintf "%a" pp_base base
-    | Some last_access ->
-        F.asprintf "%a" pp_access last_access
+    | FieldAccess fld :: _ ->
+        Fieldname.get_field_name fld
+    | MethodCallAccess (method_name, _) :: _ ->
+        Procname.get_method method_name
+    | ArrayAccess _ :: _ ->
+        to_string (base, accesses)
 
 
   let is_local pdesc (base, _) =
