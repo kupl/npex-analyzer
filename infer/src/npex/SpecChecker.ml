@@ -46,7 +46,7 @@ module DisjReady = struct
             let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
             let null_state, non_null_state =
               ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
-              , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
+              , Domain.add_pc astate (Domain.PathCond.make_negation nullcond) )
             in
             null_state @ non_null_state
       | None ->
