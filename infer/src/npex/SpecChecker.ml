@@ -143,89 +143,12 @@ module DisjReady = struct
     [Domain.store_reg astate ret_id value]
 
 
-  let exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs =
-    let instr_node = Node.of_pnode node instr in
-    let this_type_loc =
-      let this_loc =
-        let arg_exp, _ = List.hd_exn arg_typs in
-        Domain.eval_lv astate node instr arg_exp
-      in
-      let field_class = Typ.Name.Java.from_string (String.capitalize fieldname) in
-      let field_name = Fieldname.make field_class fieldname in
-      Domain.Loc.append_field this_loc ~fn:field_name
-    in
-    let value =
-      if Domain.is_unknown_loc astate this_type_loc then Domain.Val.make_extern instr_node ret_typ
-      else Domain.read_loc astate this_type_loc
-    in
-    let astate_field_stored = Domain.store_loc astate this_type_loc value in
-    [Domain.store_reg astate_field_stored ret_id value]
-
-
   let exec_model_proc astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr callee (ret_id, ret_typ)
       arg_typs =
-    let[@warning "-8"] is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
     let instr_node = Node.of_pnode node instr in
     match callee with
-    | _ when String.equal "__cast" (Procname.get_method callee) ->
-        (* ret_typ of__cast is Boolean, but is actually pointer type *)
-        let arg_exp, _ = List.hd_exn arg_typs in
-        (* TODO: check the logic is correct *)
-        let value = Domain.eval astate node instr arg_exp in
-        (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
-        [Domain.store_reg astate ret_id value]
-    | _ when String.equal "__instanceof" (Procname.get_method callee) -> (
-      (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
-      match arg_typs with
-      | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
-          let arg_value = Domain.eval astate node instr arg_exp in
-          let typ_value = Typ.to_string typ |> Domain.Val.make_string in
-          let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
-          let null_states =
-            Domain.add_pc astate (null_cond Binop.Eq)
-            |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
-          in
-          let non_null_states =
-            Domain.add_pc astate (null_cond Binop.Ne)
-            |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
-          in
-          null_states @ non_null_states
-      | _ ->
-          L.(die InternalError) "wrong invariant of instanceof" )
-    | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
-        let arg_exp, _ = List.hd_exn arg_typs in
-        try
-          let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
-          [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-        with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate )
-    | _ when String.equal "invoke" (Procname.get_method callee) && Int.equal (List.length arg_typs) 3 ->
-        let[@warning "-8"] ((mthd_exp, _) :: (this_exp, _) :: (arg_arr_exp, _) :: _) = arg_typs in
-        let mthd_value = Domain.eval astate node instr mthd_exp in
-        let this_value = Domain.eval astate node instr this_exp in
-        let arg_arr_value = Domain.eval astate node instr arg_arr_exp in
-        let arg_values =
-          let arg_arr_loc = Domain.Val.to_loc arg_arr_value in
-          let rec collect_arg_values acc i loc =
-            let index_loc = Domain.Loc.append_index ~index:(SymDom.SymExp.of_intlit (IntLit.of_int i)) loc in
-            if Domain.is_unknown_loc astate index_loc then acc
-            else collect_arg_values (acc @ [Domain.read_loc astate index_loc]) (i + 1) index_loc
-          in
-          let arg_values = collect_arg_values [] 0 arg_arr_loc in
-          mthd_value :: this_value :: arg_values
-        in
-        let ex_state =
-          Domain.bind_exn_extern astate instr_node (Procdesc.get_ret_var proc_desc) callee arg_values
-        in
-        let normal_state = Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values in
-        normal_state @ ex_state
-    | _
-      when is_virtual
-           && String.is_prefix (Procname.get_method callee) ~prefix:"get"
-           && List.hd_exn arg_typs |> snd |> Typ.is_pointer ->
-        (* Modeling getter method (e.g., p.getField() returns p.field) *)
-        let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
-        exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
+    | _ when SpecCheckerModels.is_model callee instr ->
+        SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs
     | Procname.Java mthd ->
         (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
         let ret_typ = Procname.Java.get_return_typ mthd in
