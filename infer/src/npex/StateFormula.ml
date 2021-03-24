@@ -91,6 +91,9 @@ and val_to_ap astate : Val.t -> APSet.t = function
       symexp_to_ap astate symexp
   | Val.Vheap sh ->
       symheap_to_ap astate sh
+  | Val.Vexn (Val.Vheap (SymHeap.String str)) ->
+      (* Modeled exception (e.g., uncaught NPE) *)
+      AccessExpr.of_const (Const.Cstr (F.asprintf "Exn:%s" str)) |> APSet.singleton
   | Val.Vexn _ ->
       (* TODO: modeling exn heap by type *)
       AccessExpr.of_const (Const.Cstr "Exn") |> APSet.singleton

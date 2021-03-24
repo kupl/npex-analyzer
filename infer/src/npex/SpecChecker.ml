@@ -216,7 +216,7 @@ module DisjReady = struct
     L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ;
     let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
     let astate_exn = Domain.set_exception astate in
-    let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
+    let exn_value = Domain.Val.make_string "java.lang.NullPointerException" |> Domain.Val.to_exn in
     [Domain.store_loc astate_exn return_loc exn_value]
 
 
