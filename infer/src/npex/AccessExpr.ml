@@ -31,7 +31,7 @@ module S = struct
 
   let of_const const : t = (Primitive const, [])
 
-  let dummy_base = Primitive (Const.Cstr "NPEX_DUMMY")
+  let dummy_base = Variable (Pvar.mk_tmp "" (Procname.from_string_c_fun "NPEX_DUMMY"))
 
   let dummy = (dummy_base, [])
 
@@ -260,17 +260,8 @@ and is_abstract_access = function
       Procname.is_infer_undefined callee || List.exists args ~f:is_abstract
 
 
-let rec is_concrete (base, accesses) = is_concrete_base base && List.exists accesses ~f:is_concrete_access
+let rec is_concrete (base, accesses) = is_concrete_base base && List.is_empty accesses
 
 and is_concrete_base = function Variable _ -> false | Primitive _ -> true
-
-and is_concrete_access = function
-  | FieldAccess _ ->
-      true
-  | ArrayAccess index ->
-      is_concrete index
-  | MethodCallAccess (callee, args) ->
-      (not (Procname.is_infer_undefined callee)) && List.for_all args ~f:is_concrete
-
 
 let is_different_type _ _ = false
