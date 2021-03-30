@@ -8,8 +8,10 @@ import subprocess
 import shutil
 import csv
 import sys
+import random
 from pprint import pprint
 from typing import List
+from dataclasses import asdict, dataclass, field, fields, is_dataclass
 
 INFER_PATH = os.getenv("INFER_NPEX")
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true"
@@ -17,12 +19,45 @@ ROOT_DIR = os.getcwd()
 DEP_JAR_PATH = "/media/4tb/npex/NPEX_DATA/vfix_benchmarks/deps"
 
 
+@dataclass
+class Result:
+    number_of_patches: int
+    number_of_verified: int
+    number_of_rejected: int
+    time_to_verify: float
+    verified_patches: List[str]
+    rejected_patches: List[str]
+
+    def __init__(self):
+        self.number_of_patches = 0
+        self.number_of_verified = 0
+        self.number_of_rejected = 0
+        self.time_to_verify = 0.0
+        self.verified_patches = []
+        self.rejected_patches = []
+
+    def to_json(self):
+        with open(f"{ROOT_DIR}/result.json", 'w') as json_file:
+            json_file.write(json.dumps(asdict(self), indent=4))
+
+    def add_result(self, patch, result):
+        self.number_of_patches = self.number_of_patches + 1
+        if result:
+            self.number_of_verified = self.number_of_verified + 1
+            self.verified_patches.append(patch)
+        else:
+            self.number_of_rejected = self.number_of_rejected + 1
+            self.rejected_patches.append(patch)
+
 def apply_patch(project_root_dir, patch_dir):
     with open(f"{patch_dir}/patch.json", "r") as f:
         patch_json = json.load(f)
     source_path_to_patch = f"{project_root_dir}/{patch_json['original_filepath']}"
-    shutil.copy(f"{patch_dir}/patch.java", f"{source_path_to_patch}")
-    shutil.copy(f"{patch_dir}/patch.json", f"{ROOT_DIR}/patch.json")
+    shutil.copyfile(f"{patch_dir}/patch.java", f"{source_path_to_patch}")
+    shutil.copyfile(f"{patch_dir}/patch.json", f"{ROOT_DIR}/patch.json")
+
+
+
 
 
 class Bug:
@@ -44,13 +79,24 @@ class Bug:
             self.class_path = f"{jar_path}:{self.project_root_dir}:{self.project_root_dir}/../target/classes"
 
     def checkout(self):
-        if (subprocess.run("git checkout -f",
-                           shell=True,
-                           cwd=self.project_root_dir)).returncode != 0:
+        if os.path.isfile("/media/4tb/npex/NPEX_DATA/vfix_benchmarks/.git/index.lock"):
+            backoff = random.uniform(0.1, 2.0)
+            time.sleep(backoff)
+            self.checkout()
+        
+        ret = subprocess.run(f"git checkout -- {self.project_root_dir}", shell=True, cwd=self.project_root_dir)
+        if ret.returncode == 128:
+            backoff = random.uniform(0.1, 2.0)
+            time.sleep(backoff)
+            self.checkout()
+            
+        elif ret.returncode != 0:
             print(f"[FAIL] git checkout")
             exit(-1)
+        
 
     def capture_all(self):
+        self.checkout()
         if self.build_type == "mvn":
             build_cmd = f"mvn clean test-compile {MVN_OPT}"
         else:
@@ -66,14 +112,14 @@ class Bug:
         subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
 
     def inference(self):
-        self.capture_all()
+        start_time = time.time()
         spec_inference_cmd = f"{INFER_PATH} npex --spec-checker-only --spec-inference {self.error_reports_arg}"
         if (subprocess.run(spec_inference_cmd,
                            shell=True,
                            cwd=self.project_root_dir)).returncode != 0:
             print(f"[FAIL] spec inference")
-            return exit(-1)
-        return True
+            exit(-1)
+        return time.time() - start_time
 
     def capture_incremental(self, patch_dir):
         if self.build_type == "mvn":
@@ -103,32 +149,24 @@ class Bug:
     def verify_all(self):
         start_time = time.time()
         patches_dir = f"{self.project_root_dir}/patches"
-        dicts = []
 
-        self.checkout()
-
-        if self.inference() == None:
-            return None
-
+        result = Result()
+        
         for patch_dir in glob.glob(f"{patches_dir}/*"):
             patch_id = os.path.basename(patch_dir)
-            result_dict = {"patch_id": patch_id, "result": None}
             self.checkout()
-            result = self.verify(patch_dir)
-            if result == None or result == -2:
-                result_dict["result"] = "compile-failure"
-            elif result == 0:
-                result_dict["result"] = "verified"
+            verify_result = self.verify(patch_dir)
+            if verify_result == None or verify_result == -2:
+                result.add_result(patch_id, False)
+            elif verify_result == 0:
+                result.add_result(patch_id, True)
             else:
-                result_dict["result"] = "not-verified"
-            dicts.append(result_dict)
+                result.add_result(patch_id, False)
+        
+        result.time_to_verify = time.time() - start_time
+        result.to_json()
 
-        result_path = f"{self.project_root_dir}/spec-checking-results.csv"
-        with open(result_path, 'w', newline="") as f:
-            writer = csv.DictWriter(f, ["patch_id", "result"])
-            writer.writeheader()
-            writer.writerows(dicts)
-        print(f'Result has been stored at: {result_path}')
+        print(f'Result has been stored at: result.json')
         print(f'time to verify patches: {time.time() - start_time}')
 
 
@@ -139,6 +177,7 @@ if __name__ == '__main__':
     parser.add_argument("--apply_patch", default=False, action='store_true', help="patch_id")
     parser.add_argument("--capture", default=False, action='store_true', help="patch_id")
     parser.add_argument("--inference", default=False, action='store_true', help="patch_id")
+    parser.add_argument("--verify", default=False, action='store_true', help="patch_id")
     args = parser.parse_args()
     
     error_reports = glob.glob(
@@ -154,5 +193,9 @@ if __name__ == '__main__':
         bug.capture_all()
     elif args.inference:
         bug.inference()
+    elif args.verify:
+        bug.verify_all()
     else:
+        bug.capture_all()
+        bug.inference()
         bug.verify_all()
