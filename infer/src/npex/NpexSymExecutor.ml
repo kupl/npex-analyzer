@@ -434,17 +434,35 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
       let rec list_rev_append l1 l2 n =
         match l1 with hd :: tl when n > 0 -> list_rev_append tl (hd :: l2) (n - 1) | _ -> l2
       in
+      let shuffle_up_to l n =
+        let lhs, rhs = List.split_n l n in
+        let rec _shuffle (l : 'a list) (r : 'a list) (m : int) (acc : 'a list) : 'a list =
+          match (l, r, m) with
+          | _, _, 0 ->
+              acc
+          | [], [], _ ->
+              acc
+          | hdl :: tll, [], _ ->
+              _shuffle tll [] (m - 1) (hdl :: acc)
+          | [], hdr :: tlr, _ ->
+              _shuffle [] tlr (m - 1) (hdr :: acc)
+          | hdl :: _, _, 1 ->
+              hdl :: acc
+          | hdl :: tll, hdr :: tlr, m ->
+              _shuffle tll tlr (m - 2) (hdl :: hdr :: acc)
+        in
+        _shuffle lhs rhs n []
+      in
       fun lhs rhs ->
         if phys_equal lhs rhs then lhs
         else
           let (`UnderApproximateAfter n) = DConfig.join_policy in
           (* NPEX: prefer npe alternative states to normal states *)
-          let npe_alternative_states, non_alternatives =
-            List.partition_tf ~f:T.Domain.is_npe_alternative (lhs @ rhs)
-          in
+          let sorted = List.sort (lhs @ rhs) ~compare:(fun l r -> T.Domain.cardinal l - T.Domain.cardinal r) in
+          let npe_alternative_states, non_alternatives = List.partition_tf ~f:T.Domain.is_npe_alternative sorted in
           let npe_length = List.length npe_alternative_states in
-          if npe_length >= n then List.split_n npe_alternative_states n |> fst
-          else list_rev_append non_alternatives npe_alternative_states (n - npe_length)
+          if npe_length >= n then shuffle_up_to npe_alternative_states n
+          else npe_alternative_states @ shuffle_up_to non_alternatives (n - npe_length)
 
 
     (** check if elements of [disj] appear in [of_] in the same order, using pointer equality on

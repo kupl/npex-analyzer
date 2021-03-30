@@ -72,3 +72,5 @@ val unwrap_exception : t -> t
 val append_ctx : t -> int -> t
 
 val weak_join : t -> t -> t
+
+val cardinal : t -> int

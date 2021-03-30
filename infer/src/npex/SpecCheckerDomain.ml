@@ -44,6 +44,15 @@ let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional} =
     \ %b,%b@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
 
 
+let cardinal x =
+  let is_npe_alternative = if x.is_npe_alternative then 1 else 0 in
+  let is_exceptional = if x.is_exceptional then 1 else 0 in
+  let reg = Reg.cardinal x.reg in
+  let mem = Mem.cardinal x.mem in
+  let pc = PC.cardinal x.pc in
+  is_npe_alternative + is_exceptional + reg + mem + pc
+
+
 let leq ~lhs ~rhs = phys_equal lhs rhs
 
 let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}

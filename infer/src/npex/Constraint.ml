@@ -363,4 +363,7 @@ module MakePC (Val : S) = struct
     let pc_set = PCSet.filter (PathCond.contains_with_pred ~f) pc_set in
     let const_map = ConstMap.filter (fun v c -> f v || f c) const_map in
     {pc_set; const_map}
+
+
+  let cardinal {pc_set; const_map} = PCSet.cardinal pc_set + ConstMap.cardinal const_map
 end
