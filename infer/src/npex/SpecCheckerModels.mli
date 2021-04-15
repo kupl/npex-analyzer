@@ -1,8 +1,6 @@
 module Domain = SpecCheckerDomain
 
-val is_model : Procname.t -> Sil.instr -> bool
-
-val exec_model :
+type exec =
      Domain.t
   -> Procdesc.t
   -> Procdesc.Node.t
@@ -11,3 +9,11 @@ val exec_model :
   -> Ident.t * Typ.t
   -> (Exp.t * Typ.t) list
   -> Domain.t list
+
+val is_model : Procname.t -> Sil.instr -> bool
+
+val exec_model : exec
+
+(* module Call : sig
+  val dispatch : (Tenv.t, exec, unit) ProcnameDispatcher.Call.dispatcher
+end *)

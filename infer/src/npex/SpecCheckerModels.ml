@@ -98,58 +98,245 @@ let invoke : model =
   (is_model, exec)
 
 
-let getter : model =
-  (* Modeling getter method (e.g., p.getField() returns p.field) *)
-  let is_model callee instr =
-    match instr with
-    | Sil.Call (_, _, arg_typs, _, {cf_virtual}) when cf_virtual ->
-        String.is_prefix (Procname.get_method callee) ~prefix:"get"
-        && List.hd_exn arg_typs |> snd |> Typ.is_pointer
-    | _ ->
-        false
-  in
-  let exec astate _ node instr callee (ret_id, ret_typ) arg_typs =
-    let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
-    let instr_node = Node.of_pnode node instr in
-    let this_type_loc =
-      let this_loc =
-        let arg_exp, _ = List.hd_exn arg_typs in
-        Domain.eval_lv astate node instr arg_exp
+(* For debugging *)
+let seql x y =
+  L.d_printfln " - compare class %s and %s" x y ;
+  String.equal x y
+
+
+let implements classes typename = List.exists classes ~f:(seql (Typ.Name.name typename))
+
+module Collection = struct
+  let mIsEmptyField = Fieldname.make (Typ.Name.Java.from_string "Collection") "mIsEmpty"
+
+  let classes =
+    [ "java.util.AbstractList"
+    ; "java.util.ArrayList"
+    ; "java.util.LinkedList"
+    ; "java.util.List"
+    ; "java.util.Iterator"
+    ; "java.util.Collection" ]
+
+
+  let init : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when Procname.Java.is_constructor mthd ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      [Domain.store_loc astate is_empty_field_loc Domain.Val.one]
+    in
+    (is_model, exec)
+
+
+  let read_field astate field_loc =
+    let astate =
+      if Domain.is_unknown_loc astate field_loc then Domain.resolve_unknown_loc astate Typ.int field_loc
+      else astate
+    in
+    (astate, Domain.read_loc astate field_loc)
+
+
+  let isEmpty : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal (Procname.get_method callee) "isEmpty" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      let astate', is_empty_value = read_field astate is_empty_field_loc in
+      [Domain.store_reg astate' ret_id is_empty_value]
+    in
+    (is_model, exec)
+
+
+  let iterator : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal (Procname.get_method callee) "iterator" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      let astate', is_empty_value = read_field astate is_empty_field_loc in
+      let iterator = SymDom.SymHeap.make_allocsite (Node.of_pnode node instr) in
+      let iterator_is_empty = Domain.Loc.append_field (Domain.Loc.SymHeap iterator) ~fn:mIsEmptyField in
+      let astate_stored = Domain.store_loc astate' iterator_is_empty is_empty_value in
+      [Domain.store_reg astate_stored ret_id (Domain.Val.of_symheap iterator)]
+    in
+    (is_model, exec)
+
+
+  let hasNext : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal (Procname.get_method callee) "hasNext" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      let astate', is_empty_value = read_field astate is_empty_field_loc in
+      if Domain.Val.is_true is_empty_value then [Domain.store_reg astate' ret_id Domain.Val.zero]
+      else if Domain.Val.is_false is_empty_value then [Domain.store_reg astate' ret_id Domain.Val.one]
+      else
+        let return_value = Domain.Val.neg_of is_empty_value in
+        [Domain.store_reg astate ret_id return_value]
+    in
+    (is_model, exec)
+
+
+  let add : model =
+    let is_model callee _ =
+      match callee with
+      | Procname.Java mthd when String.is_prefix (Procname.get_method callee) ~prefix:"add" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      let return_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
+      let astate_return_stored = Domain.store_reg astate ret_id return_value in
+      [Domain.store_loc astate_return_stored is_empty_field_loc Domain.Val.zero]
+    in
+    (is_model, exec)
+
+
+  let next : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when String.equal (Procname.get_method callee) "next"
+        ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      (* CAUTION: do not make constraint: next_value = next(iterator) *)
+      (* HEURISTIC: next always return next value other than NoSuchElement Exception *)
+      let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
+      let next_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.void_star in
+      let astate = Domain.store_reg astate ret_id next_value in
+      let astate = Domain.store_loc astate is_empty_field_loc is_empty_value in
+      let astate_empty =
+        Domain.add_pc astate (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.one)
       in
-      let field_class = Typ.Name.Java.from_string (String.capitalize fieldname) in
-      let field_name = Fieldname.make field_class fieldname in
-      Domain.Loc.append_field this_loc ~fn:field_name
+      let astate_non_empty =
+        Domain.add_pc astate (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.zero)
+      in
+      astate_empty @ astate_non_empty
     in
-    let value =
-      if Domain.is_unknown_loc astate this_type_loc then Domain.Val.make_extern instr_node ret_typ
-      else Domain.read_loc astate this_type_loc
+    (is_model, exec)
+
+
+  let models = [init; isEmpty; iterator; next; hasNext; add]
+end
+
+module IO = struct
+  let mStatus = Fieldname.make (Typ.Name.Java.from_string "Stream") "mStatus"
+
+  let classes =
+    ["java.io.FileInputStream"; "java.io.FileOutputStream"; "java.io.InputStream"; "java.io.OutputStream"]
+
+
+  let init : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when Procname.Java.is_constructor mthd ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
     in
-    let astate_field_stored = Domain.store_loc astate this_type_loc value in
-    [Domain.store_reg astate_field_stored ret_id value]
-  in
-  (is_model, exec)
+    let exec astate pdesc node instr callee _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let this_val = Domain.eval astate node instr this_exp in
+      let status_field_loc = Domain.Loc.append_field this_loc ~fn:mStatus in
+      let normal_state = Domain.store_loc astate status_field_loc Domain.Val.one in
+      let exceptional_state =
+        Domain.bind_exn_extern astate (Node.of_pnode node instr) (Procdesc.get_ret_var pdesc) callee [this_val]
+      in
+      normal_state :: exceptional_state
+    in
+    (is_model, exec)
 
 
-let hasNext : model =
-  (* TODO: more precise modeling with next 
-   * Current: a.hasNext() with same allocsite will return other value by a.next() *)
-  let is_model callee _ = String.equal "hasNext" (Procname.get_method callee) in
-  let exec astate _ _ _ _ (ret_id, _) _ = [Domain.store_reg astate ret_id Domain.Val.intTop] in
-  (is_model, exec)
+  let close : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when String.equal (Procname.get_method callee) "close"
+        ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate pdesc node instr callee _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let this_val = Domain.eval astate node instr this_exp in
+      let status_field_loc = Domain.Loc.append_field this_loc ~fn:mStatus in
+      let normal_state = Domain.store_loc astate status_field_loc Domain.Val.zero in
+      let exceptional_state =
+        Domain.bind_exn_extern astate (Node.of_pnode node instr) (Procdesc.get_ret_var pdesc) callee [this_val]
+      in
+      normal_state :: exceptional_state
+    in
+    (is_model, exec)
 
 
-(* let next : model =
-  let is_model callee instr =
-    match instr with
-    | Sil.Call (_, _, arg_typs, _, {cf_virtual}) when cf_virtual && Int.equal (List.length arg_typs) 1 ->
-        String.equal "next" (Procname.get_method callee)
-    | _ ->
-        false
-  in
-  let exec astate _ node instr _ (ret_id, _) arg_typs = [] in
-  (is_model, exec) *)
+  let read : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, _, _, _) when String.equal (Procname.get_method callee) "read" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate pdesc node instr callee (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_val = Domain.eval astate node instr this_exp in
+      (* CAUTION: do not make constraint: read_value = read(file) *)
+      let read_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.void_star in
+      let normal_state = Domain.store_reg astate ret_id read_value in
+      let exceptional_state =
+        Domain.bind_exn_extern astate (Node.of_pnode node instr) (Procdesc.get_ret_var pdesc) callee [this_val]
+      in
+      normal_state :: exceptional_state
+    in
+    (is_model, exec)
 
-let models : model list = [cast; instanceof; unwrap_exception; invoke; getter; hasNext]
+
+  let models = [init; close; read]
+end
+
+let models : model list = [cast; instanceof; unwrap_exception; invoke] @ Collection.models @ IO.models
 
 let find_model_opt callee instr = List.find models ~f:(fun (is_model, _) -> is_model callee instr)
 
@@ -162,3 +349,26 @@ let exec_model : exec =
       exec astate proc_desc node instr callee (ret_id, ret_typ) arg_typs
   | None ->
       []
+
+(* let cast = snd cast
+
+let instanceof = snd instanceof
+
+let unwrap_exception = snd unwrap_exception
+
+let invoke = snd invoke
+
+let getter_matcher _ callee_name = 
+
+module Call = struct
+  let dispatch : (Tenv.t, exec, unit) ProcnameDispatcher.Call.dispatcher =
+    let open ProcnameDispatcher.Call in
+    let match_builtin builtin _ s = String.equal s (Procname.get_method builtin) in
+    make_dispatcher
+      [ +match_builtin BuiltinDecl.__cast <>--> cast
+      ; +match_builtin BuiltinDecl.__instanceof <>--> instanceof
+      ; +match_builtin BuiltinDecl.__unwrap_exception <>--> unwrap_exception
+      ; +PatternMatch.Java.implements "java.lang.reflect.Method" &:: "invoke" <>--> invoke 
+      ; +PatternMatch.Java.implements "java.lang.reflect.Method" &:: "invoke" <>--> invoke 
+      ]
+end *)

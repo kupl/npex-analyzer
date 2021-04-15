@@ -135,25 +135,34 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
 
 
 let add_pc astate pathcond : t list =
-  let pc' = PC.add pathcond astate.pc in
-  if PC.is_invalid pc' then []
-  else
-    let pc_set = PC.to_pc_set pc' in
-    let astate' =
-      (* TODO: this may introduce scalability issues *)
-      (* replace an extern variable ex1 by ex2 if there exists ex1 = ex2
-                                          also if there exists exn (ex1) = exn (ex2)*)
-      PC.PCSet.fold
-        (fun cond acc ->
-          match cond with
-          | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
-          | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
-              replace_value astate ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
-          | _ ->
-              acc)
-        pc_set {astate with pc= pc'}
-    in
-    [astate']
+  let pathcond_neg_stripped =
+    (* neg(a) == true => a == false *)
+    match pathcond with
+    | PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v]))
+    | PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i))
+      when Procname.equal proc Val.proc_neg ->
+        PathCond.PEquals (v, Val.Vint (SymExp.IntLit (IntLit.neg i)))
+    | PathCond.Not (PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v])))
+    | PathCond.Not (PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i)))
+      when Procname.equal proc Val.proc_neg ->
+        PathCond.PEquals (v, Val.Vint (SymExp.IntLit i))
+    | _ ->
+        pathcond
+  in
+  let replace_extern astate pc_set =
+    (* HEURISTICS: replace an extern variable ex by v if there exists ex1 = ex2 or exn(ex) = exn(ex2) *)
+    PC.PCSet.fold
+      (fun cond astate_acc ->
+        match cond with
+        | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
+        | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
+            replace_value astate_acc ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
+        | _ ->
+            astate_acc)
+      pc_set astate
+  in
+  let pc' = PC.add pathcond_neg_stripped astate.pc in
+  if PC.is_invalid pc' then [] else [replace_extern {astate with pc= pc'} (PC.to_pc_set pc')]
 
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
