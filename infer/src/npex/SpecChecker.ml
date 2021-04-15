@@ -295,6 +295,14 @@ module DisjReady = struct
         let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
         [Domain.set_exception (Domain.store_loc astate loc value)]
+    | Sil.Store {e1= Exp.Lvar pv; e2= Exp.Const (Cint intlit); typ}
+      when IntLit.iszero intlit
+           && Procdesc.Node.get_succs node
+              |> List.hd_exn
+              |> Procdesc.Node.get_kind
+              |> Procdesc.Node.equal_nodekind Procdesc.Node.Join_node ->
+        (* for (i = 0; ...) *)
+        [Domain.store_loc astate (Domain.Loc.of_pvar pv) (Domain.Val.make_extern instr_node typ)]
     | Sil.Store {e1= Exp.Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
         let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
         let value = Domain.eval astate node instr e2 ~pos:0 in

@@ -227,9 +227,25 @@ module SymExp = struct
 
   let is_symbolic = function Symbol _ -> true | _ -> false
 
-  let add x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.add x y) | _ -> IntTop
+  let add x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        IntLit (IntLit.add x y)
+    | Extern _, _ | _, Extern _ ->
+        make_extern Node.dummy
+    | _ ->
+        IntTop
 
-  let sub x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.sub x y) | _ -> IntTop
+
+  let sub x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        IntLit (IntLit.sub x y)
+    | Extern _, _ | _, Extern _ ->
+        make_extern Node.dummy
+    | _ ->
+        IntTop
+
 
   let get_intlit = function IntLit il -> Some il | _ -> None
 
