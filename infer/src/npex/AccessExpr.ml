@@ -11,7 +11,7 @@ module S = struct
 
   and pointerness = bool
 
-  type base = Variable of Pvar.t | Primitive of Const.t [@@deriving compare]
+  type base = Formal of Pvar.t | Variable of Pvar.t | Primitive of Const.t [@@deriving compare]
 
   let compare_base x y =
     match (x, y) with
@@ -28,6 +28,8 @@ module S = struct
   and method_call = Procname.t * t list
 
   let of_pvar pv : t = (Variable pv, [])
+
+  let of_formal pv : t = (Formal pv, [])
 
   let of_const const : t = (Primitive const, [])
 
@@ -51,6 +53,8 @@ module S = struct
 
 
   and pp_base fmt = function
+    | Formal pv ->
+        F.fprintf fmt "$(%s)" (Pvar.get_simplified_name pv)
     | Variable pv ->
         F.fprintf fmt "%s" (Pvar.get_simplified_name pv)
     | Primitive const ->
@@ -83,6 +87,8 @@ module S = struct
   let is_local pdesc (base, _) =
     let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
     match base with
+    | Formal _ ->
+        false
     | Variable pv when Pvar.is_global pv ->
         false
     | Variable pv when List.mem formals ~equal:Pvar.equal pv ->
@@ -262,6 +268,6 @@ and is_abstract_access = function
 
 let rec is_concrete (base, accesses) = is_concrete_base base && List.is_empty accesses
 
-and is_concrete_base = function Variable _ -> false | Primitive _ -> true
+and is_concrete_base = function Primitive _ -> true | _ -> false
 
 let is_different_type _ _ = false

@@ -3,7 +3,7 @@ module F = Format
 
 type t = base * access list [@@deriving compare]
 
-and base = Variable of Pvar.t | Primitive of Const.t
+and base = Formal of Pvar.t | Variable of Pvar.t | Primitive of Const.t
 
 and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
 
@@ -16,6 +16,8 @@ val equal : t -> t -> bool
 val pp : F.formatter -> t -> unit
 
 val of_pvar : Pvar.t -> t
+
+val of_formal : Pvar.t -> t
 
 val of_const : Const.t -> t
 
