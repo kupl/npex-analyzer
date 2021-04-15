@@ -367,5 +367,16 @@ module MakePC (Val : S) = struct
     {pc_set; const_map}
 
 
+  let weak_join ~lhs ~rhs =
+    let pc_set = PCSet.inter lhs.pc_set rhs.pc_set in
+    let const_map =
+      ConstMap.merge
+        (fun _ c1_opt c2_opt ->
+          match (c1_opt, c2_opt) with Some c1, Some c2 when Val.equal c1 c2 -> Some c1 | _ -> None)
+        lhs.const_map rhs.const_map
+    in
+    {pc_set; const_map}
+
+
   let cardinal {pc_set; const_map} = PCSet.cardinal pc_set + ConstMap.cardinal const_map
 end

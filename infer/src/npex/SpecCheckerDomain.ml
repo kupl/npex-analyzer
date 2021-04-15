@@ -28,9 +28,14 @@ module Mem = struct
   let find k t =
     match k with
     | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
+        (* Newly allocated array has null as default value *)
+        (* TODO: what if primitive array? *)
         Val.default_null
     | _ ->
         find k t
+
+
+  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
 end
 
 type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
@@ -485,42 +490,30 @@ let append_ctx astate offset =
   {astate with reg; mem; pc}
 
 
+let unify ~base:lhs rhs =
+  let is_node_value = function
+    | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
+        true
+    | _ ->
+        false
+  in
+  Mem.fold
+    (fun l v_lhs acc ->
+      if is_node_value v_lhs then
+        let v_rhs = Mem.find l rhs.mem in
+        if is_node_value v_rhs && Val.equal v_lhs v_rhs then replace_value acc ~src:v_rhs ~dst:v_lhs else acc
+      else acc)
+    lhs.mem rhs
+
+
 let weak_join lhs rhs =
   (* Assumption: reg = empty, flags are equal *)
   if phys_equal lhs rhs then lhs
+  else if is_bottom lhs then rhs
+  else if is_bottom rhs then lhs
   else
-    let mem_weak_join =
-      let open Mem in
-      fun lhs rhs ->
-        let is_important_loc = function
-          | Loc.Var pv ->
-              Pvar.is_return pv
-          | Loc.Field (Loc.Var gv, _) | Loc.Index (Loc.Var gv, _) ->
-              Pvar.is_global gv
-          | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
-              SymHeap.is_symbolic sh
-          | _ ->
-              false
-        in
-        mapi
-          (fun l v ->
-            if Val.is_constant v && is_important_loc l && mem l rhs then Val.weak_join v (find l rhs) else v)
-          lhs
-    in
-    let pc_weak_join =
-      let open PC in
-      fun lhs rhs ->
-        let is_important_value = Val.is_symbolic in
-        let const_map =
-          ConstMap.mapi
-            (fun v c ->
-              if is_important_value v && Val.is_constant c && ConstMap.mem v rhs.const_map then
-                Val.weak_join v (ConstMap.find v rhs.const_map)
-              else c)
-            lhs.const_map
-        in
-        {lhs with const_map}
-    in
-    let mem = mem_weak_join lhs.mem rhs.mem in
-    let pc = pc_weak_join lhs.pc rhs.pc in
+    let rhs = unify ~base:lhs rhs in
+    (* TODO: should we define weak_join for reg? *)
+    let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
+    let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
     {lhs with mem; pc}
