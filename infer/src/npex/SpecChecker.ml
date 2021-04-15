@@ -46,7 +46,7 @@ module DisjReady = struct
             let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
             let null_state, non_null_state =
               ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
-              , Domain.add_pc astate_replaced (Domain.PathCond.make_negation nullcond) )
+              , Domain.add_pc astate (Domain.PathCond.make_negation nullcond) )
             in
             null_state @ non_null_state
       | None ->
@@ -143,7 +143,9 @@ module DisjReady = struct
     [Domain.store_reg astate ret_id value]
 
 
-  let exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs =
+  let exec_unknown_getter astate node instr callee (ret_id, ret_typ) arg_typs =
+    (* Modeling getter method (e.g., p.getField() returns p.field) *)
+    let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
     let instr_node = Node.of_pnode node instr in
     let this_type_loc =
       let this_loc =
@@ -162,124 +164,78 @@ module DisjReady = struct
     [Domain.store_reg astate_field_stored ret_id value]
 
 
-  let exec_model_proc astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr callee (ret_id, ret_typ)
-      arg_typs =
-    let[@warning "-8"] is_virtual = match instr with Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual in
-    let instr_node = Node.of_pnode node instr in
-    match callee with
-    | _ when String.equal "__cast" (Procname.get_method callee) ->
-        (* ret_typ of__cast is Boolean, but is actually pointer type *)
-        let arg_exp, _ = List.hd_exn arg_typs in
-        (* TODO: check the logic is correct *)
-        let value = Domain.eval astate node instr arg_exp in
-        (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
-        [Domain.store_reg astate ret_id value]
-    | _ when String.equal "__instanceof" (Procname.get_method callee) -> (
-      (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
-      match arg_typs with
-      | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
-          let arg_value = Domain.eval astate node instr arg_exp in
-          let typ_value = Typ.to_string typ |> Domain.Val.make_string in
-          let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
-          let null_states =
-            Domain.add_pc astate (null_cond Binop.Eq)
-            |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
-          in
-          let non_null_states =
-            Domain.add_pc astate (null_cond Binop.Ne)
-            |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
-          in
-          null_states @ non_null_states
-      | _ ->
-          L.(die InternalError) "wrong invariant of instanceof" )
-    | _ when String.equal "__unwrap_exception" (Procname.get_method callee) -> (
-        let arg_exp, _ = List.hd_exn arg_typs in
-        try
-          let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
-          [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-        with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate )
-    | _ when String.equal "invoke" (Procname.get_method callee) && Int.equal (List.length arg_typs) 3 ->
-        let[@warning "-8"] ((mthd_exp, _) :: (this_exp, _) :: (arg_arr_exp, _) :: _) = arg_typs in
-        let mthd_value = Domain.eval astate node instr mthd_exp in
-        let this_value = Domain.eval astate node instr this_exp in
-        let arg_arr_value = Domain.eval astate node instr arg_arr_exp in
-        let arg_values =
-          let arg_arr_loc = Domain.Val.to_loc arg_arr_value in
-          let rec collect_arg_values acc i loc =
-            let index_loc = Domain.Loc.append_index ~index:(SymDom.SymExp.of_intlit (IntLit.of_int i)) loc in
-            if Domain.is_unknown_loc astate index_loc then acc
-            else collect_arg_values (acc @ [Domain.read_loc astate index_loc]) (i + 1) index_loc
-          in
-          let arg_values = collect_arg_values [] 0 arg_arr_loc in
-          mthd_value :: this_value :: arg_values
-        in
-        let ex_state =
-          Domain.bind_exn_extern astate instr_node (Procdesc.get_ret_var proc_desc) callee arg_values
-        in
-        let normal_state = Domain.bind_extern_value astate instr_node (ret_id, Typ.void_star) callee arg_values in
-        normal_state @ ex_state
-    | _
-      when is_virtual
-           && String.is_prefix (Procname.get_method callee) ~prefix:"get"
-           && List.hd_exn arg_typs |> snd |> Typ.is_pointer ->
-        (* Modeling getter method (e.g., p.getField() returns p.field) *)
-        let fieldname = String.chop_prefix_exn (Procname.get_method callee) ~prefix:"get" |> String.uncapitalize in
-        exec_unknown_get_proc astate node instr fieldname (ret_id, ret_typ) arg_typs
-    | Procname.Java mthd ->
-        (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
-        let ret_typ = Procname.Java.get_return_typ mthd in
-        let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-        Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
+  let is_model callee instr =
+    match instr with
+    | Sil.Call (_, _, arg_typs, _, {cf_virtual}) when cf_virtual ->
+        String.is_prefix (Procname.get_method callee) ~prefix:"get"
+        && List.hd_exn arg_typs |> snd |> Typ.is_pointer
     | _ ->
-        exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs
+        false
 
 
-  let exec_interproc_call astate
-      ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} as analysis_data) node instr ret_typ
-      arg_typs callee =
-    let ret_id, ret_type = ret_typ in
-    let instantiate_summary callee_pdesc callee_summary =
-      let ret_var = Procdesc.get_ret_var callee_pdesc in
-      let actual_values =
-        List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1))
+  let instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary =
+    let callee = Procdesc.get_proc_name callee_pdesc in
+    let ret_var = Procdesc.get_ret_var callee_pdesc in
+    let actual_values = List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1)) in
+    let resolved_disjuncts = Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary in
+    L.d_printfln "%d states are instantiated from %d summaries from %a"
+      (List.length (Summary.get_disjuncts callee_summary))
+      (List.length resolved_disjuncts) Procname.pp callee ;
+    let bind_return astate' =
+      let return_value =
+        let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
+        (* TODO: why this is happening? *)
+        if Domain.Val.is_top _value then Domain.Val.of_typ ret_typ else _value
       in
-      let resolved_disjuncts = Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary in
-      L.d_printfln "%d states are instantiated from %d summaries from %a"
-        (List.length (Summary.get_disjuncts callee_summary))
-        (List.length resolved_disjuncts) Procname.pp callee ;
-      let bind_return astate' =
-        let return_value =
-          let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
-          (* TODO: why this is happening? *)
-          if Domain.Val.is_top _value then Domain.Val.of_typ ret_type else _value
-        in
-        let astate_ret_binded =
-          if Domain.is_exceptional astate' then
-            (* caller_return := callee_return *)
-            let caller_ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
-            Domain.store_loc astate' caller_ret_loc return_value
-          else (* ret_id := callee_return *)
-            Domain.store_reg astate' ret_id return_value
-        in
-        Domain.remove_locals ~pdesc:callee_pdesc astate_ret_binded
+      let astate_ret_binded =
+        if Domain.is_exceptional astate' then
+          (* caller_return := callee_return *)
+          let caller_ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+          Domain.store_loc astate' caller_ret_loc return_value
+        else (* ret_id := callee_return *)
+          Domain.store_reg astate' ret_id return_value
       in
-      List.map resolved_disjuncts ~f:bind_return
+      Domain.remove_locals ~pdesc:callee_pdesc astate_ret_binded
     in
-    match analyze_dependency callee with
-    | Some (callee_pdesc, callee_summary) when Procname.is_constructor (Procdesc.get_proc_name callee_pdesc) ->
-        instantiate_summary callee_pdesc callee_summary
-        |> List.map ~f:(init_uninitialized_fields (Procdesc.get_proc_name callee_pdesc) arg_typs node instr)
-    | Some (callee_pdesc, callee_summary) ->
-        instantiate_summary callee_pdesc callee_summary
-    | None ->
-        L.d_printfln "no summary found" ;
-        exec_model_proc astate analysis_data node instr callee ret_typ arg_typs
+    List.map resolved_disjuncts ~f:bind_return
 
 
-  let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
+  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
+      (ret_id, ret_typ) arg_typs callee =
+    (* TODO: refactoring *)
+    if SpecCheckerModels.is_model callee instr then
+      SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs
+    else
+      match analyze_dependency callee with
+      | Some (callee_pdesc, callee_summary) when Procname.is_constructor (Procdesc.get_proc_name callee_pdesc) ->
+          instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary
+          |> List.map ~f:(init_uninitialized_fields (Procdesc.get_proc_name callee_pdesc) arg_typs node instr)
+      | Some (callee_pdesc, callee_summary) ->
+          instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary
+      | None -> (
+          let instr_node = Node.of_pnode node instr in
+          L.d_printfln "*** No Summary Found ***" ;
+          match (instr, callee) with
+          | Sil.Call (_, _, _, _, {cf_virtual}), _
+            when cf_virtual
+                 && List.hd_exn arg_typs |> snd |> Typ.is_pointer
+                 && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
+              exec_unknown_getter astate node instr callee (ret_id, ret_typ) arg_typs
+          | _, Procname.Java mthd ->
+              (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
+              let ret_typ = Procname.Java.get_return_typ mthd in
+              let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+              Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
+          | _ ->
+              let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+              Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values )
+
+
+  let exec_interproc_call astate ({interproc= InterproceduralAnalysis.{proc_desc}} as analysis_data) node instr
+      ret_typ arg_typs callee =
+    (* TODO: design selector between callee model and caller model *)
     if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
-      match NullSpecModel.exec_null_model_opt astate node instr ret_typ arg_typs callee with
+      match NullSpecModel.exec_null_model_opt astate proc_desc node instr ret_typ arg_typs callee with
       | Some alternative_states ->
           alternative_states
       | None ->
@@ -293,7 +249,7 @@ module DisjReady = struct
     L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ;
     let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
     let astate_exn = Domain.set_exception astate in
-    let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
+    let exn_value = Domain.Val.make_string "java.lang.NullPointerException" |> Domain.Val.to_exn in
     [Domain.store_loc astate_exn return_loc exn_value]
 
 
@@ -339,6 +295,14 @@ module DisjReady = struct
         let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
         [Domain.set_exception (Domain.store_loc astate loc value)]
+    | Sil.Store {e1= Exp.Lvar pv; e2= Exp.Const (Cint intlit); typ}
+      when IntLit.iszero intlit
+           && Procdesc.Node.get_succs node
+              |> List.hd_exn
+              |> Procdesc.Node.get_kind
+              |> Procdesc.Node.equal_nodekind Procdesc.Node.Join_node ->
+        (* for (i = 0; ...) *)
+        [Domain.store_loc astate (Domain.Loc.of_pvar pv) (Domain.Val.make_extern instr_node typ)]
     | Sil.Store {e1= Exp.Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
         let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
         let value = Domain.eval astate node instr e2 ~pos:0 in
@@ -436,14 +400,37 @@ end
 module DisjunctiveConfig : TransferFunctions.DisjunctiveConfig = struct
   let join_policy = `UnderApproximateAfter 20
 
-  let widen_policy = `UnderApproximateAfterNumIterations 1
+  let widen_policy = `UnderApproximateAfterNumIterations 2
 end
 
 module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
 
-let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> Analyzer.invariant_map =
- fun ({InterproceduralAnalysis.proc_desc} as interproc) ->
-  let analysis_data = DisjReady.analysis_data interproc in
+let summary_serializer : Summary.t Serialization.serializer =
+  Serialization.create_serializer Serialization.Key.summary
+
+
+let is_all_target_funs_analyzed : DisjReady.analysis_data -> bool =
+  let is_analyzed proc =
+    Filename.concat Config.npex_summary_dir (Procname.to_filename proc ^ ".specs")
+    |> DB.filename_from_string
+    |> Serialization.read_from_file summary_serializer
+    |> Option.is_some
+  in
+  fun {npe_list} ->
+    if Config.npex_launch_spec_inference then
+      match npe_list with
+      | Some npe_list ->
+          List.map npe_list ~f:NullPoint.get_procname |> List.for_all ~f:is_analyzed
+      | None ->
+          L.(die ExternalError) "No null point parsed"
+    else if Config.npex_launch_spec_verifier then
+      (* TODO: how to check whether the target method is analyzed? *)
+      false
+    else false
+
+
+let compute_invariant_map : DisjReady.analysis_data -> Analyzer.invariant_map =
+ fun ({interproc= {proc_desc}} as analysis_data) ->
   let formals = Procdesc.get_pvar_formals proc_desc in
   Analyzer.exec_pdesc ~do_narrowing:false
     ~initial:[SpecCheckerDomain.init_with_formals formals]
@@ -452,7 +439,7 @@ let compute_invariant_map : SpecCheckerSummary.t InterproceduralAnalysis.t -> An
 
 let cached_compute_invariant_map =
   let cache_get, cache_set = Procname.UnitCache.create () in
-  fun ({InterproceduralAnalysis.proc_desc} as analysis_data) ->
+  fun (DisjReady.{interproc= {proc_desc}} as analysis_data) ->
     let pname = Procdesc.get_proc_name proc_desc in
     match cache_get pname with
     | Some inv_map ->
@@ -473,10 +460,12 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
       Summary.empty
 
 
-let checker ({InterproceduralAnalysis.proc_desc} as analysis_data) =
+let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
+  let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
   if List.exists formals ~f:Pvar.is_frontend_tmp then (* In this case, IR might be incomplete *)
     None
+  else if is_all_target_funs_analyzed analysis_data then None
   else
     let inv_map = cached_compute_invariant_map analysis_data in
     let cfg = CFG.from_pdesc proc_desc in

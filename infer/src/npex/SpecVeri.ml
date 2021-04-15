@@ -41,15 +41,15 @@ let verify proc_desc summary_inferenced summary_patched =
   if Config.debug_mode then List.iteri specs_patched ~f:print_spec ;
   let check_sat f1 f2 =
     let result = Formula.check_sat (fst f1) (fst f2) in
-    L.progress "===== check sat =====@. - lhs:@.%a@. - rhs:@.%a@. - result: %b@." StateFormula.pp f1
-      StateFormula.pp f2 result ;
+    (* L.progress "===== check sat =====@. - lhs:@.%a@. - rhs:@.%a@. - result: %b@." StateFormula.pp f1
+       StateFormula.pp f2 result ; *)
     result
   in
   let check_valid f1 f2 =
     let pc1, pc2 = (snd f1, snd f2) in
     let result = Formula.check_valid pc1 pc2 in
-    L.progress "===== check validity =====@. - lhs: %a@. - rhs: %a@. - result: %b@." Formula.pp pc1 Formula.pp pc2
-      result ;
+    (* L.progress "===== check validity =====@. - lhs: %a@. - rhs: %a@. - result: %b@." Formula.pp pc1 Formula.pp pc2
+       result ; *)
     result
   in
   (not (List.is_empty specs_inferenced))
@@ -63,8 +63,8 @@ let launch ~get_summary ~get_original_summary =
   let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
   let target_proc = Patch.get_method patch in
   let target_pdesc = Program.pdesc_of program target_proc in
-  let summary_inferenced = get_original_summary target_proc |> SpecCheckerSummary.get_disjuncts in
-  let summary_patched = get_summary target_proc |> SpecCheckerSummary.get_disjuncts in
+  let summary_inferenced = get_original_summary target_proc |> SpecCheckerSummary.get_local_disjuncts in
+  let summary_patched = get_summary target_proc |> SpecCheckerSummary.get_local_disjuncts in
   let result = verify target_pdesc summary_inferenced summary_patched in
   if result then (
     L.progress "[SUCCESS]: the patch is verified w.r.t. specification@." ;

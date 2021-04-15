@@ -1,8 +1,6 @@
 open! IStd
 module Domain = SpecCheckerDomain
 
-module APSet : AbstractDomain.FiniteSetS with type elt = AccessExpr.t
-
 type t
 
 type get_summary = Procname.t -> t option
@@ -16,3 +14,5 @@ val resolve_summary : Domain.t -> actual_values:Domain.Val.t list -> callee_pdes
 val to_summary : Procdesc.t -> Domain.t list -> t
 
 val get_disjuncts : t -> Domain.t list
+
+val get_local_disjuncts : t -> Domain.t list

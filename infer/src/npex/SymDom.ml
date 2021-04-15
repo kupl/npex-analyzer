@@ -227,9 +227,25 @@ module SymExp = struct
 
   let is_symbolic = function Symbol _ -> true | _ -> false
 
-  let add x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.add x y) | _ -> IntTop
+  let add x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        IntLit (IntLit.add x y)
+    | Extern _, _ | _, Extern _ ->
+        make_extern Node.dummy
+    | _ ->
+        IntTop
 
-  let sub x y = match (x, y) with IntLit x, IntLit y -> IntLit (IntLit.sub x y) | _ -> IntTop
+
+  let sub x y =
+    match (x, y) with
+    | IntLit x, IntLit y ->
+        IntLit (IntLit.sub x y)
+    | Extern _, _ | _, Extern _ ->
+        make_extern Node.dummy
+    | _ ->
+        IntTop
+
 
   let get_intlit = function IntLit il -> Some il | _ -> None
 
@@ -271,16 +287,7 @@ module LocCore = struct
 
   let equal = [%compare.equal: t]
 
-  let append_index l ~index =
-    match (l, index) with
-    | Var _, SymExp.IntLit _
-    | SymHeap _, SymExp.IntLit _
-    | Field _, SymExp.IntLit _
-    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
-        Index (l, index)
-    | _ ->
-        Index (l, SymExp.IntTop)
-
+  let append_index l ~index = Index (l, index)
 
   let append_field ~fn l = Field (l, fn)
 
@@ -330,6 +337,17 @@ module Loc = struct
         is_extern l
     | _ ->
         false
+
+
+  let rec is_concrete = function
+    | Var _ | TempVar _ | IllTempVar _ ->
+        true
+    | SymHeap sh ->
+        SymHeap.is_concrete sh
+    | Field (l, _) ->
+        is_concrete l
+    | Index (l, _) ->
+        is_concrete l
 
 
   let is_null = function SymHeap h -> SymHeap.is_null h | _ -> false
@@ -512,15 +530,13 @@ module ValCore = struct
         false
 
 
-  let rec is_concrete = function
+  let is_extern = function Vheap (SymHeap.Extern _) | Vint (SymExp.Extern _) -> true | _ -> false
+
+  let is_concrete = function
     | Vint symexp ->
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_concrete symheap
-    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
-        false
-    | Vextern (_, args) ->
-        List.for_all args ~f:is_concrete
     | _ ->
         false
 
@@ -530,6 +546,8 @@ module ValCore = struct
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_null symheap
+    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
+        false
     | Vextern (_, args) ->
         List.for_all args ~f:is_constant
     | _ ->
@@ -550,6 +568,15 @@ module ValCore = struct
     if Typ.is_pointer typ then make_null ~pos:0 instr_node else if Typ.is_int typ then zero else top
 
 
+  let proc_neg = Procname.from_string_c_fun "NPEX_NEG"
+
+  let neg_of = function
+    | Vint _ as v ->
+        Vextern (proc_neg, [v])
+    | _ as v ->
+        L.(die InternalError) "Could not negate non-integer value %a" pp v
+
+
   let is_true x = equal x one
 
   let is_false x = equal x zero
@@ -563,19 +590,21 @@ module ValCore = struct
         false
 
 
-  let join x y =
-    match (x, y) with
-    | Bot, Bot ->
-        Bot
-    | Bot, v | v, Bot ->
-        v
-    | Vint i1, Vint i2 when SymExp.equal i1 i2 ->
-        Vint i1
-    | Vheap h1, Vheap h2 when SymHeap.equal h1 h2 ->
-        Vheap h1
+  let weak_join lhs rhs =
+    match (lhs, rhs) with
+    | _, _ when equal lhs rhs ->
+        lhs
+    | Vint _, _ | _, Vint _ ->
+        make_extern Node.dummy Typ.int
+    | Vheap _, _ | _, Vheap _ ->
+        make_extern Node.dummy Typ.void_star
+    | Vexn _, _ | _, Vexn _ ->
+        Vexn (make_extern Node.dummy Typ.void_star)
     | _ ->
-        Top
+        top
 
+
+  let join = weak_join
 
   let widen ~prev ~next ~num_iters:_ = join prev next
 
@@ -655,6 +684,15 @@ module ValCore = struct
 
   let rec replace_by_map x ~f =
     match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_by_map ~f)) | _ -> f x
+
+
+  let rec get_subvalues = function
+    | Vextern (_, args) as v ->
+        v :: List.concat_map args ~f:get_subvalues
+    | Vexn v ->
+        v :: get_subvalues v
+    | _ as v ->
+        [v]
 end
 
 module Val = struct

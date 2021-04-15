@@ -22,26 +22,36 @@ let symbol_to_ap : Symbol.t -> AccessExpr.t =
   in
   function
   | Symbol.Global (pv, access), accesses ->
-      List.fold (access :: accesses) ~init:(AccessExpr.of_pvar pv) ~f:append_symbol_access
+      List.fold (access :: accesses) ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
   | Symbol.Param pv, accesses ->
-      List.fold accesses ~init:(AccessExpr.of_pvar pv) ~f:append_symbol_access
+      List.fold accesses ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
 
 
 let rec symheap_to_ap astate : SymHeap.t -> APSet.t =
   let open SymDom in
+  (* TODO: find ap recursively, but without infinite-loop *)
+  let var_aps_of sh =
+    Domain.Mem.fold
+      (fun l v acc ->
+        if Loc.is_concrete l && Val.equal v (Val.of_symheap sh) then APSet.union (loc_to_ap astate l) acc else acc)
+      Domain.(astate.mem)
+      APSet.empty
+  in
   function
-  | SymHeap.Allocsite _ as sh -> (
-    (* allociste => type *)
-    match SymHeap.get_class_name_opt sh with
-    | Some name ->
-        let alloc_str = F.asprintf "%a" Typ.Name.pp name in
-        Const.Cstr alloc_str |> AccessExpr.of_const |> APSet.singleton
-    | None ->
-        APSet.empty )
+  | SymHeap.Allocsite _ as sh ->
+      let var_aps = var_aps_of sh in
+      (* allociste => type *)
+      (* match SymHeap.get_class_name_opt sh with
+         | Some name ->
+             let alloc_str = F.asprintf "%a" Typ.Name.pp name in
+             Const.Cstr alloc_str |> AccessExpr.of_const |> APSet.singleton |> APSet.union var_aps
+         | None -> *)
+      var_aps
   | SymHeap.Extern _ as sh ->
       (* extern => constant values *)
+      let var_aps = var_aps_of sh in
       let equal_values = Domain.equal_values astate (Val.Vheap sh) |> List.filter ~f:Val.is_constant in
-      List.fold equal_values ~init:APSet.empty ~f:(fun acc v -> APSet.union acc (val_to_ap astate v))
+      List.fold equal_values ~init:var_aps ~f:(fun acc v -> APSet.union acc (val_to_ap astate v))
   | SymHeap.Null _ ->
       APSet.singleton AccessExpr.null
   | SymHeap.String str ->
@@ -52,7 +62,17 @@ let rec symheap_to_ap astate : SymHeap.t -> APSet.t =
       APSet.empty
 
 
-and symexp_to_ap astate : SymExp.t -> APSet.t = function
+and symexp_to_ap astate : SymExp.t -> APSet.t =
+  (* TODO: find ap recursively, but without infinite-loop *)
+  let var_aps_of symexp =
+    Domain.Mem.fold
+      (fun l v acc ->
+        if Loc.is_concrete l && Val.equal v (Val.of_symexp symexp) then APSet.union (loc_to_ap astate l) acc
+        else acc)
+      Domain.(astate.mem)
+      APSet.empty
+  in
+  function
   | SymExp.IntLit intlit ->
       APSet.singleton (AccessExpr.of_const (Const.Cint intlit))
   | SymExp.FloatLit flit ->
@@ -61,14 +81,18 @@ and symexp_to_ap astate : SymExp.t -> APSet.t = function
       APSet.singleton (symbol_to_ap s)
   | SymExp.Extern _ as symexp ->
       (* extern => constant values *)
+      let var_aps = var_aps_of symexp in
       let equal_values = Domain.equal_values astate (Val.Vint symexp) |> List.filter ~f:Val.is_constant in
-      List.fold equal_values ~init:APSet.empty ~f:(fun acc v -> APSet.union acc (val_to_ap astate v))
+      List.fold equal_values ~init:var_aps ~f:(fun acc v -> APSet.union acc (val_to_ap astate v))
   | _ ->
       APSet.empty
 
 
 and loc_to_ap astate : Loc.t -> APSet.t = function
   | Loc.Var pv when Pvar.is_return pv ->
+      APSet.singleton (AccessExpr.of_formal pv)
+  | Loc.Var pv ->
+      (* Local predicate *)
       APSet.singleton (AccessExpr.of_pvar pv)
   | Loc.SymHeap sh ->
       symheap_to_ap astate sh
@@ -91,6 +115,9 @@ and val_to_ap astate : Val.t -> APSet.t = function
       symexp_to_ap astate symexp
   | Val.Vheap sh ->
       symheap_to_ap astate sh
+  | Val.Vexn (Val.Vheap (SymHeap.String str)) ->
+      (* Modeled exception (e.g., uncaught NPE) *)
+      AccessExpr.of_const (Const.Cstr (F.asprintf "Exn:%s" str)) |> APSet.singleton
   | Val.Vexn _ ->
       (* TODO: modeling exn heap by type *)
       AccessExpr.of_const (Const.Cstr "Exn") |> APSet.singleton
@@ -125,7 +152,7 @@ and val_to_ap astate : Val.t -> APSet.t = function
       APSet.empty
 
 
-let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
+let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.t * Formula.t =
   let make_formula binop ap_set1 ap_set2 =
     let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
     List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
@@ -133,6 +160,7 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
   in
   let summary_formula =
     let filter_local = APSet.filter (not <<< AccessExpr.is_local proc_desc) in
+    (* let filter_local = APSet.filter (fun _ -> true) in *)
     Domain.Mem.fold
       (fun l v ->
         let aps_loc, aps_val = (loc_to_ap astate l, val_to_ap astate v) in
@@ -154,7 +182,13 @@ let from_state proc_desc (Domain.{pc; mem} as astate) : Formula.t * Formula.t =
           (* TODO: *)
           Formula.empty
     in
+    let exception_cond =
+      let ab_ret_var = Pvar.mk_abduced_ret (Procdesc.get_proc_name proc_desc) Location.dummy in
+      let is_true = if is_exceptional then AccessExpr.one else AccessExpr.zero in
+      Predicate.make_physical_equals Binop.Eq (AccessExpr.of_pvar ab_ret_var) is_true
+    in
     Domain.PC.PCSet.fold (fun pc -> pathcond_to_formula pc |> Formula.join) (Domain.PC.to_pc_set pc) Formula.empty
+    |> Formula.add exception_cond
   in
   let debug_msg =
     F.asprintf

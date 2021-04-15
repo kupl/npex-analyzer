@@ -28,9 +28,14 @@ module Mem = struct
   let find k t =
     match k with
     | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
+        (* Newly allocated array has null as default value *)
+        (* TODO: what if primitive array? *)
         Val.default_null
     | _ ->
         find k t
+
+
+  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
 end
 
 type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
@@ -44,9 +49,20 @@ let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional} =
     \ %b,%b@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
 
 
+let cardinal x =
+  let is_npe_alternative = if x.is_npe_alternative then 1 else 0 in
+  let is_exceptional = if x.is_exceptional then 1 else 0 in
+  let reg = Reg.cardinal x.reg in
+  let mem = Mem.cardinal x.mem in
+  let pc = PC.cardinal x.pc in
+  is_npe_alternative + is_exceptional + reg + mem + pc
+
+
 let leq ~lhs ~rhs = phys_equal lhs rhs
 
 let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}
+
+let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
 
 (* type get_summary = Procname.t -> t option *)
 
@@ -70,6 +86,22 @@ let read_id {reg} id = Reg.find id reg
 let equal_values astate v = PC.equal_values astate.pc v
 
 let inequal_values astate v = PC.inequal_values astate.pc v
+
+let all_values {reg; pc; mem} =
+  let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
+  let pc_values = PC.all_values pc |> Val.Set.of_list in
+  let mem_values =
+    Mem.fold
+      (fun l v ->
+        match l with
+        | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
+            Val.Set.add v <<< Val.Set.add (Val.Vheap sh)
+        | _ ->
+            Val.Set.add v)
+      mem Val.Set.empty
+  in
+  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values
+
 
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
 
@@ -119,25 +151,34 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
 
 
 let add_pc astate pathcond : t list =
-  let pc' = PC.add pathcond astate.pc in
-  if PC.is_invalid pc' then []
-  else
-    let pc_set = PC.to_pc_set pc' in
-    let astate' =
-      (* TODO: this may introduce scalability issues *)
-      (* replace an extern variable ex1 by ex2 if there exists ex1 = ex2
-                                          also if there exists exn (ex1) = exn (ex2)*)
-      PC.PCSet.fold
-        (fun cond acc ->
-          match cond with
-          | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
-          | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
-              replace_value astate ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
-          | _ ->
-              acc)
-        pc_set {astate with pc= pc'}
-    in
-    [astate']
+  let pathcond_neg_stripped =
+    (* neg(a) == true => a == false *)
+    match pathcond with
+    | PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v]))
+    | PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i))
+      when Procname.equal proc Val.proc_neg ->
+        PathCond.PEquals (v, Val.Vint (SymExp.IntLit (IntLit.neg i)))
+    | PathCond.Not (PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v])))
+    | PathCond.Not (PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i)))
+      when Procname.equal proc Val.proc_neg ->
+        PathCond.PEquals (v, Val.Vint (SymExp.IntLit i))
+    | _ ->
+        pathcond
+  in
+  let replace_extern astate pc_set =
+    (* HEURISTICS: replace an extern variable ex by v if there exists ex1 = ex2 or exn(ex) = exn(ex2) *)
+    PC.PCSet.fold
+      (fun cond astate_acc ->
+        match cond with
+        | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
+        | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
+            replace_value astate_acc ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
+        | _ ->
+            astate_acc)
+      pc_set astate
+  in
+  let pc' = PC.add pathcond_neg_stripped astate.pc in
+  if PC.is_invalid pc' then [] else [replace_extern {astate with pc= pc'} (PC.to_pc_set pc')]
 
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}
@@ -153,7 +194,7 @@ let resolve_unknown_loc astate typ loc : t =
       let mem' = Mem.add loc symval astate.mem in
       {astate with mem= mem'}
   | None ->
-      store_loc astate loc (Val.of_typ typ)
+      store_loc astate loc (Val.make_extern Node.dummy typ)
 
 
 let bind_exn_extern astate instr_node ret_var callee arg_values =
@@ -263,27 +304,7 @@ module SymResolvedMap = struct
         | _ ->
             acc_symvals
       in
-      Mem.fold
-        (fun l v acc_symvals ->
-          let acc_symvals' = add_if_symbol v acc_symvals in
-          match l with
-          | Loc.Field (Loc.SymHeap (SymHeap.Symbol s), _) | Loc.Index (Loc.SymHeap (SymHeap.Symbol s), _) ->
-              (* If symbolic location is re-defined, symbolic value does not exists on memory values*)
-              add_if_symbol (Val.of_symheap (SymHeap.Symbol s)) acc_symvals'
-          | _ ->
-              acc_symvals')
-        callee_state.mem Val.Set.empty
-      |> PC.PCSet.fold
-           (fun cond acc_symvals ->
-             match cond with
-             | PathCond.PEquals (v1, v2)
-             | PathCond.Equals (v1, v2)
-             | PathCond.Not (PathCond.PEquals (v1, v2))
-             | PathCond.Not (PathCond.Equals (v1, v2)) ->
-                 add_if_symbol v1 acc_symvals |> add_if_symbol v2
-             | _ ->
-                 L.(die InternalError) "Invalid path-codition : %a@." PathCond.pp cond)
-           (PC.to_pc_set callee_state.pc)
+      Val.Set.fold add_if_symbol (all_values callee_state) Val.Set.empty
     in
     let symvals = List.sort (Val.Set.elements symvals_to_resolve) ~compare:Val.compare in
     let update_resolved_loc s typ resolved_loc acc =
@@ -476,3 +497,32 @@ let append_ctx astate offset =
   in
   let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
   {astate with reg; mem; pc}
+
+
+let unify ~base:lhs rhs =
+  let is_node_value = function
+    | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
+        true
+    | _ ->
+        false
+  in
+  Mem.fold
+    (fun l v_lhs acc ->
+      if is_node_value v_lhs then
+        let v_rhs = Mem.find l rhs.mem in
+        if is_node_value v_rhs && Val.equal v_lhs v_rhs then replace_value acc ~src:v_rhs ~dst:v_lhs else acc
+      else acc)
+    lhs.mem rhs
+
+
+let weak_join lhs rhs =
+  (* Assumption: reg = empty, flags are equal *)
+  if phys_equal lhs rhs then lhs
+  else if is_bottom lhs then rhs
+  else if is_bottom rhs then lhs
+  else
+    let rhs = unify ~base:lhs rhs in
+    (* TODO: should we define weak_join for reg? *)
+    let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
+    let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
+    {lhs with mem; pc}

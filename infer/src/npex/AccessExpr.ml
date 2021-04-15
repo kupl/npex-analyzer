@@ -6,9 +6,22 @@ module L = Logging
 module S = struct
   exception UnconvertibleExpr of Exp.t
 
-  type t = base * access list [@@deriving compare]
+  (* Infer IntLit's compare does not distinguish pointernesses *)
+  type literal_with_pointerness = IntLit.t * pointerness [@@deriving compare]
 
-  and base = Variable of Pvar.t | Primitive of Const.t
+  and pointerness = bool
+
+  type base = Formal of Pvar.t | Variable of Pvar.t | Primitive of Const.t [@@deriving compare]
+
+  let compare_base x y =
+    match (x, y) with
+    | Primitive (Cint i), Primitive (Cint j) when IntLit.isnull i || IntLit.isnull j ->
+        compare_literal_with_pointerness (i, IntLit.isnull i) (j, IntLit.isnull j)
+    | _ ->
+        compare_base x y
+
+
+  type t = base * access list [@@deriving compare]
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
 
@@ -16,28 +29,32 @@ module S = struct
 
   let of_pvar pv : t = (Variable pv, [])
 
+  let of_formal pv : t = (Formal pv, [])
+
   let of_const const : t = (Primitive const, [])
 
-  let dummy_base = Primitive (Const.Cstr "NPEX_DUMMY")
+  let dummy_base = Variable (Pvar.mk_tmp "" (Procname.from_string_c_fun "NPEX_DUMMY"))
 
   let dummy = (dummy_base, [])
+
+  let equal_base = [%compare.equal: base]
 
   let equal = [%compare.equal: t]
 
   let equal_access = [%compare.equal: access]
 
-  let equal_base = [%compare.equal: base]
-
   let rec pp fmt = function
     | base, accesses when equal_base base dummy_base ->
-        (Pp.seq pp_access ~sep:".") fmt accesses
+        (Pp.seq pp_access) fmt accesses
     | base, [] ->
         F.fprintf fmt "%a" pp_base base
     | base, accesses ->
-        F.fprintf fmt "%a.%a" pp_base base (Pp.seq pp_access ~sep:".") accesses
+        F.fprintf fmt "%a%a" pp_base base (Pp.seq pp_access) accesses
 
 
   and pp_base fmt = function
+    | Formal pv ->
+        F.fprintf fmt "$(%s)" (Pvar.get_simplified_name pv)
     | Variable pv ->
         F.fprintf fmt "%s" (Pvar.get_simplified_name pv)
     | Primitive const ->
@@ -46,9 +63,9 @@ module S = struct
 
   and pp_access fmt = function
     | FieldAccess fld ->
-        Pp.of_string ~f:Fieldname.to_simplified_string fmt fld
+        F.fprintf fmt ".%s" (Fieldname.get_field_name fld)
     | MethodCallAccess (method_name, args) ->
-        F.fprintf fmt "%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
+        F.fprintf fmt ".%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
     | ArrayAccess index ->
         F.fprintf fmt "[%a]" pp index
 
@@ -56,16 +73,22 @@ module S = struct
   let to_string t = F.asprintf "%a" pp t
 
   let get_deref_field (base, accesses) =
-    match List.rev accesses |> List.hd with
-    | None ->
+    match List.rev accesses with
+    | [] ->
         F.asprintf "%a" pp_base base
-    | Some last_access ->
-        F.asprintf "%a" pp_access last_access
+    | FieldAccess fld :: _ ->
+        Fieldname.get_field_name fld
+    | MethodCallAccess (method_name, _) :: _ ->
+        Procname.get_method method_name
+    | ArrayAccess _ :: _ ->
+        to_string (base, accesses)
 
 
   let is_local pdesc (base, _) =
     let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
     match base with
+    | Formal _ ->
+        false
     | Variable pv when Pvar.is_global pv ->
         false
     | Variable pv when List.mem formals ~equal:Pvar.equal pv ->
@@ -243,17 +266,8 @@ and is_abstract_access = function
       Procname.is_infer_undefined callee || List.exists args ~f:is_abstract
 
 
-let rec is_concrete (base, accesses) = is_concrete_base base && List.exists accesses ~f:is_concrete_access
+let rec is_concrete (base, accesses) = is_concrete_base base && List.is_empty accesses
 
-and is_concrete_base = function Variable _ -> false | Primitive _ -> true
-
-and is_concrete_access = function
-  | FieldAccess _ ->
-      true
-  | ArrayAccess index ->
-      is_concrete index
-  | MethodCallAccess (callee, args) ->
-      (not (Procname.is_infer_undefined callee)) && List.for_all args ~f:is_concrete
-
+and is_concrete_base = function Primitive _ -> true | _ -> false
 
 let is_different_type _ _ = false

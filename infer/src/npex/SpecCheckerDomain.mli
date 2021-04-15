@@ -15,6 +15,8 @@ val leq : lhs:t -> rhs:t -> bool
 
 val bottom : t
 
+val is_bottom : t -> bool
+
 val init_with_formals : (Pvar.t * Typ.t) list -> t
 
 val is_unknown_loc : t -> Loc.t -> bool
@@ -26,6 +28,8 @@ val is_valid_pc : t -> PathCond.t -> bool
 val is_npe_alternative : t -> bool
 
 val is_exceptional : t -> bool
+
+val all_values : t -> Val.Set.t
 
 val equal_values : t -> Val.t -> Val.t list
 
@@ -68,3 +72,7 @@ val mark_npe_alternative : t -> t
 val unwrap_exception : t -> t
 
 val append_ctx : t -> int -> t
+
+val weak_join : t -> t -> t
+
+val cardinal : t -> int

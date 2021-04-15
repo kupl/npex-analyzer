@@ -65,6 +65,11 @@ let setup () =
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | NPEX ->
       ( match Sys.is_directory Config.npex_summary_dir with
+      | `Yes when Config.npex_launch_spec_inference ->
+          Utils.rmtree Config.npex_summary_dir ;
+          Utils.create_dir Config.npex_summary_dir
+      | `Yes when Config.npex_launch_spec_verifier ->
+          ()
       | `Yes ->
           ()
       | `No ->
@@ -291,7 +296,8 @@ let () =
           | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
               spec_checker_summary
           | _ ->
-              L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+              L.(die ExternalError)
+                "%a has not been analyzed during verification" Procname.pp proc_name
         in
         let serializer = Serialization.create_serializer Serialization.Key.summary in
         let get_original_summary proc_name =
@@ -304,7 +310,8 @@ let () =
           | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
               spec_checker_summary
           | _ ->
-              L.(die ExternalError) "%a has not been analyzed" Procname.pp proc_name
+              L.(die ExternalError)
+                "%a has not been analyzed during inference" Procname.pp proc_name
         in
         ResultsDir.assert_results_dir "have you run capture before?" ;
         if Config.npex_launch_localizer then (
@@ -315,7 +322,18 @@ let () =
           let program = Program.from_marshal () in
           let nullpoints = NullPoint.get_nullpoint_list program in
           L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
-          InferAnalyze.main ~changed_files:None )
+          InferAnalyze.main ~changed_files:None ;
+          let is_analyzed proc =
+            let astates = SpecCheckerSummary.get_disjuncts (get_summary proc) in
+            List.exists astates ~f:SpecCheckerDomain.is_npe_alternative
+          in
+          let target_procs =
+            List.map nullpoints ~f:(fun NullPoint.{node} -> InterNode.get_proc_name node)
+          in
+          if List.for_all target_procs ~f:is_analyzed then L.exit 0
+          else (
+            L.progress "[FAIL]: to analyze error proc@." ;
+            L.exit 1 ) )
         else if Config.npex_launch_spec_verifier then (
           InferAnalyze.main ~changed_files:None ;
           SpecVeri.launch ~get_summary ~get_original_summary ) ) ;
