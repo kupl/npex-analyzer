@@ -57,6 +57,8 @@ let leq ~lhs ~rhs = phys_equal lhs rhs
 
 let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}
 
+let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
+
 (* type get_summary = Procname.t -> t option *)
 
 (* Basic Queries *)

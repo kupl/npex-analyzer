@@ -203,6 +203,8 @@ module MakePC (Val : S) = struct
 
   let empty = {pc_set= PCSet.empty; const_map= ConstMap.empty}
 
+  let is_bottom {pc_set; const_map} = PCSet.is_empty pc_set && ConstMap.is_empty const_map
+
   let compare pc1 pc2 = PCSet.compare (to_pc_set pc1) (to_pc_set pc2)
 
   let to_string {pc_set; const_map} =

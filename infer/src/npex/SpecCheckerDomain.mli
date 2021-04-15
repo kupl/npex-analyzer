@@ -15,6 +15,8 @@ val leq : lhs:t -> rhs:t -> bool
 
 val bottom : t
 
+val is_bottom : t -> bool
+
 val init_with_formals : (Pvar.t * Typ.t) list -> t
 
 val is_unknown_loc : t -> Loc.t -> bool
