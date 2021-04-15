@@ -114,11 +114,13 @@ class Bug:
     def inference(self):
         start_time = time.time()
         spec_inference_cmd = f"{INFER_PATH} npex --spec-checker-only --spec-inference {self.error_reports_arg}"
-        if (subprocess.run(spec_inference_cmd,
-                           shell=True,
-                           cwd=self.project_root_dir)).returncode != 0:
+        ret = subprocess.run(spec_inference_cmd, shell=True, cwd=self.project_root_dir)
+        if ret.returncode == 1:
             print(f"[FAIL] spec inference")
             exit(-1)
+        elif ret.returncode != 0:
+            print(f"[FAIL] spec inference")
+            exit(ret.returncode)
         return time.time() - start_time
 
     def capture_incremental(self, patch_dir):

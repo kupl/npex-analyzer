@@ -271,16 +271,7 @@ module LocCore = struct
 
   let equal = [%compare.equal: t]
 
-  let append_index l ~index =
-    match (l, index) with
-    | Var _, SymExp.IntLit _
-    | SymHeap _, SymExp.IntLit _
-    | Field _, SymExp.IntLit _
-    | Index (_, SymExp.IntLit _), SymExp.IntLit _ ->
-        Index (l, index)
-    | _ ->
-        Index (l, SymExp.IntTop)
-
+  let append_index l ~index = Index (l, index)
 
   let append_field ~fn l = Field (l, fn)
 
@@ -330,6 +321,17 @@ module Loc = struct
         is_extern l
     | _ ->
         false
+
+
+  let rec is_concrete = function
+    | Var _ | TempVar _ | IllTempVar _ ->
+        true
+    | SymHeap sh ->
+        SymHeap.is_concrete sh
+    | Field (l, _) ->
+        is_concrete l
+    | Index (l, _) ->
+        is_concrete l
 
 
   let is_null = function SymHeap h -> SymHeap.is_null h | _ -> false

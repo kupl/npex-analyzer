@@ -87,6 +87,22 @@ let equal_values astate v = PC.equal_values astate.pc v
 
 let inequal_values astate v = PC.inequal_values astate.pc v
 
+let all_values {reg; pc; mem} =
+  let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
+  let pc_values = PC.all_values pc |> Val.Set.of_list in
+  let mem_values =
+    Mem.fold
+      (fun l v ->
+        match l with
+        | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
+            Val.Set.add v <<< Val.Set.add (Val.Vheap sh)
+        | _ ->
+            Val.Set.add v)
+      mem Val.Set.empty
+  in
+  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values
+
+
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
 
 let store_reg astate id v = {astate with reg= Reg.strong_update id v astate.reg}
@@ -209,22 +225,6 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
   let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
   let astate_reg_stored = store_reg astate ret_id value in
   add_pc astate_reg_stored call_cond
-
-
-let all_values {reg; pc; mem} =
-  let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
-  let pc_values = PC.all_values pc |> Val.Set.of_list in
-  let mem_values =
-    Mem.fold
-      (fun l v ->
-        match l with
-        | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
-            Val.Set.add v <<< Val.Set.add (Val.Vheap sh)
-        | _ ->
-            Val.Set.add v)
-      mem Val.Set.empty
-  in
-  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values
 
 
 (* Summary resolve *)
