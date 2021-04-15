@@ -178,7 +178,7 @@ let resolve_unknown_loc astate typ loc : t =
       let mem' = Mem.add loc symval astate.mem in
       {astate with mem= mem'}
   | None ->
-      store_loc astate loc (Val.of_typ typ)
+      store_loc astate loc (Val.make_extern Node.dummy typ)
 
 
 let bind_exn_extern astate instr_node ret_var callee arg_values =
