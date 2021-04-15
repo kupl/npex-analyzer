@@ -125,6 +125,8 @@ let empty_str_value = AccessExpr.of_const (Cstr "")
 
 let zero_float_value = AccessExpr.of_const (Cfloat 0.0)
 
+let exn_value = AccessExpr.of_const (Cstr "Exn")
+
 let default_models =
   empty
   |> (* null.get(_) *) add (Key.make ~arg_length:2 Aobject) (Value.default_of "get" AccessExpr.null)
@@ -134,13 +136,16 @@ let default_models =
   |> (* null.set(_) *) add (Key.make ~arg_length:2 Avoid) (Value.default_of "set" bot_value)
   |> (* null.size() *) add (Key.default_of Aint) (Value.default_of "size" AccessExpr.zero)
   |> (* null.length() *) add (Key.default_of Aint) (Value.default_of "length" AccessExpr.zero)
-  |> (* null.write() *) add (Key.default_of Avoid) (Value.default_of "write" bot_value)
   |> (* null.equals(_) *) add (Key.make ~arg_length:2 Aint) (Value.default_of "equals" AccessExpr.zero)
   |> (* null.isEmpty() *) add (Key.default_of Aint) (Value.default_of "isEmpty" AccessExpr.one)
   |> (* null.booleanValue() *) add (Key.default_of Aint) (Value.default_of "booleanValue" AccessExpr.zero)
   |> (* _.add(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "add" bot_value)
   |> (* _.find(null) *)
   add (Key.make ~arg_length:2 ~model_index:1 Aobject) (Value.default_of "find" AccessExpr.null)
+  |> (* _.write(null) *) add (Key.make ~arg_length:2 ~model_index:1 Avoid) (Value.default_of "write" bot_value)
+  |> (* _.close() *) add (Key.default_of Avoid) (Value.default_of "close" bot_value)
+  |> (* Class.write(null) *)
+  add (Key.make ~arg_length:1 ~model_index:0 ~method_kind:Static Avoid) (Value.default_of "write" bot_value)
 
 
 let add_models_to_learn x =
@@ -164,12 +169,17 @@ let add_models_to_learn x =
   add (Key.make ~arg_length:1 ~model_index:0 Aint) (Value.default_of "isMarkup" AccessExpr.zero)
   |> (* deleteQuietly(null) *)
   add (Key.make ~method_kind:Static Avoid) (Value.default_of "deleteQuietly" bot_value)
+  |> (* null.containsKey(_) *)
+  add (Key.make ~arg_length:2 Aint) (Value.default_of "containsKey" AccessExpr.zero)
+  |> (* null.iterator(_) *)
+  add (Key.make Aobject) (Value.default_of "iterator" AccessExpr.null)
 
 
 let add_models_require_context x =
   x
   |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "toString" AccessExpr.null)
   |> (* null.toString() -> null *) add (Key.default_of Aobject) (Value.default_of "getString" empty_str_value)
+  |> (* null.getWidth() -> exn *) add (Key.default_of Afloat) (Value.default_of "getWidth" exn_value)
   |> (* init(this,null) -> null *)
   add
     (Key.make Avoid ~arg_length:2 ~model_index:1 ~method_kind:Constructor)
@@ -247,7 +257,7 @@ let get equal_values callee_context =
       None
 
 
-let exec_null_model astate node instr ret_typ arg_typs callee =
+let exec_null_model astate proc_desc node instr ret_typ arg_typs callee =
   let instr_node = InstrNode.of_pnode node instr in
   function
   | model_aexpr when AccessExpr.equal AccessExpr.null model_aexpr && Procname.is_constructor callee ->
@@ -261,6 +271,11 @@ let exec_null_model astate node instr ret_typ arg_typs callee =
   | model_aexpr when AccessExpr.equal model_aexpr bot_value ->
       (* empty *)
       [astate]
+  | model_aexpr when AccessExpr.equal model_aexpr exn_value ->
+      let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
+      let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+      let astate' = Domain.store_loc astate ret_loc exn_value |> Domain.set_exception in
+      [astate']
   | AccessExpr.Primitive const, [] ->
       let value = Domain.eval astate node instr (Exp.Const const) in
       [Domain.store_reg astate (fst ret_typ) value]
@@ -270,7 +285,7 @@ let exec_null_model astate node instr ret_typ arg_typs callee =
       [astate]
 
 
-let exec_null_model_opt astate node instr ret_typ arg_typs callee =
+let exec_null_model_opt astate proc_desc node instr ret_typ arg_typs callee =
   let arg_values =
     (* TODO: optimize it *)
     List.mapi arg_typs ~f:(fun i (arg_exp, _) -> Domain.eval astate node instr arg_exp ~pos:i)
@@ -279,6 +294,6 @@ let exec_null_model_opt astate node instr ret_typ arg_typs callee =
   match get (Domain.equal_values astate) call_context with
   | Some model_value ->
       L.d_printfln "Null model found: %a@," AccessExpr.pp model_value ;
-      Some (exec_null_model astate node instr ret_typ arg_typs callee model_value)
+      Some (exec_null_model astate proc_desc node instr ret_typ arg_typs callee model_value)
   | None ->
       None
