@@ -232,6 +232,7 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
 
 
   let compute_pre cfg node inv_map =
+    let open IOption.Let_syntax in
     let extract_post_ pred =
       match
         ( Procdesc.Node.get_kind (CFG.Node.underlying_node pred)
@@ -240,8 +241,14 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
       | Start_node, Exit_node ->
           (* NPEX: invalidate Unexpected transfer (e.g., start to exit) *)
           None
+      | _, Stmt_node ExceptionHandler | _, Stmt_node ExceptionsSink ->
+          (* NPEX: filter before join so that useless states are not pruned *)
+          let+ post = extract_post (Node.id pred) inv_map in
+          List.filter post ~f:SpecCheckerDomain.is_exceptional
       | _ ->
-          extract_post (Node.id pred) inv_map
+          (* NPEX: filter before join so that useless states are not pruned *)
+          let+ post = extract_post (Node.id pred) inv_map in
+          List.filter post ~f:(not <<< SpecCheckerDomain.is_exceptional)
     in
     CFG.fold_preds cfg node ~init:None ~f:(fun joined_post_opt pred ->
         match extract_post_ pred with
@@ -258,7 +265,6 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
 
 
   let compute_pre cfg node inv_map =
-    let open IOption.Let_syntax in
     (* NPEX: to handle exceptional flow *)
     match Procdesc.Node.get_kind (CFG.Node.underlying_node node) with
     | Exit_node -> (
@@ -273,12 +279,10 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
                 acc) )
     | Stmt_node ExceptionHandler | Stmt_node ExceptionsSink ->
         L.d_printfln "ExceptionHandler Node: invalidate non-exceptional states" ;
-        let+ pre_disjuncts = compute_pre cfg node inv_map in
-        List.filter pre_disjuncts ~f:SpecCheckerDomain.is_exceptional
+        compute_pre cfg node inv_map
     | _ ->
         L.d_printfln "Normal Node: invalidate exceptional states" ;
-        let+ pre_disjuncts = compute_pre cfg node inv_map in
-        List.filter pre_disjuncts ~f:(not <<< SpecCheckerDomain.is_exceptional)
+        compute_pre cfg node inv_map
 
 
   (* shadowed for HTML debug *)
@@ -431,38 +435,26 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
 
 
     let join : t -> t -> t =
-      let rec list_rev_append l1 l2 n =
-        match l1 with hd :: tl when n > 0 -> list_rev_append tl (hd :: l2) (n - 1) | _ -> l2
-      in
-      let shuffle_up_to l n =
-        let lhs, rhs = List.split_n l n in
-        let rec _shuffle (l : 'a list) (r : 'a list) (m : int) (acc : 'a list) : 'a list =
-          match (l, r, m) with
-          | _, _, 0 ->
-              acc
-          | [], [], _ ->
-              acc
-          | hdl :: tll, [], _ ->
-              _shuffle tll [] (m - 1) (hdl :: acc)
-          | [], hdr :: tlr, _ ->
-              _shuffle [] tlr (m - 1) (hdr :: acc)
-          | hdl :: _, _, 1 ->
-              hdl :: acc
-          | hdl :: tll, hdr :: tlr, m ->
-              _shuffle tll tlr (m - 2) (hdl :: hdr :: acc)
-        in
-        _shuffle lhs rhs n []
+      let _join l =
+        let npe_alternatives, non_alternatives = List.partition_tf l ~f:T.Domain.is_npe_alternative in
+        let npe_exns, npe_normals = List.partition_tf npe_alternatives ~f:T.Domain.is_exceptional in
+        let non_exns, non_normals = List.partition_tf non_alternatives ~f:T.Domain.is_exceptional in
+        let npe_exn = List.fold npe_exns ~init:T.Domain.bottom ~f:T.Domain.weak_join in
+        let npe_normal = List.fold npe_normals ~init:T.Domain.bottom ~f:T.Domain.weak_join in
+        let non_exn = List.fold non_exns ~init:T.Domain.bottom ~f:T.Domain.weak_join in
+        let non_normal = List.fold non_normals ~init:T.Domain.bottom ~f:T.Domain.weak_join in
+        List.filter [npe_exn; npe_normal; non_exn; non_normal] ~f:(not <<< T.Domain.is_bottom)
       in
       fun lhs rhs ->
         if phys_equal lhs rhs then lhs
         else
           let (`UnderApproximateAfter n) = DConfig.join_policy in
-          (* NPEX: prefer npe alternative states to normal states *)
           let sorted = List.sort (lhs @ rhs) ~compare:(fun l r -> T.Domain.cardinal l - T.Domain.cardinal r) in
           let npe_alternative_states, non_alternatives = List.partition_tf ~f:T.Domain.is_npe_alternative sorted in
           let npe_length = List.length npe_alternative_states in
-          if npe_length >= n then shuffle_up_to npe_alternative_states n
-          else npe_alternative_states @ shuffle_up_to non_alternatives (n - npe_length)
+          (* NPEX: prefer npe alternative states to normal states *)
+          if npe_length < n then npe_alternative_states @ _join non_alternatives
+          else _join (npe_alternative_states @ non_alternatives)
 
 
     (** check if elements of [disj] appear in [of_] in the same order, using pointer equality on
@@ -510,20 +502,12 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
 
   let exec_instr pre_disjuncts analysis_data node instr =
     List.foldi pre_disjuncts ~init:[] ~f:(fun i post_disjuncts pre_disjunct ->
-        let should_skip =
-          let (`UnderApproximateAfter n) = DConfig.join_policy in
-          List.length post_disjuncts >= n
-        in
-        if should_skip then (
-          L.d_printfln "@[<v2>Reached max disjuncts limit, skipping disjunct #%d@;@]" i ;
-          post_disjuncts )
-        else (
-          L.d_printfln "@[<v2>Executing instruction from disjunct #%d@;" i ;
-          let disjuncts' = T.exec_instr pre_disjunct analysis_data node instr in
-          ( if Config.write_html then
-            let n = List.length disjuncts' in
-            L.d_printfln "@]@\n@[Got %d disjunct%s back@]" n (if Int.equal n 1 then "" else "s") ) ;
-          Domain.join post_disjuncts disjuncts' ))
+        L.d_printfln "@[<v2>Executing instruction from disjunct #%d@;" i ;
+        let disjuncts' = T.exec_instr pre_disjunct analysis_data node instr in
+        ( if Config.write_html then
+          let n = List.length disjuncts' in
+          L.d_printfln "@]@\n@[Got %d disjunct%s back@]" n (if Int.equal n 1 then "" else "s") ) ;
+        Domain.join post_disjuncts disjuncts')
 
 
   let exec_node_instrs old_state_opt ~exec_instr pre instrs =
