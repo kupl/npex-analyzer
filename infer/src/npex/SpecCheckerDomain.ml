@@ -10,7 +10,12 @@ module PC = SymDom.PC
 module Symbol = SymDom.Symbol
 module SymExp = SymDom.SymExp
 module SymHeap = SymDom.SymHeap
-module Reg = WeakMap.Make (Ident) (Val)
+
+module Reg = struct
+  include WeakMap.Make (Ident) (Val)
+
+  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
+end
 
 module Mem = struct
   (* Allocsite[Index] has null as default value 
@@ -394,7 +399,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   else Some astate'
 
 
-(* Eval functions *)
+(** Eval functions *)
 let eval_uop unop v =
   match unop with
   | Unop.LNot when Val.is_true v ->
@@ -506,23 +511,30 @@ let unify ~base:lhs rhs =
     | _ ->
         false
   in
+  (* TODO: replace variable first *)
   Mem.fold
     (fun l v_lhs acc ->
       if is_node_value v_lhs then
         let v_rhs = Mem.find l rhs.mem in
-        if is_node_value v_rhs && Val.equal v_lhs v_rhs then replace_value acc ~src:v_rhs ~dst:v_lhs else acc
+        if is_node_value v_rhs then replace_value acc ~src:v_rhs ~dst:v_lhs else acc
       else acc)
     lhs.mem rhs
 
 
+let joinable lhs rhs =
+  Bool.equal lhs.is_npe_alternative rhs.is_npe_alternative
+  && Bool.equal lhs.is_exceptional rhs.is_exceptional
+  && NullModel.joinable lhs.applied_models rhs.applied_models
+
+
 let weak_join lhs rhs =
-  (* Assumption: reg = empty, flags are equal *)
+  (* Assumption: lhs and rhs are joinable *)
   if phys_equal lhs rhs then lhs
   else if is_bottom lhs then rhs
   else if is_bottom rhs then lhs
   else
     let rhs = unify ~base:lhs rhs in
-    (* TODO: should we define weak_join for reg? *)
+    let reg = Reg.weak_join ~lhs:lhs.reg ~rhs:rhs.reg in
     let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
     let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
     {lhs with mem; pc}

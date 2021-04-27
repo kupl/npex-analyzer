@@ -29,6 +29,8 @@ val is_npe_alternative : t -> bool
 
 val is_exceptional : t -> bool
 
+val joinable : t -> t -> bool
+
 val all_values : t -> Val.Set.t
 
 val equal_values : t -> Val.t -> Val.t list

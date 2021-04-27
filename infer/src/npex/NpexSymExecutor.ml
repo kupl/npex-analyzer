@@ -435,16 +435,7 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
 
 
     let join : t -> t -> t =
-      let _join l =
-        let npe_alternatives, non_alternatives = List.partition_tf l ~f:T.Domain.is_npe_alternative in
-        let npe_exns, npe_normals = List.partition_tf npe_alternatives ~f:T.Domain.is_exceptional in
-        let non_exns, non_normals = List.partition_tf non_alternatives ~f:T.Domain.is_exceptional in
-        let npe_exn = List.fold npe_exns ~init:T.Domain.bottom ~f:T.Domain.weak_join in
-        let npe_normal = List.fold npe_normals ~init:T.Domain.bottom ~f:T.Domain.weak_join in
-        let non_exn = List.fold non_exns ~init:T.Domain.bottom ~f:T.Domain.weak_join in
-        let non_normal = List.fold non_normals ~init:T.Domain.bottom ~f:T.Domain.weak_join in
-        List.filter [npe_exn; npe_normal; non_exn; non_normal] ~f:(not <<< T.Domain.is_bottom)
-      in
+      let _join l = join_list l ~join:T.Domain.weak_join ~joinable:T.Domain.joinable in
       fun lhs rhs ->
         if phys_equal lhs rhs then lhs
         else
@@ -452,8 +443,12 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
           let sorted = List.sort (lhs @ rhs) ~compare:(fun l r -> T.Domain.cardinal l - T.Domain.cardinal r) in
           let npe_alternative_states, non_alternatives = List.partition_tf ~f:T.Domain.is_npe_alternative sorted in
           let npe_length = List.length npe_alternative_states in
-          (* NPEX: prefer npe alternative states to normal states *)
-          if npe_length < n then npe_alternative_states @ _join non_alternatives
+          let non_npe_length = List.length non_alternatives in
+          (* NPEX: join only when states explode *)
+          if npe_length + non_npe_length < n then lhs @ rhs
+          else if npe_length < n then
+            (* NPEX: prefer npe alternative states to normal states *)
+            npe_alternative_states @ _join non_alternatives
           else _join (npe_alternative_states @ non_alternatives)
 
 

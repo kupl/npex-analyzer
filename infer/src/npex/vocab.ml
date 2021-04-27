@@ -208,3 +208,17 @@ let source_file_from_string files filename =
         raise
           (Unexpected
              (F.asprintf "Could not find %s from captured files@. - %a@." filename (Pp.seq SourceFile.pp) files))
+
+
+let join_list list ~joinable ~join =
+  let rec _join acc = function
+    | [] ->
+        acc
+    | work :: rest ->
+        let list_joinable, list_unjoinable = List.partition_tf rest ~f:(joinable work) in
+        if List.is_empty list_joinable then _join (work :: acc) list_unjoinable
+        else
+          let joined = List.fold list_joinable ~init:work ~f:join in
+          _join acc (joined :: list_unjoinable)
+  in
+  _join [] list
