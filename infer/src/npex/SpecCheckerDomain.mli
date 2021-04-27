@@ -7,7 +7,14 @@ module Reg : module type of WeakMap.Make (Ident) (Val)
 
 module Mem : module type of WeakMap.Make (Loc) (Val)
 
-type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
+type t =
+  { reg: Reg.t
+  ; mem: Mem.t
+  ; pc: PC.t
+  ; is_npe_alternative: bool
+  ; is_exceptional: bool
+  ; applied_models: NullModel.t
+  ; probability: float }
 
 val pp : Format.formatter -> t -> unit
 
@@ -64,6 +71,8 @@ val read_id : t -> Ident.t -> Val.t
 val store_loc : t -> Loc.t -> Val.t -> t
 
 val store_reg : t -> Ident.t -> Val.t -> t
+
+val add_model : t -> NullModel.Pos.t -> NullModel.MValue.t -> t
 
 val set_exception : t -> t
 

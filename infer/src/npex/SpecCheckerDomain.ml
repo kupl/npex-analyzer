@@ -43,15 +43,24 @@ module Mem = struct
   let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
 end
 
-type t = {reg: Reg.t; mem: Mem.t; pc: PC.t; is_npe_alternative: bool; is_exceptional: bool}
+type t =
+  { reg: Reg.t
+  ; mem: Mem.t
+  ; pc: PC.t
+  ; is_npe_alternative: bool
+  ; is_exceptional: bool
+  ; applied_models: NullModel.t
+  ; probability: float }
 
-let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional} =
+let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models} =
   F.fprintf fmt
     "@[<v 2> - Register:@,\
     \ %a@]@. @[<v 2> - Memory:@,\
     \ %a@]@. @[<v 2> - Path Conditions:@,\
     \ %a@]@. @[<v 2> - Is NPE Alternative? Is Exceptional?@,\
-    \ %b,%b@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional
+    \ %b,%b@,\
+    \ (%f) %a@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
+    applied_models
 
 
 let cardinal x =
@@ -65,7 +74,15 @@ let cardinal x =
 
 let leq ~lhs ~rhs = phys_equal lhs rhs
 
-let bottom = {reg= Reg.bottom; mem= Mem.bottom; pc= PC.empty; is_npe_alternative= false; is_exceptional= false}
+let bottom =
+  { reg= Reg.bottom
+  ; mem= Mem.bottom
+  ; pc= PC.empty
+  ; is_npe_alternative= false
+  ; is_exceptional= false
+  ; applied_models= NullModel.empty
+  ; probability= 1.0 }
+
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
 
@@ -232,7 +249,29 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
   add_pc astate_reg_stored call_cond
 
 
-(* Summary resolve *)
+let init_with_formals formals : t =
+  List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
+
+
+let append_ctx astate offset =
+  let reg = Reg.map (Val.append_ctx ~offset) astate.reg in
+  let mem =
+    Mem.fold (fun l v -> Mem.add (Loc.append_ctx ~offset l) (Val.append_ctx ~offset v)) astate.mem Mem.empty
+  in
+  let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
+  {astate with reg; mem; pc}
+
+
+let add_model astate pos mval =
+  { astate with
+    applied_models= NullModel.add_element pos mval astate.applied_models
+  ; probability=
+      (* Incremental average *)
+      astate.probability
+      +. ((snd mval -. astate.probability) /. (NullModel.cardinal astate.applied_models + 1 |> Float.of_int)) }
+
+
+(** Summary resolve *)
 module SymResolvedMap = struct
   include PrettyPrintable.MakePPMonoMap (SymDom.Symbol) (Val)
 
@@ -491,19 +530,7 @@ let rec eval_lv astate node instr exp =
       L.(die InternalError) "%a is not allowed as lvalue expression in java" Exp.pp exp
 
 
-let init_with_formals formals : t =
-  List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
-
-
-let append_ctx astate offset =
-  let reg = Reg.map (Val.append_ctx ~offset) astate.reg in
-  let mem =
-    Mem.fold (fun l v -> Mem.add (Loc.append_ctx ~offset l) (Val.append_ctx ~offset v)) astate.mem Mem.empty
-  in
-  let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
-  {astate with reg; mem; pc}
-
-
+(** For Join *)
 let unify ~base:lhs rhs =
   let is_node_value = function
     | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
@@ -537,4 +564,11 @@ let weak_join lhs rhs =
     let reg = Reg.weak_join ~lhs:lhs.reg ~rhs:rhs.reg in
     let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
     let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
-    {lhs with mem; pc}
+    let applied_models =
+      NullModel.union
+        (fun _ mval1 mval2 ->
+          if NullModel.MValueSet.equal mval1 mval2 then Some mval1 else raise (Unexpected "Not joinable!"))
+        lhs.applied_models rhs.applied_models
+    in
+    let probability = (lhs.probability +. rhs.probability) /. 2.0 in
+    {lhs with reg; mem; pc; applied_models; probability}
