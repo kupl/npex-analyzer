@@ -16,56 +16,69 @@ type exec =
 
 type model = (Procname.t -> Sil.instr -> bool) * exec
 
-let cast : model =
-  let is_model callee _ = String.equal "__cast" (Procname.get_method callee) in
-  let exec astate _ node instr _ (ret_id, _) arg_typs =
-    (* ret_typ of__cast is Boolean, but is actually pointer type *)
-    let arg_exp, _ = List.hd_exn arg_typs in
-    (* TODO: check the logic is correct *)
-    let value = Domain.eval astate node instr arg_exp in
-    (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
-    [Domain.store_reg astate ret_id value]
-  in
-  (is_model, exec)
+(* For debugging *)
+let seql x y =
+  L.d_printfln " - compare class %s and %s" x y ;
+  String.equal x y
 
 
-let instanceof : model =
-  let is_model callee _ = String.equal "__instanceof" (Procname.get_method callee) in
-  let exec astate _ node instr callee (ret_id, _) arg_typs =
-    let instr_node = Node.of_pnode node instr in
-    (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
-    match arg_typs with
-    | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
-        let arg_value = Domain.eval astate node instr arg_exp in
-        let typ_value = Typ.to_string typ |> Domain.Val.make_string in
-        let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
-        let null_states =
-          Domain.add_pc astate (null_cond Binop.Eq)
-          |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
-        in
-        let non_null_states =
-          Domain.add_pc astate (null_cond Binop.Ne)
-          |> List.concat_map ~f:(fun astate' ->
-                 Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
-        in
-        null_states @ non_null_states
-    | _ ->
-        L.(die InternalError) "wrong invariant of instanceof"
-  in
-  (is_model, exec)
+let implements classes typename = List.exists classes ~f:(seql (Typ.Name.name typename))
+
+(** Builtin model functions *)
+module BuiltIn = struct
+  let cast : model =
+    let is_model callee _ = String.equal "__cast" (Procname.get_method callee) in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      (* ret_typ of__cast is Boolean, but is actually pointer type *)
+      let arg_exp, _ = List.hd_exn arg_typs in
+      (* TODO: check the logic is correct *)
+      let value = Domain.eval astate node instr arg_exp in
+      (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
+      [Domain.store_reg astate ret_id value]
+    in
+    (is_model, exec)
 
 
-let unwrap_exception : model =
-  let is_model callee _ = String.equal "__unwrap_exception" (Procname.get_method callee) in
-  let exec astate _ node instr _ (ret_id, _) arg_typs =
-    let arg_exp, _ = List.hd_exn arg_typs in
-    try
-      let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
-      [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-    with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate
-  in
-  (is_model, exec)
+  let instanceof : model =
+    let is_model callee _ = String.equal "__instanceof" (Procname.get_method callee) in
+    let exec astate _ node instr callee (ret_id, _) arg_typs =
+      let instr_node = Node.of_pnode node instr in
+      (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
+      match arg_typs with
+      | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
+          let arg_value = Domain.eval astate node instr arg_exp in
+          let typ_value = Typ.to_string typ |> Domain.Val.make_string in
+          let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
+          let null_states =
+            Domain.add_pc astate (null_cond Binop.Eq)
+            |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
+          in
+          let non_null_states =
+            Domain.add_pc astate (null_cond Binop.Ne)
+            |> List.concat_map ~f:(fun astate' ->
+                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+          in
+          null_states @ non_null_states
+      | _ ->
+          L.(die InternalError) "wrong invariant of instanceof"
+    in
+    (is_model, exec)
 
+
+  let unwrap_exception : model =
+    let is_model callee _ = String.equal "__unwrap_exception" (Procname.get_method callee) in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let arg_exp, _ = List.hd_exn arg_typs in
+      try
+        let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
+        [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
+      with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate
+    in
+    (is_model, exec)
+
+
+  let models = [instanceof; cast; unwrap_exception]
+end
 
 let invoke : model =
   let is_model callee instr =
@@ -97,14 +110,6 @@ let invoke : model =
   in
   (is_model, exec)
 
-
-(* For debugging *)
-let seql x y =
-  L.d_printfln " - compare class %s and %s" x y ;
-  String.equal x y
-
-
-let implements classes typename = List.exists classes ~f:(seql (Typ.Name.name typename))
 
 module Collection = struct
   let mIsEmptyField = Fieldname.make (Typ.Name.Java.from_string "Collection") "mIsEmpty"
@@ -323,7 +328,7 @@ module IO = struct
       let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
       let this_val = Domain.eval astate node instr this_exp in
       (* CAUTION: do not make constraint: read_value = read(file) *)
-      let read_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.void_star in
+      let read_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
       let normal_state = Domain.store_reg astate ret_id read_value in
       let exceptional_state =
         Domain.bind_exn_extern astate (Node.of_pnode node instr) (Procdesc.get_ret_var pdesc) callee [this_val]
@@ -336,7 +341,7 @@ module IO = struct
   let models = [init; close; read]
 end
 
-let models : model list = [cast; instanceof; unwrap_exception; invoke] @ Collection.models @ IO.models
+let models : model list = BuiltIn.models @ [invoke] @ Collection.models @ IO.models
 
 let find_model_opt callee instr = List.find models ~f:(fun (is_model, _) -> is_model callee instr)
 
