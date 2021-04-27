@@ -4,35 +4,66 @@ module L = Logging
 module Domain = SpecCheckerDomain
 module Formula = StateFormula.Formula
 
-let collect_sat_specs ~base specs =
-  let pc, _ = base in
-  List.partition_tf specs ~f:(fun (pc', _) -> Formula.check_sat pc pc')
+let joinable lhs rhs = Formula.check_sat (fst lhs) (fst rhs)
+
+let join lhs rhs =
+  let (pc_acc, output_acc), (pc_to_merge, output_to_merge) = (lhs, rhs) in
+  let pc_merged = Formula.merge pc_acc pc_to_merge in
+  let output_merged = Formula.merge output_acc output_to_merge in
+  (pc_merged, output_merged)
 
 
-let rec clarify_specs acc specs_to_clarify =
-  match specs_to_clarify with
-  | [] ->
-      acc
-  | work :: rest ->
-      let sat_specs, unsat_specs = collect_sat_specs ~base:work rest in
-      let merged_spec : Formula.t * Formula.t =
-        List.fold sat_specs ~init:work ~f:(fun acc_spec spec_to_merge ->
-            let (pc_acc, output_acc), (pc_to_merge, output_to_merge) = (acc_spec, spec_to_merge) in
-            let pc_merged = Formula.merge pc_acc pc_to_merge in
-            let output_merged = Formula.merge output_acc output_to_merge in
-            (pc_merged, output_merged))
-      in
-      clarify_specs (merged_spec :: acc) unsat_specs
+let clarify_specs specs_to_clarify = join_list specs_to_clarify ~joinable ~join
+
+let rec add_mergeable_model acc states : Domain.t list list =
+  let joinable lhs rhs = NullModel.joinable Domain.(lhs.applied_models) Domain.(rhs.applied_models) in
+  let joinable_states = List.filter states ~f:(fun state -> List.for_all acc ~f:(joinable state)) in
+  let rec packing acc cands : Domain.t list list =
+    match cands with [] -> [acc] | spec :: rest -> add_mergeable_model (acc @ [spec]) rest @ packing acc rest
+  in
+  packing acc joinable_states
+
+
+let select_most_probable_spec model_cands =
+  let model_cands = List.filter model_cands ~f:(not <<< List.is_empty) in
+  let score spec =
+    List.fold ~init:0.0 spec ~f:(fun acc Domain.{probability} -> acc +. probability)
+    /. (List.length spec |> Float.of_int)
+  in
+  let max_opt =
+    List.max_elt model_cands ~compare:(fun lhs rhs ->
+        Int.of_float (score lhs *. 100.) - Int.of_float (score rhs *. 100.))
+  in
+  L.progress "==== Model with score ====@." ;
+  let print_spec spec =
+    let applied_models =
+      List.fold ~init:NullModel.empty spec ~f:(fun acc Domain.{applied_models} ->
+          NullModel.union (fun _ lhs _ -> Some lhs) acc applied_models)
+    in
+    L.progress " - %f (%a)@." (score spec) NullModel.pp applied_models
+  in
+  List.iter model_cands ~f:print_spec ;
+  match max_opt with
+  | Some max ->
+      L.progress "@.==== MAX Model ====@." ; print_spec max ; max
+  | None ->
+      L.(die InternalError) "No spec"
 
 
 let verify proc_desc summary_inferenced summary_patched =
-  let specs_inferenced, specs_patched =
-    ( List.filter summary_inferenced ~f:Domain.is_npe_alternative
-      |> List.map ~f:(StateFormula.from_state proc_desc)
-      |> clarify_specs []
-    , List.filter summary_patched ~f:Domain.is_npe_alternative
-      |> List.map ~f:(StateFormula.from_state proc_desc)
-      |> clarify_specs [] )
+  L.progress "@.@.[PROGRESS]: To formula inferenced states@." ;
+  let specs_inferenced =
+    List.filter summary_inferenced ~f:Domain.is_npe_alternative
+    |> add_mergeable_model []
+    |> select_most_probable_spec
+    |> List.map ~f:(StateFormula.from_state proc_desc)
+    |> clarify_specs
+  in
+  L.progress "@.@.[PROGRESS]: To formula patched states@." ;
+  let specs_patched =
+    List.filter summary_patched ~f:Domain.is_npe_alternative
+    |> List.map ~f:(StateFormula.from_state proc_desc)
+    |> clarify_specs
   in
   let print_spec i spec = L.progress "==== %d-th spec ====@.%a@." i StateFormula.pp spec in
   L.progress " - # of inferenced states: %d@." (List.length specs_inferenced) ;
