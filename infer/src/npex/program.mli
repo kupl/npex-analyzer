@@ -25,6 +25,10 @@ val callers_of_instr_node : t -> InstrNode.t -> Procname.t list
 
 val callees_of_instr_node : t -> InstrNode.t -> Procname.t list
 
+val callers_of_proc : t -> Procname.t -> Procname.t list
+
+val callees_of_proc : t -> Procname.t -> Procname.t list
+
 val is_library_call : t -> InstrNode.t -> bool
 
 val add_library_call : t -> InstrNode.t -> unit
@@ -42,6 +46,8 @@ val all_procs : t -> Procname.Set.t
 val all_nodes : t -> InterNode.t list
 
 val all_instr_nodes : t -> InstrNode.t list
+
+val cg_reachables_of : ?forward:bool -> ?reflexive:bool -> t -> Procname.Set.t -> Procname.Set.t
 
 val cfg_reachables_of : ?forward:bool -> ?reflexive:bool -> t -> NSet.t -> NSet.t
 
@@ -86,3 +92,5 @@ val is_consistent_type : Typ.t -> Typ.t -> bool
 val has_annot : t -> string -> Procname.t -> bool
 
 val print_callgraph : t -> string -> unit
+
+val slice_procs_except : t -> Procname.Set.t -> unit

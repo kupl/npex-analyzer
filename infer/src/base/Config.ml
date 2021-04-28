@@ -2269,6 +2269,12 @@ and npex_specifications_directory =
     "Specify the directory where to load/store specifications"
 
 
+and npex_test_method =
+  CLOpt.mk_string_opt ~long:"test-method"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Specify the test-method triggering NPE"
+
+
 and npex_launch_localizer =
   CLOpt.mk_bool ~default:false ~long:"localizer"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
@@ -3213,6 +3219,7 @@ and export_changed_functions = !export_changed_functions
 
 and npex_specifications_directory = !npex_specifications_directory
 
+and npex_test_method = !npex_test_method
 and npex_launch_localizer = !npex_launch_localizer
 
 and npex_launch_spec_inference = !npex_launch_spec_inference

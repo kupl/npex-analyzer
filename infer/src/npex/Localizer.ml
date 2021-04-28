@@ -17,14 +17,15 @@ let from_npe_json program =
   L.progress " - Localize NPE by npe.json and trace.json...@." ;
   let nullpoint = NullPoint.from_error_report program "npe.json" in
   L.progress " - NullPoint : %a@." NullPoint.pp nullpoint ;
-  let trace = ErrInfo.from_report "trace.json" in
-  print_endline " - generating callgraph from trace.json..." ;
-  CallTrace.from_alarm program trace ;
-  print_endline " - generating callgraph from trace.json... done!" ;
+  (* let trace = ErrInfo.from_report "trace.json" in
+     print_endline " - generating callgraph from trace.json..." ;
+     CallTrace.from_alarm program trace ;
+     print_endline " - generating callgraph from trace.json... done!" ; *)
   print_endline " - analyzing paths..." ;
   let traces = ErrTrace.from_call_trace program nullpoint in
   print_endline " - analyzing paths... done!" ;
-  (nullpoint, traces)
+  let nullflow = NullFlow.from_traces program nullpoint traces in
+  NullFlow.generate_npe_list nullflow
 
 
-let launch () = ()
+let launch () = from_npe_json (Program.from_marshal ())

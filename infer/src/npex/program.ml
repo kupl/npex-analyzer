@@ -3,6 +3,7 @@ open! Vocab
 module L = Logging
 module Node = InterNode
 module NSet = PrettyPrintable.MakePPSet (Node)
+module Hashtbl = Caml.Hashtbl
 
 module type IntraCfg = sig
   module G : module type of Graph.Imperative.Digraph.ConcreteBidirectional (Node)
@@ -149,14 +150,36 @@ module IntraCfg = struct
     if reflexive then __reach init init else __reach NSet.empty init
 end
 
-module CallGraph =
-  Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
-    (struct
-      include Procname
+module CallGraph = struct
+  include Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
+            (struct
+              include Procname
 
-      let hash = Hashtbl.hash
-    end)
-    (InstrNode)
+              let hash x = Hashtbl.hash (Procname.hashable_name x)
+            end)
+            (InstrNode)
+
+  let find_reachable_nodes_of ?(forward = true) ?(reflexive = true) (graph : t) (init : Procname.Set.t) :
+      Procname.Set.t =
+    let fold_next = if forward then fold_succ else fold_pred in
+    let rec __reach reachables wset =
+      if Procname.Set.is_empty wset then reachables
+      else
+        let w = Procname.Set.choose wset in
+        let rest = Procname.Set.remove w wset in
+        if mem_vertex graph w then
+          let new_reachables =
+            fold_next
+              (fun succ acc -> if Procname.Set.mem succ reachables then acc else Procname.Set.add succ acc)
+              graph w Procname.Set.empty
+          in
+          __reach (Procname.Set.union reachables new_reachables) (Procname.Set.union new_reachables rest)
+        else (
+          L.progress "%a is not in the graph!.@" Procname.pp w ;
+          __reach reachables rest )
+    in
+    if reflexive then __reach init init else __reach Procname.Set.empty init
+end
 
 module Dot = Graph.Graphviz.Dot (struct
   include CallGraph
@@ -206,6 +229,31 @@ let callees_of_instr_node {callgraph} instr_node =
       if InstrNode.equal instr_node instr_node' then Some succ else None)
 
 
+let callers_of_proc ({callgraph} as program) proc =
+  if CallGraph.mem_vertex callgraph proc then CallGraph.pred callgraph proc
+  else (
+    L.progress "%a is not in callgraph!@." Procname.pp proc ;
+    print_callgraph program "ERROR.dot" ;
+    [] )
+
+
+let callees_of_proc ({callgraph} as program) proc =
+  if CallGraph.mem_vertex callgraph proc then CallGraph.succ callgraph proc
+  else (
+    L.progress "%a is not in callgraph!@." Procname.pp proc ;
+    print_callgraph program "ERROR.dot" ;
+    [] )
+
+
+let slice_procs_except {callgraph} procs =
+  let to_remove =
+    CallGraph.fold_vertex
+      (fun proc acc -> if Procname.Set.mem proc procs then acc else Procname.Set.add proc acc)
+      callgraph Procname.Set.empty
+  in
+  Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove
+
+
 let is_library_call t instr_node = InstrNode.Set.mem instr_node t.library_calls
 
 let add_library_call t instr_node = t.library_calls <- InstrNode.Set.add instr_node t.library_calls
@@ -233,6 +281,11 @@ let all_instr_nodes {cfgs} =
 
 
 (* let mem_vertex cfgs x = IntraCfg.mem_vertex (cfgof cfgs (Node.get_proc_name x)) x *)
+
+let cg_reachables_of ?(forward = true) ?(reflexive = true) {callgraph} init =
+  if Procname.Set.is_empty init then Procname.Set.empty
+  else CallGraph.find_reachable_nodes_of ~forward ~reflexive callgraph init
+
 
 let cfg_reachables_of ?(forward = true) ?(reflexive = true) (program : t) (init : NSet.t) : NSet.t =
   if NSet.is_empty init then NSet.empty
@@ -341,7 +394,26 @@ let build () : t =
         | None ->
             acc)
   in
-  {cfgs; tenv; callgraph= CallGraph.create (); entries= []; class_inits= []; library_calls= InstrNode.Set.empty}
+  let callgraph = CallGraph.create () in
+  let program = {cfgs; tenv; callgraph; library_calls= InstrNode.Set.empty; entries= []; class_inits= []} in
+  (* TODO: remove HEURISTIC that draw callgraph only by name *)
+  let library_calls =
+    Procname.Map.fold
+      (fun _ IntraCfg.{pdesc} acc ->
+        let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
+        List.fold instr_nodes ~init:acc ~f:(fun acc instr_node ->
+            match InstrNode.get_instr instr_node with
+            | Sil.Call (_, Const (Cfun callee), _, _, _) when is_undef_proc program callee ->
+                InstrNode.Set.add instr_node acc
+            | Sil.Call (_, Const (Cfun callee), _, _, _) ->
+                add_call_edge program instr_node callee ;
+                acc
+            | _ ->
+                acc))
+      cfgs InstrNode.Set.empty
+  in
+  print_callgraph program "callgraph.dot" ;
+  {program with callgraph; library_calls}
 
 
 let has_instr ~f node = Instrs.exists (Node.get_instrs node) ~f

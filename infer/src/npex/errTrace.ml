@@ -99,7 +99,7 @@ let paths_from_entry program entry_proc ~is_last : t list =
           else (
             L.progress "Callees of %a is empty@." InstrNode.pp instr_node ;
             None )
-      | (node, Intra), Sil.Call _
+      | ((node, Entry), Sil.Call _ | (node, Intra), Sil.Call _)
         when Procname.equal (InstrNode.get_proc_name node) (InstrNode.get_proc_name instr_node) ->
           APath.append_path path (APath.make_node instr_node Call)
       | (node, Intra), Sil.Call _ when InstrNode.is_exit node ->
@@ -160,7 +160,33 @@ let paths_from_callgraph program nullpoint =
       paths @ acc)
 
 
+let slice_callgraph program nullpoint =
+  match Config.npex_test_method with
+  | Some test_pname ->
+      let sink_proc = NullPoint.get_procname nullpoint in
+      let main_procs =
+        Procname.Set.filter (String.equal test_pname <<< Procname.get_method) (Program.all_procs program)
+        |> Procname.Set.filter (fun proc ->
+               Procname.Set.mem sink_proc (Procname.Set.singleton proc |> Program.cg_reachables_of program))
+      in
+      let entry =
+        if Procname.Set.is_empty main_procs then
+          let rec single_caller proc =
+            match Program.callers_of_proc program proc with [pred] -> single_caller pred | _ -> proc
+          in
+          single_caller sink_proc
+        else Procname.Set.choose main_procs
+      in
+      L.progress "Found entry : %a@." Procname.pp entry ;
+      Program.add_entry program entry ;
+      Procname.Set.singleton entry |> Program.cg_reachables_of program |> Program.slice_procs_except program
+  | None ->
+      L.(die ExternalError) "test method name is not given"
+
+
 let from_call_trace program nullpoint =
+  slice_callgraph program nullpoint ;
+  Program.print_callgraph program "sliced_callgraph.dot" ;
   let traces = paths_from_callgraph program nullpoint in
   if Config.debug_mode then L.progress "===PATH===@.%a@.====@." (Pp.seq ~sep:"\n\n" pp) traces ;
   traces
