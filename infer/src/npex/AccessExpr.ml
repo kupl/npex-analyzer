@@ -73,14 +73,17 @@ module S = struct
   let to_string t = F.asprintf "%a" pp t
 
   let get_deref_field (base, accesses) =
-    match List.rev accesses with
-    | [] ->
-        F.asprintf "%a" pp_base base
-    | FieldAccess fld :: _ ->
+    match (base, List.rev accesses) with
+    | Formal pv, [] | Variable pv, [] ->
+        F.asprintf "%s" (Pvar.get_simplified_name pv)
+    | Primitive const, [] ->
+        (* null *)
+        F.asprintf "%a" (Const.pp Pp.text) const
+    | _, FieldAccess fld :: _ ->
         Fieldname.get_field_name fld
-    | MethodCallAccess (method_name, _) :: _ ->
+    | _, MethodCallAccess (method_name, _) :: _ ->
         Procname.get_method method_name
-    | ArrayAccess _ :: _ ->
+    | _, ArrayAccess _ :: _ ->
         to_string (base, accesses)
 
 
