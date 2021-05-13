@@ -22,7 +22,7 @@ let find_model_index astate node instr arg_values =
       else None)
 
 
-let exec_model astate proc_desc node instr (ret_id, _) arg_typs callee pos mval =
+let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos mval =
   let astate = Domain.add_model astate pos mval in
   let instr_node = Node.of_pnode node instr in
   match mval with
@@ -44,6 +44,11 @@ let exec_model astate proc_desc node instr (ret_id, _) arg_typs callee pos mval 
       let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
       let astate' = Domain.store_loc astate ret_loc exn_value |> Domain.set_exception in
       [astate']
+  | [MValue.NonNull], _ ->
+      let value = Domain.Val.make_extern instr_node ret_typ in
+      let null = Domain.Val.make_null ~pos:0 instr_node in
+      let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
+      Domain.add_pc (Domain.store_reg astate ret_id value) non_null_cond
   | _ ->
       (* TODO: define model execution *)
       raise (TODO (F.asprintf "undefined model execution: %a at %a" MValue.pp mval Pos.pp pos))

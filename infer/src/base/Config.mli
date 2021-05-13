@@ -587,11 +587,15 @@ val export_changed_functions : bool
 
 val npex_specifications_directory : string
 
+val npex_model_json : string
+
 val npex_test_method : string option
 
 val npex_launch_localize : bool
 
 val npex_launch_spec_inference : bool
+
+val npex_manual_model : bool
 
 val npex_launch_spec_verifier : bool
 

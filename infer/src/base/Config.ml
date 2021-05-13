@@ -172,6 +172,8 @@ let meet_level = 1
 
 let npex_specification_extension = ".spec"
 
+let npex_model_json = "model.json"
+
 let npex_summary_dir = "npex-summaries"
 
 let npex_patch_json_name = "patch.json"
@@ -2287,6 +2289,12 @@ and npex_launch_spec_inference =
     "Launch specification inference"
 
 
+and npex_manual_model =
+  CLOpt.mk_bool ~default:false ~long:"manual-model"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Inference specification by manual model"
+
+
 and npex_launch_spec_verifier =
   CLOpt.mk_bool ~default:false ~long:"spec-verifier"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
@@ -3224,6 +3232,8 @@ and npex_test_method = !npex_test_method
 and npex_launch_localize = !npex_launch_localize
 
 and npex_launch_spec_inference = !npex_launch_spec_inference
+
+and npex_manual_model = !npex_manual_model
 
 and npex_launch_spec_verifier = !npex_launch_spec_verifier
 
