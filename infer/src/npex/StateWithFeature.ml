@@ -22,7 +22,7 @@ module S = struct
   let get_features {features} = features
 
   let compute_reachables_from (Domain.{mem} as astate) =
-    let pc_relevant v = Domain.equal_values astate v @ Domain.equal_values astate v in
+    let pc_relevant v = Domain.equal_values astate v @ Domain.inequal_values astate v in
     let pointsto_val =
       Mem.fold
         (fun l v acc ->
