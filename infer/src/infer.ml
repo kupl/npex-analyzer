@@ -314,12 +314,27 @@ let () =
                 "%a has not been analyzed during inference" Procname.pp proc_name
         in
         ResultsDir.assert_results_dir "have you run capture before?" ;
-        if Config.npex_launch_localizer then (
+        if Config.npex_launch_localize then (
           assert (Int.equal (List.length Config.error_report_json) 1) ;
-          Localizer.launch () )
-        else if Config.npex_launch_spec_inference then (
-          L.progress "launch spec inference" ;
+          L.progress "launch fault localization@." ;
           let program = Program.from_marshal () in
+          let nullpoints = NullPoint.get_nullpoint_list program in
+          L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
+          let get_summary proc_name =
+            match Summary.OnDisk.get proc_name with
+            | Some {payloads= {spec_checker_localizer= Some summary}} ->
+                summary
+            | _ ->
+                L.(die ExternalError)
+                  "%a has not been analyzed during verification" Procname.pp proc_name
+          in
+          InferAnalyze.main ~changed_files:None ;
+          Localizer.localize ~get_summary program )
+        else if Config.npex_launch_spec_inference then (
+          L.progress "launch spec inference@." ;
+          let program = Program.from_marshal () in
+          (* OPTIMIZATION *)
+          if not Config.npex_manual_model then ignore (NullModel.LocFieldMValueMap.from_marshal ()) ;
           let nullpoints = NullPoint.get_nullpoint_list program in
           L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
           InferAnalyze.main ~changed_files:None ;

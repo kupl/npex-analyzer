@@ -2275,10 +2275,10 @@ and npex_test_method =
     "Specify the test-method triggering NPE"
 
 
-and npex_launch_localizer =
-  CLOpt.mk_bool ~default:false ~long:"localizer"
+and npex_launch_localize =
+  CLOpt.mk_bool ~default:false ~long:"localize"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
-    "Launch NPE localizer"
+    "Launch NPE localize"
 
 
 and npex_launch_spec_inference =
@@ -3220,7 +3220,8 @@ and export_changed_functions = !export_changed_functions
 and npex_specifications_directory = !npex_specifications_directory
 
 and npex_test_method = !npex_test_method
-and npex_launch_localizer = !npex_launch_localizer
+
+and npex_launch_localize = !npex_launch_localize
 
 and npex_launch_spec_inference = !npex_launch_spec_inference
 

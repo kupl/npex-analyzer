@@ -199,6 +199,13 @@ let all_checkers =
   ; { checker= SpecChecker
     ; callbacks=
         (let checker = interprocedural Payloads.Fields.spec_checker SpecChecker.checker in
+         [(checker, Java)]) }
+  ; { checker= SpecCheckerLocalizer
+    ; callbacks=
+        (let checker =
+           interprocedural2 Payloads.Fields.spec_checker_localizer Payloads.Fields.spec_checker
+             Localizer.checker
+         in
          [(checker, Java)]) } ]
 
 

@@ -29,6 +29,7 @@ include sig
     ; starvation: StarvationDomain.summary option
     ; nullsafe: NullsafeSummary.t option
     ; spec_checker: SpecCheckerSummary.t option
+    ; spec_checker_localizer: Localizer.Summary.t option
     ; uninit: UninitDomain.Summary.t option }
   [@@deriving fields]
 end

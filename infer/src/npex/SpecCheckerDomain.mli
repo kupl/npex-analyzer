@@ -14,7 +14,9 @@ type t =
   ; is_npe_alternative: bool
   ; is_exceptional: bool
   ; applied_models: NullModel.t
-  ; probability: float }
+  ; probability: float
+  ; nullptrs: Val.Set.t
+  ; fault: NullPoint.t option }
 
 val pp : Format.formatter -> t -> unit
 
@@ -75,6 +77,12 @@ val store_reg : t -> Ident.t -> Val.t -> t
 val add_model : t -> NullModel.Pos.t -> NullModel.MValue.t -> t
 
 val set_exception : t -> t
+
+val set_fault : t -> nullpoint:NullPoint.t -> t
+
+val get_nullptrs : t -> Val.Set.t
+
+val set_nullptrs : t -> Val.Set.t -> t
 
 val add_pc : t -> PathCond.t -> t list
 

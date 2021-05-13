@@ -18,9 +18,19 @@ module DisjReady = struct
 
   let analysis_data interproc : analysis_data =
     let program = Program.from_marshal () in
-    if Config.npex_launch_spec_inference then
+    if Config.npex_launch_localize then
+      { program
+      ; interproc
+      ; npe_list= Some (NullPoint.get_nullpoint_list program)
+      ; patch= None
+      ; null_model= NullModel.empty }
+    else if Config.npex_launch_spec_inference then
       let proc_desc = InterproceduralAnalysis.(interproc.proc_desc) in
-      let null_model = ManualNullModel.construct_manual_model proc_desc in
+      (* let null_model = ManualNullModel.construct_manual_model proc_desc in *)
+      let null_model =
+        if Config.npex_manual_model then ManualNullModel.construct_manual_model proc_desc
+        else NullModel.construct proc_desc
+      in
       (* L.debug_dev "@.======= Null Model of %a ========@.%a@." Procname.pp (Procdesc.get_proc_name proc_desc)
          NullModel.pp null_model ; *)
       {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None; null_model}
@@ -32,10 +42,11 @@ module DisjReady = struct
 
   let check_npe_alternative {npe_list; patch} node instr astate =
     if Domain.is_exceptional astate then [astate]
-    else if Config.npex_launch_spec_inference then
+    else if Domain.is_npe_alternative astate then [astate]
+    else if Config.npex_launch_spec_inference || Config.npex_launch_localize then
       let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
-      | Some NullPoint.{null_exp} ->
+      | Some (NullPoint.{null_exp} as npe) ->
           let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
           if Domain.Val.is_abstract nullvalue then (* This state cannot be applied to null-model *) [astate]
           else
@@ -49,10 +60,15 @@ module DisjReady = struct
                   Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
             in
             let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
-            let null_state, non_null_state =
-              ( Domain.add_pc (Domain.mark_npe_alternative astate_replaced) nullcond
-              , Domain.add_pc astate (Domain.PathCond.make_negation nullcond) )
+            let null_state =
+              let state_null_marked : Domain.t =
+                Domain.set_nullptrs astate_replaced (Domain.Val.Set.singleton nullvalue)
+                |> Domain.mark_npe_alternative
+                |> Domain.set_fault ~nullpoint:npe
+              in
+              Domain.add_pc state_null_marked nullcond
             in
+            let non_null_state = Domain.add_pc astate (Domain.PathCond.make_negation nullcond) in
             null_state @ non_null_state
       | None ->
           [astate]

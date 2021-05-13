@@ -34,6 +34,7 @@ type t =
   | SIOF
   | SelfInBlock
   | SpecChecker
+  | SpecCheckerLocalizer
   | Starvation
   | ToplOnBiabduction
   | ToplOnPulse

@@ -35,6 +35,7 @@ type t =
   | SIOF
   | SelfInBlock
   | SpecChecker
+  | SpecCheckerLocalizer
   | Starvation
   | ToplOnBiabduction
   | ToplOnPulse
@@ -411,6 +412,14 @@ let config_unsafe checker =
       ; cli_flags= Some {deprecated= []; show_in_help= true}
       ; enabled_by_default= true
       ; activates= [] }
+  | SpecCheckerLocalizer ->
+      { id= "spec-checker-localizer"
+      ; kind= UserFacing {title= "NPEX-localizer"; markdown_body= ""}
+      ; support= supports_java
+      ; short_documentation= "Localize nullpoints"
+      ; cli_flags= Some {deprecated= []; show_in_help= true}
+      ; enabled_by_default= true
+      ; activates= [SpecChecker] }
 
 
 let config c =

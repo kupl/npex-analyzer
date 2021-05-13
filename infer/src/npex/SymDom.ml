@@ -90,6 +90,19 @@ module SymbolCore = struct
   let append_field ~fn (base, accs) = (base, accs @ [Field fn])
 
   let append_index ~index (base, accs) = (base, accs @ [Index index])
+
+  let to_ap : t -> AccessExpr.t =
+    let append_symbol_access aexpr = function
+      | Field fn ->
+          AccessExpr.append_access aexpr (AccessExpr.FieldAccess fn)
+      | Index intlit ->
+          AccessExpr.append_access aexpr (AccessExpr.ArrayAccess (AccessExpr.of_const (Cint intlit)))
+    in
+    function
+    | Global (pv, access), accesses ->
+        List.fold (access :: accesses) ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
+    | Param pv, accesses ->
+        List.fold accesses ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
 end
 
 module Symbol = struct
@@ -496,9 +509,14 @@ module ValCore = struct
   let make_allocsite node = Vheap (SymHeap.make_allocsite node)
 
   let make_extern node typ =
-    if Typ.is_pointer typ then Vheap (SymHeap.make_extern node)
-    else if Typ.is_int typ then Vint (SymExp.make_extern node)
-    else top
+    match Typ.(typ.desc) with
+    | Tint _ | Tfloat _ ->
+        Vint (SymExp.make_extern node)
+    | Tptr _ | Tarray _ ->
+        L.d_printfln "[PROGRESS]: make extern from type: %a" (Typ.pp_full Pp.text) typ;
+        Vheap (SymHeap.make_extern node)
+    | _ ->
+        top
 
 
   let make_null ?(pos = 0) node = Vheap (SymHeap.make_null node ~pos)
@@ -562,10 +580,25 @@ module ValCore = struct
 
   let of_symexp sexp = Vint sexp
 
-  let of_typ typ = if Typ.is_pointer typ then unknown else if Typ.is_int typ then intTop else top
+  let top_of_typ typ =
+    match Typ.(typ.desc) with Tint _ | Tfloat _ -> intTop | Tptr _ | Tarray _ -> unknown | _ -> top
+
 
   let get_default_by_typ instr_node typ =
-    if Typ.is_pointer typ then make_null ~pos:0 instr_node else if Typ.is_int typ then zero else top
+    match Typ.(typ.desc) with
+    | Tint _ ->
+        zero
+    | Tfloat _ ->
+        of_float 0.0
+    | Tptr _ ->
+        make_null ~pos:0 instr_node
+    | Tarray _ ->
+        L.d_printfln "   - default value of array: extern@." ;
+        make_extern instr_node typ
+    | _ ->
+        L.d_printfln "   - default value of %a: typ@." (Typ.pp_full Pp.text) typ ;
+        L.progress "[WARNING]: get default by typ %a@." (Typ.pp_full Pp.text) typ ;
+        top
 
 
   let proc_neg = Procname.from_string_c_fun "NPEX_NEG"
@@ -627,12 +660,14 @@ module ValCore = struct
     in
     if Typ.is_pointer typ then Vheap (SymHeap.of_symbol symbol)
     else if Typ.is_int typ then Vint (SymExp.of_symbol symbol)
-    else of_typ typ
+    else top_of_typ typ
 
 
   let to_loc = function
     | Vheap h ->
         Loc.SymHeap h
+    | Top ->
+        Loc.SymHeap SymHeap.unknown
     | _ as v ->
         raise (Unexpected (F.asprintf "Non-locational value %a cannot be converted to location" pp v))
 

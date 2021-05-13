@@ -50,18 +50,21 @@ type t =
   ; is_npe_alternative: bool
   ; is_exceptional: bool
   ; applied_models: NullModel.t
-  ; probability: float }
+  ; probability: float
+  ; nullptrs: Val.Set.t
+  ; fault: NullPoint.t option }
 
-let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models} =
+let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault} =
   F.fprintf fmt
-    "@[<v 2> - Register:@,\
-    \ %a@]@. @[<v 2> - Memory:@,\
-    \ %a@]@. @[<v 2> - Path Conditions:@,\
-    \ %a@]@. @[<v 2> - Is NPE Alternative? Is Exceptional?@,\
-    \ %b,%b@,\
-    \ (%f) %a@]@." Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
-    applied_models
-
+    "@[<v 2> - Register:@, %a@]@. 
+     @[<v 2> - Memory:@, %a@]@. 
+     @[<v 2> - Path Conditions:@, %a@]@. 
+     @[<v 2> - Is NPE Alternative? Is Exceptional?@, %b,%b@]@.
+     @[<v 2> - Applied Null Models:@, (%f) %a@]@.
+     @[<v 2> - Fault and Null Values:@, %a, %a@]@." 
+     Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp applied_models
+     (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs
+    [@@ocamlformat "disable"]
 
 let cardinal x =
   let is_npe_alternative = if x.is_npe_alternative then 1 else 0 in
@@ -81,7 +84,9 @@ let bottom =
   ; is_npe_alternative= false
   ; is_exceptional= false
   ; applied_models= NullModel.empty
-  ; probability= 1.0 }
+  ; probability= 1.0
+  ; nullptrs= Val.Set.empty
+  ; fault= None }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
@@ -169,7 +174,8 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
         Mem.map (Val.replace_sub ~src ~dst) astate.mem
   in
   let reg' = Reg.map (Val.replace_sub ~src ~dst) astate.reg in
-  {astate with pc= pc'; mem= mem'; reg= reg'}
+  let nullptrs' = Val.Set.map (Val.replace_sub ~src ~dst) astate.nullptrs in
+  {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'}
 
 
 let add_pc astate pathcond : t list =
@@ -208,6 +214,12 @@ let mark_npe_alternative astate = {astate with is_npe_alternative= true}
 let set_exception astate = {astate with is_exceptional= true}
 
 let unwrap_exception astate = {astate with is_exceptional= false}
+
+let set_fault astate ~nullpoint = {astate with fault= Some nullpoint}
+
+let get_nullptrs astate = astate.nullptrs
+
+let set_nullptrs astate vals = {astate with nullptrs= Val.Set.union vals astate.nullptrs}
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
@@ -395,6 +407,12 @@ module SymResolvedMap = struct
 
   let replace_pc sym_resolved_map pc_to_resolve pc_to_update =
     PC.replace_by_map pc_to_resolve ~f:(resolve_val sym_resolved_map) |> PC.join pc_to_update
+
+
+  let resolve_nullptrs sym_resolved_map nullptrs_to_resolve nullptrs_to_update =
+    Val.Set.fold
+      (fun v acc -> Val.Set.add (resolve_val sym_resolved_map v) acc)
+      nullptrs_to_resolve nullptrs_to_update
 end
 
 let resolve_summary astate ~actual_values ~formals callee_summary =
@@ -417,17 +435,31 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
       ( SymResolvedMap.replace_mem sym_resolved_map callee_summary.mem astate.mem
       , SymResolvedMap.replace_pc sym_resolved_map callee_summary.pc astate.pc )
     with Unexpected msg ->
-      L.(die InternalError)
-        "Failed to resolve callee memory@. Callee mem : %a@. Init_resolved_map : %a@. Sym_resolved_map : %a@. \
-         Caller mem: %a@. Msg: %s@."
-        pp callee_summary SymResolvedMap.pp init_sym_resolved_map SymResolvedMap.pp sym_resolved_map pp astate msg
+      (* L.progress
+         "[WARING]: Failed to resolve callee memory@. Callee mem : %a@. Init_resolved_map : %a@. Sym_resolved_map \
+          : %a@. Caller mem: %a@. Msg: %s@."
+         pp callee_summary SymResolvedMap.pp init_sym_resolved_map SymResolvedMap.pp sym_resolved_map pp astate msg ; *)
+      (Mem.bottom, PC.invalid)
+  in
+  let nullptrs' = SymResolvedMap.resolve_nullptrs sym_resolved_map callee_summary.nullptrs astate.nullptrs in
+  let fault' : NullPoint.t option =
+    match (astate.fault, callee_summary.fault) with
+    | None, fault_opt ->
+        fault_opt
+    | Some fault, None ->
+        Some fault
+    | Some fault, Some _ ->
+        (* TODO: this will not be merged *)
+        Some fault
   in
   let astate' =
     { astate with
       mem= mem'
     ; pc= pc'
     ; is_exceptional= callee_summary.is_exceptional
-    ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative }
+    ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative
+    ; nullptrs= nullptrs'
+    ; fault= fault' }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated =====@." ;

@@ -25,6 +25,7 @@ type t =
   ; starvation: StarvationDomain.summary option
   ; nullsafe: NullsafeSummary.t option
   ; spec_checker: SpecCheckerSummary.t option
+  ; spec_checker_localizer: Localizer.Summary.t option
   ; uninit: UninitDomain.Summary.t option }
 [@@deriving fields]
 
@@ -53,6 +54,7 @@ let fields =
     ~starvation:(fun f -> mk f "Starvation" StarvationDomain.pp_summary)
     ~nullsafe:(fun f -> mk f "Nullsafe" NullsafeSummary.pp)
     ~spec_checker:(fun f -> mk f "Speccheck" SpecCheckerSummary.pp)
+    ~spec_checker_localizer:(fun f -> mk f "Speccheck-localizer" Localizer.Summary.pp)
     ~uninit:(fun f -> mk f "Uninitialised" UninitDomain.Summary.pp)
 
 
@@ -78,4 +80,5 @@ let empty =
   ; starvation= None
   ; nullsafe= None
   ; spec_checker= None
+  ; spec_checker_localizer= None
   ; uninit= None }

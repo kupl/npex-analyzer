@@ -589,7 +589,7 @@ val npex_specifications_directory : string
 
 val npex_test_method : string option
 
-val npex_launch_localizer : bool
+val npex_launch_localize : bool
 
 val npex_launch_spec_inference : bool
 
