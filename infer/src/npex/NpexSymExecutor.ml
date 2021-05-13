@@ -245,6 +245,8 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
           (* NPEX: filter before join so that useless states are not pruned *)
           let+ post = extract_post (Node.id pred) inv_map in
           List.filter post ~f:SpecCheckerDomain.is_exceptional
+      | _, Exit_node ->
+          extract_post (Node.id pred) inv_map
       | _ ->
           (* NPEX: filter before join so that useless states are not pruned *)
           let+ post = extract_post (Node.id pred) inv_map in
