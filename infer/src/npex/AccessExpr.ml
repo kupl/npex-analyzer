@@ -205,7 +205,7 @@ module S = struct
   let bind_pdesc pdesc =
     let entry_node = Procdesc.get_start_node pdesc in
     if Instrs.is_empty (Procdesc.Node.get_instrs entry_node) then L.progress "empty instrs@." ;
-    let entry = Procdesc.get_start_node pdesc |> InstrNode.list_of_pnode |> List.hd_exn in
+    let entry = InstrNode.of_pnode (Procdesc.get_start_node pdesc) Sil.skip_instr in
     let rec do_worklist worklist doneset =
       if InstrNode.Set.is_empty worklist then ()
       else

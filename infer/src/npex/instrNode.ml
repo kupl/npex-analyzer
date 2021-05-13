@@ -57,31 +57,40 @@ module InstrNode = struct
 
   let is_last_instr {inode; instr} =
     let instrs = InterNode.get_instrs inode in
-    if Instrs.is_empty instrs then false else Sil.equal_instr instr (Option.value_exn (Instrs.last instrs))
+    if Instrs.is_empty instrs then true else Sil.equal_instr instr (Option.value_exn (Instrs.last instrs))
 
 
   let is_entry {inode} = InterNode.is_entry inode
 
   let is_exit {inode} = InterNode.is_exit inode
 
+  let get_first_from pnode =
+    let instrs = Procdesc.Node.get_instrs pnode in
+    if Instrs.nth_exists instrs 0 then of_pnode pnode (Instrs.nth_exn instrs 0) else of_pnode pnode Sil.skip_instr
+
+
+  let pnode_of {inode} = InterNode.pnode_of inode
+
   let get_succs (n : t) =
-    if is_last_instr n then
-      List.map (InterNode.get_succs n.inode) ~f:(fun inode ->
-          let instr = Instrs.nth_exn (InterNode.get_instrs inode) 0 in
-          {inode; instr})
+    let pnode = pnode_of n in
+    let instrs = get_instrs_list pnode in
+    if is_last_instr n then List.map (Procdesc.Node.get_succs pnode) ~f:get_first_from
     else
-      let instrs = get_instrs_list (InterNode.pnode_of n.inode) in
-      let idx, _ = Option.value_exn (List.findi instrs ~f:(fun _ instr' -> Sil.equal_instr n.instr instr')) in
-      let instr = List.nth_exn instrs (idx + 1) in
-      let inode = n.inode in
-      [{inode; instr}]
+      match List.findi instrs ~f:(fun _ instr' -> Sil.equal_instr n.instr instr') with
+      | Some (idx, _) ->
+          let instr = List.nth_exn instrs (idx + 1) in
+          let inode = n.inode in
+          [{inode; instr}]
+      | None ->
+          L.(die InternalError)
+            "No next of %a@. - Intrs: %a@." pp n
+            (Pp.seq (Sil.pp_instr ~print_types:false Pp.text))
+            instrs
 
 
   let get_exn (n : t) =
     let exn_pnodes = Procdesc.Node.get_exn (InterNode.pnode_of n.inode) in
-    List.map exn_pnodes ~f:(fun pnode ->
-        let instr = Instrs.nth_exn (Procdesc.Node.get_instrs pnode) 0 in
-        of_pnode pnode instr)
+    List.map exn_pnodes ~f:get_first_from
 
 
   let get_kind {inode} = InterNode.get_kind inode

@@ -57,8 +57,7 @@ module IntraCfg = struct
     let g = G.create () in
     let insert_skip_instr_to_empty_node n =
       if Instrs.is_empty (Procdesc.Node.get_instrs n) then
-        let location = Procdesc.Node.get_loc n in
-        let instr_to_add = Sil.Metadata (Abstract location) in
+        let instr_to_add = Sil.skip_instr in
         Procdesc.Node.replace_instrs_with_given n (Instrs.singleton instr_to_add)
     in
     Procdesc.iter_nodes
