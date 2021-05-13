@@ -13,7 +13,9 @@ let join lhs rhs =
   (pc_merged, output_merged)
 
 
-let clarify_specs specs_to_clarify = join_list specs_to_clarify ~joinable ~join
+let pp fmt (fst, snd) = F.fprintf fmt "(%a, %a)" Formula.pp fst Formula.pp snd
+
+let clarify_specs specs_to_clarify = join_list specs_to_clarify ~joinable ~join ~pp
 
 let rec add_mergeable_model acc states : Domain.t list list =
   let joinable lhs rhs = NullModel.joinable Domain.(lhs.applied_models) Domain.(rhs.applied_models) in

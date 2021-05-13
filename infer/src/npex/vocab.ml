@@ -212,15 +212,25 @@ let source_file_from_string files filename =
   else find_or_raise files ~f:(fun source_file -> String.(filename = SourceFile.to_rel_path source_file))
 
 
-let join_list list ~joinable ~join =
+let join_list list ~joinable ~join ~pp =
   let rec _join acc = function
     | [] ->
         acc
-    | work :: rest ->
+    | work :: rest -> (
         let list_joinable, list_unjoinable = List.partition_tf rest ~f:(joinable work) in
-        if List.is_empty list_joinable then _join (work :: acc) list_unjoinable
-        else
-          let joined = List.fold list_joinable ~init:work ~f:join in
-          _join acc (joined :: list_unjoinable)
+        match list_joinable with
+        | [] ->
+            _join (work :: acc) list_unjoinable
+        | hd :: tl -> (
+          try
+            let joined = join work hd in
+            _join acc ((joined :: list_unjoinable) @ tl)
+          with Unexpected msg ->
+            L.(die InternalError) "%s@.%a@. joinable @.%a@." msg pp work (Pp.seq pp) list_joinable ) )
   in
   _join [] list
+
+
+let list_top_n list ~n ~compare = List.split_n (List.sort list ~compare) n |> fst
+
+let is_double_pointer typ = match Typ.(typ.desc) with Tptr (subtyp, _) -> Typ.is_pointer subtyp | _ -> false
