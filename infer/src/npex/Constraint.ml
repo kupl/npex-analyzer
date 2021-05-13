@@ -218,7 +218,7 @@ module MakePC (Val : S) = struct
       pc_set const_map_str
 
 
-  let pp fmt x = Pp.of_string ~f:to_string fmt x
+  let pp fmt x = PCSet.pp fmt (to_pc_set x)
 
   let debug_if_invalid_pc transitives original_cond =
     if List.exists transitives ~f:PathCond.is_invalid then
