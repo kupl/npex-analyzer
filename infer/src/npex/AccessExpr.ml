@@ -200,6 +200,11 @@ module S = struct
             let ae = append_access this_aexpr (MethodCallAccess (mthd, arg_exprs)) in
             Cache.add_id pdesc ret ae
           else ()
+      | Sil.Call ((ret, _), Const (Cfun mthd), args, _, _) ->
+          (* static invocation A.foo() *)
+          let arg_exprs = List.map args ~f:(fun (arg, _) -> Cache.find pdesc arg) in
+          let ae = append_access dummy (MethodCallAccess (mthd, arg_exprs)) in
+          Cache.add_id pdesc ret ae
       | _ ->
           ()
     with _ -> ()
