@@ -64,6 +64,11 @@ let setup () =
   | Debug ->
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | NPEX ->
+      ( match Sys.is_file Config.npex_localizer_result with
+      | `Yes when Config.npex_launch_localize ->
+          Utils.rmtree Config.npex_localizer_result
+      | _ ->
+          () ) ;
       ( match Sys.is_directory Config.npex_summary_dir with
       | `Yes when Config.npex_launch_spec_inference ->
           Utils.rmtree Config.npex_summary_dir ;
@@ -328,8 +333,8 @@ let () =
                 L.(die ExternalError)
                   "%a has not been analyzed during verification" Procname.pp proc_name
           in
-          InferAnalyze.main ~changed_files:None ;
-          Localizer.localize ~get_summary program )
+          let _, time = Utils.timeit ~f:(fun () -> InferAnalyze.main ~changed_files:None) in
+          Localizer.localize ~get_summary ~time program )
         else if Config.npex_launch_spec_inference then (
           L.progress "launch spec inference@." ;
           let program = Program.from_marshal () in

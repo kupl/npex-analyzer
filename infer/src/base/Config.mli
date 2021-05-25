@@ -587,6 +587,8 @@ val export_changed_functions : bool
 
 val npex_specifications_directory : string
 
+val npex_localizer_result : string
+
 val npex_model_json : string
 
 val npex_test_method : string option

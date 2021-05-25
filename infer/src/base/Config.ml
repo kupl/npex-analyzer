@@ -171,6 +171,7 @@ let max_widens = 10000
 let meet_level = 1
 
 let npex_specification_extension = ".spec"
+let npex_localizer_result = "localizer_result.json"
 
 let npex_model_json = "model.json"
 
