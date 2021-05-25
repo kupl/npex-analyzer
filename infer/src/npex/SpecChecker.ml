@@ -133,9 +133,7 @@ module DisjReady = struct
     match pathcond_from_prune astate node instr bexp with
     | Some pathcond ->
         L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
-        if Domain.PathCond.is_false pathcond then []
-        else if Domain.PathCond.is_true pathcond then [astate]
-        else Domain.add_pc astate pathcond
+        Domain.add_pc astate pathcond
     | None ->
         (* Non-equal predicaate: just check whether bexp is true, not, or unknown *)
         let value = Domain.eval astate node instr bexp in

@@ -205,8 +205,13 @@ let add_pc astate pathcond : t list =
             astate_acc)
       pc_set astate
   in
-  let pc' = PC.add pathcond_neg_stripped astate.pc in
-  if PC.is_invalid pc' then [] else [replace_extern {astate with pc= pc'} (PC.to_pc_set pc')]
+  let pathcond_to_add = PathCond.normalize pathcond in
+  if PC.is_valid pathcond_to_add astate.pc then
+    (* Avoid overwritting modelNull by normalNull *)
+    [astate]
+  else
+    let pc' = PC.add pathcond_to_add astate.pc in
+    if PC.is_invalid pc' then [] else [replace_extern {astate with pc= pc'} (PC.to_pc_set pc')]
 
 
 let mark_npe_alternative astate = {astate with is_npe_alternative= true}

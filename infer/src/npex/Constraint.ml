@@ -255,7 +255,7 @@ module MakePC (Val : S) = struct
     PCSet.add pathcond pc_set |> PCSet.union to_add
 
 
-  let is_valid pathcond pc = PathCond.is_valid pathcond || PCSet.mem pathcond pc.pc_set
+  let is_valid pathcond pc = PathCond.is_valid pathcond || PCSet.mem pathcond (to_pc_set pc)
 
   let is_invalid {pc_set} = PCSet.exists PathCond.is_invalid pc_set
 
