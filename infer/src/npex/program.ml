@@ -198,9 +198,34 @@ module Dot = Graph.Graphviz.Dot (struct
   let edge_attributes (_, instr_node, _) = [`Label (F.asprintf "%a" InstrNode.pp instr_node)]
 end)
 
+module ClassHierachy = struct
+  include Graph.Imperative.Digraph.ConcreteBidirectional (Typ.Name)
+
+  let find_reachable_nodes_of ?(forward = true) ?(reflexive = true) (graph : t) (init : Typ.Name.Set.t) :
+      Typ.Name.Set.t =
+    let fold_next = if forward then fold_succ else fold_pred in
+    let rec __reach reachables wset =
+      if Typ.Name.Set.is_empty wset then reachables
+      else
+        let w = Typ.Name.Set.choose wset in
+        let rest = Typ.Name.Set.remove w wset in
+        if mem_vertex graph w then
+          let new_reachables =
+            fold_next
+              (fun succ acc -> if Typ.Name.Set.mem succ reachables then acc else Typ.Name.Set.add succ acc)
+              graph w Typ.Name.Set.empty
+          in
+          __reach (Typ.Name.Set.union reachables new_reachables) (Typ.Name.Set.union new_reachables rest)
+        else (* L.progress "%a is not in the graph!.@" Typ.Name.pp w ; *)
+          __reach reachables rest
+    in
+    if reflexive then __reach init init else __reach Typ.Name.Set.empty init
+end
+
 type t =
   { cfgs: IntraCfg.t Procname.Map.t
   ; tenv: Tenv.t
+  ; classes: ClassHierachy.t
   ; callgraph: CallGraph.t
   ; mutable library_calls: InstrNode.Set.t (* libary와 non-trace를 구분하기 위함 *)
   ; mutable class_inits: Procname.t list (* executed first *)
@@ -394,21 +419,53 @@ let build () : t =
             acc)
   in
   let callgraph = CallGraph.create () in
-  let program = {cfgs; tenv; callgraph; library_calls= InstrNode.Set.empty; entries= []; class_inits= []} in
-  (* TODO: remove HEURISTIC that draw callgraph only by name *)
+  let program =
+    { cfgs
+    ; tenv
+    ; callgraph
+    ; library_calls= InstrNode.Set.empty
+    ; entries= []
+    ; class_inits= []
+    ; classes= ClassHierachy.create () }
+  in
+  Procname.Map.iter
+    (fun proc_name _ ->
+      match proc_name with
+      | Procname.Java mthd ->
+          let class_type = Procname.Java.get_class_type_name mthd in
+          let superclasses =
+            match Tenv.lookup tenv class_type with Some Struct.{supers} -> supers | None -> []
+          in
+          List.iter superclasses ~f:(fun supercls -> ClassHierachy.add_edge program.classes class_type supercls)
+      | _ ->
+          ())
+    cfgs ;
   let library_calls =
     Procname.Map.fold
       (fun _ IntraCfg.{pdesc} acc ->
         let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
         List.fold instr_nodes ~init:acc ~f:(fun acc instr_node ->
-            match InstrNode.get_instr instr_node with
-            | Sil.Call (_, Const (Cfun callee), _, _, _) when is_undef_proc program callee ->
-                InstrNode.Set.add instr_node acc
-            | Sil.Call (_, Const (Cfun callee), _, _, _) ->
-                add_call_edge program instr_node callee ;
-                acc
-            | _ ->
-                acc))
+            let callees =
+              match InstrNode.get_instr instr_node with
+              | Sil.Call (_, Const (Cfun (Procname.Java mthd)), _, _, {cf_virtual}) when cf_virtual ->
+                  let init = Procname.Java.get_class_type_name mthd |> Typ.Name.Set.singleton in
+                  let classes_candidates =
+                    ClassHierachy.find_reachable_nodes_of program.classes ~forward:false ~reflexive:true init
+                    |> Typ.Name.Set.elements
+                  in
+                  let method_exists proc procs = List.mem procs proc ~equal:Procname.equal in
+                  List.filter_map classes_candidates ~f:(fun class_name ->
+                      Tenv.resolve_method ~method_exists tenv class_name (Procname.Java mthd))
+                  |> Procname.Set.of_list
+                  |> Procname.Set.elements
+              | Sil.Call (_, Const (Cfun callee), _, _, _) ->
+                  [callee]
+              | _ ->
+                  []
+            in
+            let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
+            List.iter callees_defed ~f:(add_call_edge program instr_node) ;
+            if List.is_empty callees_undefed then acc else InstrNode.Set.add instr_node acc))
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;
