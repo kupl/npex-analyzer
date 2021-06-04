@@ -142,9 +142,8 @@ module IntraCfg = struct
               graph w NSet.empty
           in
           __reach (NSet.union reachables new_reachables) (NSet.union new_reachables rest)
-        else (
-          L.progress "%a is not in the graph!.@" Node.pp w ;
-          __reach reachables rest )
+        else (* L.progress "%a is not in the graph!.@" Node.pp w ; *)
+          __reach reachables rest
     in
     if reflexive then __reach init init else __reach NSet.empty init
 end
@@ -173,9 +172,8 @@ module CallGraph = struct
               graph w Procname.Set.empty
           in
           __reach (Procname.Set.union reachables new_reachables) (Procname.Set.union new_reachables rest)
-        else (
-          L.progress "%a is not in the graph!.@" Procname.pp w ;
-          __reach reachables rest )
+        else (* L.progress "%a is not in the graph!.@" Procname.pp w ; *)
+          __reach reachables rest
     in
     if reflexive then __reach init init else __reach Procname.Set.empty init
 end
@@ -256,7 +254,7 @@ let callees_of_instr_node {callgraph} instr_node =
 let callers_of_proc ({callgraph} as program) proc =
   if CallGraph.mem_vertex callgraph proc then CallGraph.pred callgraph proc
   else (
-    L.progress "%a is not in callgraph!@." Procname.pp proc ;
+    (* L.progress "%a is not in callgraph!@." Procname.pp proc ; *)
     print_callgraph program "ERROR.dot" ;
     [] )
 
@@ -264,27 +262,10 @@ let callers_of_proc ({callgraph} as program) proc =
 let callees_of_proc ({callgraph} as program) proc =
   if CallGraph.mem_vertex callgraph proc then CallGraph.succ callgraph proc
   else (
-    L.progress "%a is not in callgraph!@." Procname.pp proc ;
+    (* L.progress "%a is not in callgraph!@." Procname.pp proc ; *)
     print_callgraph program "ERROR.dot" ;
     [] )
 
-
-let slice_procs_except {callgraph} procs =
-  let to_remove =
-    CallGraph.fold_vertex
-      (fun proc acc -> if Procname.Set.mem proc procs then acc else Procname.Set.add proc acc)
-      callgraph Procname.Set.empty
-  in
-  Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove
-
-
-let is_library_call t instr_node = InstrNode.Set.mem instr_node t.library_calls
-
-let add_library_call t instr_node = t.library_calls <- InstrNode.Set.add instr_node t.library_calls
-
-let add_entry t proc = if not (List.mem t.entries ~equal:Procname.equal proc) then t.entries <- proc :: t.entries
-
-(* let dummy_node = Node.of_pnode (Procdesc.Node.dummy Procname.empty_block) *)
 
 let cfgof {cfgs} pid = Procname.Map.find pid cfgs
 
@@ -303,6 +284,31 @@ let all_instr_nodes {cfgs} =
     (fun _ IntraCfg.{pdesc} acc -> acc @ (Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode))
     cfgs []
 
+
+let slice_virtual_calls program =
+  List.iter (all_instr_nodes program) ~f:(fun instr_node ->
+      let proc = InstrNode.get_proc_name instr_node in
+      let callees = callees_of_instr_node program instr_node in
+      if List.length callees > 1 then
+        List.iter callees ~f:(fun callee -> CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
+
+
+let slice_procs_except {callgraph} procs =
+  let to_remove =
+    CallGraph.fold_vertex
+      (fun proc acc -> if Procname.Set.mem proc procs then acc else Procname.Set.add proc acc)
+      callgraph Procname.Set.empty
+  in
+  Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove
+
+
+let is_library_call t instr_node = InstrNode.Set.mem instr_node t.library_calls
+
+let add_library_call t instr_node = t.library_calls <- InstrNode.Set.add instr_node t.library_calls
+
+let add_entry t proc = if not (List.mem t.entries ~equal:Procname.equal proc) then t.entries <- proc :: t.entries
+
+(* let dummy_node = Node.of_pnode (Procdesc.Node.dummy Procname.empty_block) *)
 
 (* let mem_vertex cfgs x = IntraCfg.mem_vertex (cfgof cfgs (Node.get_proc_name x)) x *)
 

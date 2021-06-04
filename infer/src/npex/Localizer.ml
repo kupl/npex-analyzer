@@ -194,6 +194,7 @@ let generate_npe_list faults =
 
 
 let target_procs program nullpoint =
+  Program.slice_virtual_calls program ;
   let rec single_caller program proc =
     match Program.callers_of_proc program proc with [pred] -> single_caller program pred | _ -> proc
   in
@@ -209,14 +210,17 @@ let target_procs program nullpoint =
         |> Procname.Set.filter (fun proc ->
                Procname.Set.mem sink_proc (Procname.Set.singleton proc |> Program.cg_reachables_of program))
       in
-      let entry = if Procname.Set.is_empty main_procs then sink_proc else Procname.Set.choose main_procs in
+      let entry =
+        if Procname.Set.is_empty main_procs then single_caller program sink_proc
+        else Procname.Set.choose main_procs
+      in
       L.progress " - test-main : %a@." Procname.pp entry ;
       slice_by_entry program entry ;
       (* HEURISTICS: localize upto single-caller of entry in sliced-callgraph *)
-      let entry = single_caller program sink_proc in
-      L.progress " - found entry : %a@." Procname.pp entry ;
-      Program.add_entry program entry ;
-      slice_by_entry program entry ;
+      (* let entry = single_caller program sink_proc in
+         L.progress " - found entry : %a@." Procname.pp entry ;
+         Program.add_entry program entry ;
+         slice_by_entry program entry ; *)
       Program.print_callgraph program "sliced_callgraph.dot" ;
       Procname.Set.singleton entry |> Program.cg_reachables_of program
   | None ->
@@ -228,7 +232,7 @@ let result_to_json ~time ~target_procs ~executed_procs =
   let target_json = `List (List.filter_map (Procname.Set.elements target_procs) ~f:proc_to_json_opt) in
   let time_json = `Float (Float.of_int time /. 1000.0) in
   let json = `Assoc [("targets", target_json); ("procs", proc_json); ("time", time_json)] in
-  Utils.write_json_to_file Config.npex_localizer_result json
+  Utils.with_file_out Config.npex_localizer_result ~f:(fun oc -> Yojson.Basic.to_channel oc json)
 
 
 let localize ~get_summary ~time program =
