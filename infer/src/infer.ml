@@ -64,11 +64,6 @@ let setup () =
   | Debug ->
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | NPEX ->
-      ( match Sys.is_file Config.npex_localizer_result with
-      | `Yes when Config.npex_launch_localize ->
-          Utils.rmtree Config.npex_localizer_result
-      | _ ->
-          () ) ;
       ( match Sys.is_directory Config.npex_summary_dir with
       | `Yes when Config.npex_launch_spec_inference ->
           Utils.rmtree Config.npex_summary_dir ;
@@ -350,12 +345,15 @@ let () =
           let target_procs =
             List.map nullpoints ~f:(fun NullPoint.{node} -> InterNode.get_proc_name node)
           in
-          if List.for_all target_procs ~f:is_analyzed then L.exit 0
+          if List.exists target_procs ~f:is_analyzed then L.exit 0
           else (
             L.progress "[FAIL]: to analyze error proc@." ;
             L.exit 1 ) )
         else if Config.npex_launch_spec_verifier then (
           InferAnalyze.main ~changed_files:None ;
-          SpecVeri.launch ~get_summary ~get_original_summary ) ) ;
+          let _, time =
+            Utils.timeit ~f:(fun () -> SpecVeri.launch ~get_summary ~get_original_summary)
+          in
+          L.progress "%d ms elapsed to verify specification@." time ) ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0
