@@ -35,38 +35,6 @@ end
 module Make (Val : S) = struct
   type t = PEquals of Val.t * Val.t | Not of t | Equals of Val.t * Val.t [@@deriving compare]
 
-  let equal = [%compare.equal: t]
-
-  let compare x y =
-    let rec _compare x y =
-      match (x, y) with
-      | PEquals (v1, v2), PEquals (v1', v2') ->
-          let first_compare = Val.compare v1 v1' in
-          if Int.equal first_compare 0 then Val.compare v2 v2' else first_compare
-      | PEquals _, _ ->
-          1
-      | _, PEquals _ ->
-          -1
-      | Not x, Not y ->
-          _compare x y
-      | x, y ->
-          compare x y
-    in
-    _compare x y
-
-
-  (* TODO: do it *)
-  let rec pp fmt = function
-    | PEquals (v1, v2) ->
-        F.fprintf fmt "%a == %a" Val.pp v1 Val.pp v2
-    | Not (PEquals (v1, v2)) ->
-        F.fprintf fmt "%a != %a" Val.pp v1 Val.pp v2
-    | Not pc ->
-        F.fprintf fmt "Not (%a)" pp pc
-    | Equals (v1, v2) ->
-        F.fprintf fmt "Equals (%a, %a)" Val.pp v1 Val.pp v2
-
-
   let rec sorted =
     let sort_vars (v1, v2) =
       let order = Val.compare v1 v2 in
@@ -81,6 +49,21 @@ module Make (Val : S) = struct
     | Equals (v1, v2) ->
         let v1, v2 = sort_vars (v1, v2) in
         Equals (v1, v2)
+
+
+  let compare x y = compare (sorted x) (sorted y)
+
+  let equal = [%compare.equal: t]
+
+  let rec pp fmt = function
+    | PEquals (v1, v2) ->
+        F.fprintf fmt "%a == %a" Val.pp v1 Val.pp v2
+    | Not (PEquals (v1, v2)) ->
+        F.fprintf fmt "%a != %a" Val.pp v1 Val.pp v2
+    | Not pc ->
+        F.fprintf fmt "Not (%a)" pp pc
+    | Equals (v1, v2) ->
+        F.fprintf fmt "Equals (%a, %a)" Val.pp v1 Val.pp v2
 
 
   let rec replace_value x ~src ~dst =
