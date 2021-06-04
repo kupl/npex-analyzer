@@ -31,9 +31,19 @@ module ExecutedProcs = AbstractDomain.FiniteSet (Procname)
 module Domain = AbstractDomain.Pair (Faults) (ExecutedProcs)
 module Summary = Domain
 
-let check_instr proc_desc astates null_values node instr : Fault.t option =
+let check_instr proc_desc analysis_data pre null_values node instr : SpecCheckerDomain.t list * Fault.t option =
   let location = InstrNode.of_pnode node instr in
   let open SpecCheckerDomain in
+  let post =
+    List.concat_map pre ~f:(fun astate ->
+        let post = SpecChecker.DisjReady.exec_instr astate analysis_data node instr in
+        (* L.progress "@.=====Pre state at %a ======@." (Sil.pp_instr ~print_types:true Pp.text) instr ;
+           L.progress "%a" SpecCheckerDomain.pp astate ;
+           L.progress "@.=====Post state at %a ======@." (Sil.pp_instr ~print_types:true Pp.text) instr ;
+           L.progress "%a" (Pp.seq SpecCheckerDomain.pp) post ;
+           L.progress "@.===========================@." ; *)
+        post)
+  in
   let is_target_null_exp exp ~pos =
     (* x = null; // localize "x" as null-src
          x.foo(); // TODO: localize "x"
@@ -54,9 +64,11 @@ let check_instr proc_desc astates null_values node instr : Fault.t option =
     in
     (* use phys_equal to is_target not to collect other null sources *)
     let is_target value = List.mem (Val.Set.elements null_values) value ~equal:phys_equal in
-    List.exists astates ~f:(fun astate ->
-        let value = eval astate ~pos node instr exp in
-        is_target value && is_nullable value astate)
+    List.exists post ~f:(fun astate ->
+        try
+          let value = eval astate ~pos node instr exp in
+          is_target value && is_nullable value astate
+        with _ -> (* Some exceptional states may fail to evaluate expression *) false)
   in
   let check_exp exp ~pos =
     match AccessExpr.from_IR_exp_opt proc_desc exp with
@@ -75,22 +87,25 @@ let check_instr proc_desc astates null_values node instr : Fault.t option =
     | None ->
         None
   in
-  match instr with
-  | Sil.Call (_, _, arg_typs, _, _) ->
-      List.find_mapi arg_typs ~f:(fun pos (arg_exp, _) -> check_exp arg_exp ~pos)
-  | Sil.Store {e2} ->
-      check_exp e2 ~pos:0
-  | _ ->
-      None
+  let fault_opt =
+    match instr with
+    | Sil.Call (_, _, arg_typs, _, _) ->
+        List.find_mapi arg_typs ~f:(fun pos (arg_exp, _) -> check_exp arg_exp ~pos)
+    | Sil.Store {e2} ->
+        check_exp e2 ~pos:0
+    | _ ->
+        None
+  in
+  (post, fault_opt)
 
 
-let check_node proc_desc post nullvalues node =
-  Instrs.fold (CFG.instrs node) ~init:Faults.empty ~f:(fun faults instr ->
-      match check_instr proc_desc post nullvalues node instr with
-      | Some fault ->
-          Faults.add fault faults
-      | _ ->
-          faults)
+let check_node proc_desc analysis_data pre nullvalues node =
+  let _, faults =
+    Instrs.fold (CFG.instrs node) ~init:(pre, Faults.empty) ~f:(fun (states, faults) instr ->
+        let new_states, new_faults = check_instr proc_desc analysis_data states nullvalues node instr in
+        match new_faults with Some fault -> (new_states, Faults.add fault faults) | _ -> (new_states, faults))
+  in
+  faults
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t option =
@@ -113,9 +128,8 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
   let faults =
     CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
         match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
-        | Some {post} ->
-            let non_exceptionals = List.filter post ~f:(not <<< SpecCheckerDomain.is_exceptional) in
-            Faults.union (check_node proc_desc non_exceptionals nullvalues node) faults
+        | Some {pre} ->
+            Faults.union (check_node proc_desc analysis_data pre nullvalues node) faults
         | None ->
             faults)
   in
@@ -125,8 +139,11 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
         match v with
         | Val.Vheap (SymDom.SymHeap.Symbol s) | Val.Vint (SymDom.SymExp.Symbol s) ->
             let nullexp = SymDom.Symbol.to_ap s in
-            let location = InstrNode.of_pnode (Procdesc.get_start_node proc_desc) Sil.skip_instr in
-            Faults.add Fault.{location; nullexp; fault_type= Parameter} acc
+            if AccessExpr.is_var nullexp then
+              let location = InstrNode.of_pnode (Procdesc.get_start_node proc_desc) Sil.skip_instr in
+              Faults.add Fault.{location; nullexp; fault_type= Parameter} acc
+            else (* TODO: is it necessary? *)
+              acc
         | _ ->
             acc)
       nullvalues Faults.empty
