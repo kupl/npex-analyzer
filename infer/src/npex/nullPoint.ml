@@ -4,6 +4,9 @@ module F = Format
 module L = Logging
 
 type t = {deref_field: string; node: InterNode.t; instr: Sil.instr; null_exp: Exp.t; null_access_expr: AccessExpr.t}
+[@@deriving compare]
+
+let equal = [%compare.equal: t]
 
 let pp fmt {node; instr; null_exp; null_access_expr} =
   F.fprintf fmt "@[<v2>{ " ;
@@ -33,21 +36,23 @@ let find_npe program loc deref_field =
       match AccessExpr.from_IR_exp_opt pdesc exp with
       | Some aexpr when String.equal deref_field (AccessExpr.get_deref_field aexpr) ->
           Some (node, instr, exp, aexpr)
-      | Some _ ->
-          (* let aexpr_field = AccessExpr.get_deref_field aexpr in
-             L.progress "%s is not matched to %s: %b@." deref_field aexpr_field (String.equal deref_field aexpr_field) ; *)
+      | Some aexpr ->
+          let aexpr_field = AccessExpr.get_deref_field aexpr in
+          L.progress "%s is not matched to %s: %b@." deref_field aexpr_field (String.equal deref_field aexpr_field) ;
           None
       | None ->
           L.progress "[Warning]: %a is unconvertable at %a@." Exp.pp exp InstrNode.pp
             (InstrNode.of_pnode node instr) ;
           None
     in
+    L.progress "find null point in %a@." (Pp.seq ~sep:"\n" InstrNode.pp) instr_nodes ;
     List.find_map_exn instr_nodes ~f:(fun instr_node ->
         let node = InstrNode.inode_of instr_node |> InterNode.pnode_of in
         let instr = InstrNode.get_instr instr_node in
         let pdesc = Procdesc.Node.get_proc_name node |> Program.pdesc_of program in
         (* L.progress " - finding nullpoint from %a@." InstrNode.pp instr_node ; *)
         if Procdesc.Node.equal_nodekind (Procdesc.Node.get_kind node) Procdesc.Node.Start_node then
+          (* TODO: find field of parameters *)
           let formals = Procdesc.get_pvar_formals pdesc in
           List.map ~f:(fun (pv, _) -> Exp.Lvar pv) formals
           |> List.find_map ~f:(find_aexpr_from_exp_opt pdesc node instr ~deref_field)
