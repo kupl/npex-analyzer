@@ -35,23 +35,25 @@ module Allocsite = struct
 end
 
 module Null = struct
-  type t = InstrNode.t * int
+  type t = {node: InstrNode.t [@compare.ignore]; pos: int [@compare.ignore]; is_model: bool [@compare.ignore]}
+  [@@deriving compare]
 
-  (* We recored position of null constant to easily locate null source,
-   * but we do not treat each value as distinguishable (null1 == null2)
-   * (it is ok because null shall not be used as a key of a data-structure) *)
-  let compare : t -> t -> int = fun _ _ -> 0
+  let pp_node fmt node = F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc node)
 
-  let pp fmt (instr_node, pos) =
-    if Int.equal pos 0 then F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc instr_node)
-    else F.fprintf fmt "%a-%dth" Location.pp_line (InstrNode.get_loc instr_node) pos
+  let pp_node_model fmt (node, is_model) =
+    if is_model then F.fprintf fmt "%a (Model)" pp_node node else F.fprintf fmt "%a" pp_node node
 
 
-  let pp_src fmt (instr_node, pos) =
-    F.fprintf fmt "%a-%dth (%a)" InstrNode.pp instr_node pos Location.pp_file_pos (InstrNode.get_loc instr_node)
+  let pp fmt {node; pos; is_model} =
+    if Int.equal pos 0 then F.fprintf fmt "%a" pp_node_model (node, is_model)
+    else F.fprintf fmt "%a-%dth" pp_node_model (node, is_model) pos
 
 
-  let make ?(pos = 0) node : t = (node, pos)
+  let pp_src fmt {node; pos} =
+    F.fprintf fmt "%a-%dth (%a)" InstrNode.pp node pos Location.pp_file_pos (InstrNode.get_loc node)
+
+
+  let make ?(pos = 0) ?(is_model = false) node : t = {node; pos; is_model}
 end
 
 module SymbolCore = struct
@@ -82,6 +84,22 @@ module SymbolCore = struct
     let len1, len2 = (List.length accs1, List.length accs2) in
     if Int.equal len1 len2 then compare (base1, accs1) (base2, accs2) else if len1 < len2 then -1 else 1
 
+
+  let sub_symbols (base, accesses) : t list =
+    match List.rev accesses with
+    | [] ->
+        []
+    | _ :: tl ->
+        List.fold (List.rev tl)
+          ~init:([(base, [])], [])
+          ~f:(fun (acc, accesses') access ->
+            let new_accesses = accesses' @ [access] in
+            let new_subsymbol = (base, new_accesses) in
+            (new_subsymbol :: acc, new_accesses))
+        |> fst
+
+
+  let is_pvar = function Param _, [] -> true | _ -> false
 
   let make_global pv fn = (Global (pv, Field fn), [])
 
@@ -120,17 +138,13 @@ module SymHeap = struct
     | Unknown
   [@@deriving compare]
 
-  let compare x y =
-    match (x, y) with Null _, Null _ -> 0 | Null _, _ -> 1 | _, Null _ -> -1 | _, _ -> compare x y
-
-
   let equal = [%compare.equal: t]
 
   let make_allocsite node = Allocsite (Allocsite.make node)
 
   let make_extern node = Extern (Allocsite.make node)
 
-  let make_null ?(pos = 0) node = Null (Null.make ~pos node)
+  let make_null ?(pos = 0) ?(is_model = false) node = Null (Null.make ~pos ~is_model node)
 
   let make_string str = String str
 
@@ -159,6 +173,8 @@ module SymHeap = struct
   let is_null = function Null _ -> true | _ -> false
 
   let is_concrete = function Allocsite _ | String _ | Null _ -> true | _ -> false
+
+  let is_allocsite = function Allocsite _ -> true | _ -> false
 
   let append_ctx ~offset = function
     | Allocsite allocsite ->
@@ -318,39 +334,18 @@ module Loc = struct
 
   let is_ill_temp = function IllTempVar _ -> true | _ -> false
 
-  let rec is_heap = function
-    | SymHeap _ ->
-        true
-    | Field (l, _) ->
-        is_heap l
-    | Index (l, _) ->
-        is_heap l
-    | _ ->
-        false
+  let is_rec ~f = function Index (l, _) -> f l | Field (l, _) -> f l | _ as l -> f l
 
+  let is_symheap = function SymHeap _ -> true | _ -> false
+
+  let rec is_heap = is_rec ~f:is_symheap
 
   (* check whether location is abstract *)
-  let rec is_unknown = function
-    | SymHeap sh ->
-        SymHeap.is_unknown sh
-    | Field (l, _) ->
-        is_unknown l
-    | Index (l, s) ->
-        is_unknown l || not (SymExp.is_constant s)
-    | _ ->
-        false
+  let rec is_unknown = is_rec ~f:(function SymHeap sh -> SymHeap.is_unknown sh | _ -> false)
 
+  let rec is_extern = is_rec ~f:(function SymHeap sh -> SymHeap.is_extern sh | _ -> false)
 
-  let rec is_extern = function
-    | SymHeap sh ->
-        SymHeap.is_extern sh
-    | Field (l, _) ->
-        is_extern l
-    | Index (l, _) ->
-        is_extern l
-    | _ ->
-        false
-
+  let rec is_allocsite = is_rec ~f:(function SymHeap sh -> SymHeap.is_allocsite sh | _ -> false)
 
   let rec is_concrete = function
     | Var _ | TempVar _ | IllTempVar _ ->
@@ -363,6 +358,10 @@ module Loc = struct
         is_concrete l
 
 
+  let is_var = function Var _ | TempVar _ | IllTempVar _ -> true | _ -> false
+
+  let is_return = function Var pv -> Pvar.is_return pv | _ -> false
+
   let is_null = function SymHeap h -> SymHeap.is_null h | _ -> false
 
   let unknown = SymHeap SymHeap.unknown
@@ -371,7 +370,7 @@ module Loc = struct
 
   let make_allocsite node = SymHeap (SymHeap.make_allocsite node)
 
-  let make_null ?(pos = 0) node = SymHeap (SymHeap.make_null node ~pos)
+  let make_null ?(pos = 0) ?(is_model = false) node = SymHeap (SymHeap.make_null node ~is_model ~pos)
 
   let make_string str = SymHeap (SymHeap.make_string str)
 
@@ -422,31 +421,6 @@ module ValCore = struct
         F.fprintf fmt "Top"
     | Vexn v ->
         L.(die InternalError) "Invalid exceptional value: %a@." pp v
-
-
-  let compare x y =
-    let rec _compare x y =
-      match (x, y) with
-      | Vheap s1, Vheap s2 ->
-          SymHeap.compare s1 s2
-      | Vheap _, _ ->
-          -1
-      | _, Vheap _ ->
-          1
-      | Vexn x, Vexn y ->
-          _compare x y
-      | Vextern (p1, args1), Vextern (p2, args2) ->
-          let len1, len2 = (List.length args1, List.length args2) in
-          if Int.equal len1 len2 then
-            if Procname.equal p1 p2 then
-              List.fold2_exn args1 args2 ~init:0 ~f:(fun acc v1 v2 ->
-                  if Int.equal 0 acc then _compare v1 v2 else acc)
-            else Procname.compare p1 p2
-          else len1 - len2
-      | _ ->
-          compare x y
-    in
-    _compare x y
 
 
   let equal = [%compare.equal: t]
@@ -513,13 +487,13 @@ module ValCore = struct
     | Tint _ | Tfloat _ ->
         Vint (SymExp.make_extern node)
     | Tptr _ | Tarray _ ->
-        L.d_printfln "[PROGRESS]: make extern from type: %a" (Typ.pp_full Pp.text) typ;
+        L.d_printfln "[PROGRESS]: make extern from type: %a" (Typ.pp_full Pp.text) typ ;
         Vheap (SymHeap.make_extern node)
     | _ ->
         top
 
 
-  let make_null ?(pos = 0) node = Vheap (SymHeap.make_null node ~pos)
+  let make_null ?(pos = 0) ?(is_model = false) node = Vheap (SymHeap.make_null node ~is_model ~pos)
 
   let make_string str = Vheap (SymHeap.make_string str)
 
@@ -527,7 +501,7 @@ module ValCore = struct
 
   let unknown = Vheap SymHeap.unknown
 
-  let default_null = make_null ~pos:0 Node.dummy
+  let default_null = make_null Node.dummy
 
   let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
@@ -610,6 +584,14 @@ module ValCore = struct
         L.(die InternalError) "Could not negate non-integer value %a" pp v
 
 
+  let proc_lt = Procname.from_string_c_fun "lt"
+
+  let proc_le = Procname.from_string_c_fun "le"
+
+  let make_lt_pred lhs rhs = Vextern (proc_lt, [lhs; rhs])
+
+  let make_le_pred lhs rhs = Vextern (proc_le, [lhs; rhs])
+
   let is_true x = equal x one
 
   let is_false x = equal x zero
@@ -640,6 +622,8 @@ module ValCore = struct
   let join = weak_join
 
   let widen ~prev ~next ~num_iters:_ = join prev next
+
+  let npe = to_exn (make_string "java.lang.NullPointerException")
 
   let symbol_from_loc_opt typ loc =
     let open IOption.Let_syntax in
@@ -736,5 +720,96 @@ module Val = struct
   module Map = PrettyPrintable.MakePPMap (ValCore)
 end
 
-module PathCond = Constraint.Make (Val)
-module PC = Constraint.MakePC (Val)
+let neg i = if IntLit.iszero i then IntLit.one else IntLit.zero
+
+module PathCond = struct
+  include Constraint.Make (Val)
+
+  let make_lt_pred lhs rhs : t = PEquals (Val.make_lt_pred lhs rhs, Val.one)
+
+  let make_le_pred lhs rhs : t = PEquals (Val.make_le_pred lhs rhs, Val.one)
+
+  let normalize = function
+    (* neg(a) == true => a == false *)
+    | PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v]))
+    | PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i))
+      when Procname.equal proc Val.proc_neg ->
+        (* L.d_printfln "%a == %a(%a) is normalied to %a" IntLit.pp i Procname.pp proc Val.pp v IntLit.pp
+           (neg i) ; *)
+        PEquals (v, Val.Vint (SymExp.IntLit (neg i)))
+    | Not (PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v])))
+    | Not (PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i)))
+      when Procname.equal proc Val.proc_neg ->
+        L.d_printfln "%a == %a(%a) is normalizable" IntLit.pp i Procname.pp proc Val.pp v ;
+        PEquals (v, Val.Vint (SymExp.IntLit i))
+    | _ as pathcond ->
+        pathcond
+end
+
+module PC = struct
+  include Constraint.MakePC (Val)
+
+  let[@warning "-57"] add pathcond pc =
+    let open PathCond in
+    (* TODO: inequality solver *)
+    match pathcond with
+    | (PEquals (Val.Vextern (proc, [lhs; rhs]), truth) | PEquals (truth, Val.Vextern (proc, [lhs; rhs])))
+      when Procname.equal proc Val.proc_le && Val.equal truth Val.one ->
+        let is_lte = Val.lte lhs rhs in
+        if Val.is_true is_lte then pc
+        else if Val.is_false is_lte then add false_cond pc
+        else add pathcond pc |> add (Not (PEquals (Val.make_lt_pred rhs lhs, Val.one)))
+    | (PEquals (Val.Vextern (proc, [lhs; rhs]), truth) | PEquals (truth, Val.Vextern (proc, [lhs; rhs])))
+      when Procname.equal proc Val.proc_lt && Val.equal truth Val.one ->
+        let is_lt = Val.lt lhs rhs in
+        if Val.is_true is_lt then pc
+        else if Val.is_false is_lt then add false_cond pc
+        else add pathcond pc |> add (Not (PEquals (Val.make_le_pred rhs lhs, Val.one)))
+    | _ ->
+        add pathcond pc
+end
+
+module Reg = struct
+  include WeakMap.Make (Ident) (Val)
+
+  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
+end
+
+module Mem = struct
+  (* Allocsite[Index] has null as default value 
+   * Other location has bottom as default value *)
+  include WeakMap.Make (Loc) (Val)
+
+  let find k t =
+    match k with
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite (node, cnt)), _) when not (mem k t) ->
+        Val.top
+        (* Newly allocated array has default value *)
+        (* TODO: find typ by node (new_array type) *)
+        (* match Node.get_instr node with *)
+        (* | Sil.Call (_, Const (Cfun procname), [(Sizeof {typ= Typ.{desc= Tptr (subtyp, _)}}, _)], _, _)
+             when Procname.equal procname BuiltinDecl.__new_array ->
+               L.progress " - try to get default from pointer of %a@." (Typ.pp_full Pp.text) subtyp ;
+               Val.get_default_by_typ node subtyp
+           | Sil.Call (_, Const (Cfun procname), [(Sizeof {typ= Typ.{desc= Tarray {elt}}}, _)], _, _)
+             when Procname.equal procname BuiltinDecl.__new_array ->
+               L.d_printfln " - try to get default from array of %a@." (Typ.pp_full Pp.text) elt ;
+               Val.get_default_by_typ node elt *)
+        (* | _ ->
+            find k t ) *)
+    | _ ->
+        find k t
+
+
+  let mem l t = Val.is_bottom (find l t) |> not
+
+  let strong_update k v t = if Val.equal v (find k t) then t else strong_update k v t
+
+  let weak_join ~lhs ~rhs =
+    (* TODO: what if 
+     * l -> v   | l -> bot
+     * l -> bot | l -> bot *)
+    mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
+
+  (* union (fun _ v1 v2 -> if Val.equal v1 v2 then Some v1 else Some (Val.weak_join v1 v2)) lhs rhs *)
+end
