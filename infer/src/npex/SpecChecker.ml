@@ -135,11 +135,27 @@ module DisjReady = struct
     | Exp.UnOp (Unop.LNot, (Exp.Var _ as e), _) ->
         let value = Domain.eval ~pos:0 astate node instr e in
         Some (Domain.PathCond.make_physical_equals Binop.Eq value Domain.Val.zero)
+    | Exp.BinOp (Binop.Lt, e1, e2)
+    | Exp.BinOp (Binop.Gt, e2, e1)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Ge, e1, e2), _)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Le, e2, e1), _) ->
+        (* e1 < e2 = e2 > e1 = not (e1 >= e2) = not (e2 <= e1) *)
+        let value1 = Domain.eval ~pos:0 astate node instr e1 in
+        let value2 = Domain.eval ~pos:0 astate node instr e2 in
+        Some (Domain.PathCond.make_lt_pred value1 value2)
+    | Exp.BinOp (Binop.Le, e1, e2)
+    | Exp.BinOp (Binop.Ge, e2, e1)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Gt, e1, e2), _)
+    | Exp.UnOp (Unop.LNot, Exp.BinOp (Binop.Lt, e2, e1), _) ->
+        (* e1 <= e2 = e2 >= e1 = not (e1 > e2) = not (e2 < e1) *)
+        let value1 = Domain.eval ~pos:0 astate node instr e1 in
+        let value2 = Domain.eval ~pos:0 astate node instr e2 in
+        Some (Domain.PathCond.make_le_pred value1 value2)
     | _ ->
         None
 
 
-  let exec_prune astate node instr bexp =
+  let[@warning "-57"] exec_prune astate node instr bexp =
     match pathcond_from_prune astate node instr bexp with
     | Some pathcond ->
         L.d_printfln "Generated path condition : %a" Domain.PathCond.pp pathcond ;
