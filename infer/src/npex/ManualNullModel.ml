@@ -182,16 +182,18 @@ module ManualModel = struct
 
   let model_bindings = bindings model
 
-  let find_opt = function
-    | Some callee_key -> (
-      match find_opt callee_key model with
-      | Some mval ->
-          Some mval
-      | None ->
-          List.find_map model_bindings ~f:(fun (model_key, mval) ->
-              if Key.is_prefix callee_key ~prefix:model_key then Some mval else None) )
-    | None ->
-        None
+  let find_opt key =
+    let open IOption.Let_syntax in
+    let+ key = key in
+    match key with
+    | Key.{ret_type= Aint} ->
+        NullModel.MValue.make_const ~prob:1.0 (Const.Cint IntLit.zero)
+    | Key.{ret_type= Afloat} ->
+        NullModel.MValue.make_const ~prob:1.0 (Const.Cfloat 0.0)
+    | Key.{ret_type= Aobject} ->
+        NullModel.MValue.make_null ~prob:1.0
+    | Key.{ret_type= Avoid} ->
+        NullModel.MValue.make_skip ~prob:1.0
 end
 
 let construct_manual_model proc_desc =
