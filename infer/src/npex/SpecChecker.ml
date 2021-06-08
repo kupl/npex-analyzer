@@ -24,16 +24,16 @@ module DisjReady = struct
       ; npe_list= Some (NullPoint.get_nullpoint_list program)
       ; patch= None
       ; null_model= NullModel.empty }
-    else if Config.npex_launch_spec_inference then
+    else if Config.npex_launch_spec_inference then (
       let proc_desc = InterproceduralAnalysis.(interproc.proc_desc) in
-      (* let null_model = ManualNullModel.construct_manual_model proc_desc in *)
       let null_model =
         if Config.npex_manual_model then ManualNullModel.construct_manual_model proc_desc
         else NullModel.construct proc_desc
       in
-      (* L.debug_dev "@.======= Null Model of %a ========@.%a@." Procname.pp (Procdesc.get_proc_name proc_desc)
-         NullModel.pp null_model ; *)
-      {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None; null_model}
+      if Int.equal Config.debug_level_analysis 1 then
+        L.debug_dev "@.======= Null Model of %a ========@.%a@." Procname.pp (Procdesc.get_proc_name proc_desc)
+          NullModel.pp null_model ;
+      {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None; null_model} )
     else if Config.npex_launch_spec_verifier then
       let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
       {program; interproc; npe_list= None; patch= Some patch; null_model= NullModel.empty}
@@ -41,22 +41,32 @@ module DisjReady = struct
 
 
   let check_npe_alternative {npe_list; patch} node instr astate =
+    let has_different_npe astate nexp =
+      match astate with Domain.{fault= Some NullPoint.{null_exp}} -> not (Exp.equal nexp null_exp) | _ -> false
+    in
     if Domain.is_exceptional astate then [astate]
-    else if Domain.is_npe_alternative astate then [astate]
     else if Config.npex_launch_spec_inference || Config.npex_launch_localize then
       let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
-      | Some (NullPoint.{null_exp} as npe) ->
-          let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
-          if Domain.Val.is_abstract nullvalue then (* This state cannot be applied to null-model *) [astate]
+      | Some (NullPoint.{null_exp; instr} as npe) when not (has_different_npe astate null_exp) ->
+          let nullvalue =
+            match instr with
+            | Sil.Metadata Skip ->
+                Domain.read_loc astate (Domain.eval_lv astate node instr null_exp)
+            | _ ->
+                Domain.eval ~pos:(-1) astate node instr null_exp
+          in
+          if Domain.Val.is_top nullvalue then (* This state cannot be applied to null-model *) [astate]
           else
             let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
-            let null = Domain.Val.make_null ~pos:NullSpecModel.null_pos (Node.of_pnode node instr) in
+            let null = Domain.Val.make_null ~is_model:true (Node.of_pnode node instr) in
+            L.d_printfln " - Existing null values (%a) are changed to %a" (Pp.seq Domain.Val.pp)
+              existing_nullvalues Domain.Val.pp null ;
             let astate_replaced =
-              let astate_pc_replaced =
-                Domain.{astate with pc= Domain.PC.replace_value astate.pc ~src:nullvalue ~dst:null}
-              in
-              List.fold existing_nullvalues ~init:astate_pc_replaced ~f:(fun astate_acc existing_nullvalue ->
+              (* let astate_pc_replaced =
+                   Domain.{astate with pc= Domain.PC.replace_value astate.pc ~src:nullvalue ~dst:null}
+                 in *)
+              List.fold existing_nullvalues ~init:astate ~f:(fun astate_acc existing_nullvalue ->
                   Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
             in
             let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
@@ -70,14 +80,14 @@ module DisjReady = struct
             in
             let non_null_state = Domain.add_pc astate (Domain.PathCond.make_negation nullcond) in
             null_state @ non_null_state
-      | None ->
+      | _ ->
           [astate]
     else if Config.npex_launch_spec_verifier then
       match patch with
       | Some {conditional= Some (null_cond, _); null_exp}
         when InstrNode.equal null_cond (InstrNode.of_pnode node instr) ->
           let nullvalue = Domain.eval ~pos:(-1) astate node instr null_exp in
-          if Domain.Val.is_abstract nullvalue then (* This state is not comparable *) [astate]
+          if Domain.Val.is_top nullvalue then (* This state is not comparable *) [astate]
           else [Domain.mark_npe_alternative astate]
       | _ ->
           [astate]
@@ -489,12 +499,52 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
       Summary.empty
 
 
+let _executed_procs = ref []
+
+let is_executed procname =
+  ( if List.is_empty !_executed_procs then
+    let json = read_json_file_exn Config.npex_localizer_result in
+    let open Yojson.Basic.Util in
+    let executed_proc_jsons = json |> member "procs" |> to_list in
+    _executed_procs :=
+      List.map executed_proc_jsons ~f:(fun proc_json ->
+          (* let filepath = proc_json |> member "filepath" |> to_string in
+             let line = proc_json |> member "line" |> to_int in *)
+          let name = proc_json |> member "name" |> to_string in
+          let class_name = proc_json |> member "class" |> to_string in
+          (name, class_name)) ) ;
+  let name = Procname.get_method procname in
+  match Procname.get_class_name procname with
+  | Some class_name ->
+      List.exists !_executed_procs ~f:(fun (name', class_name') ->
+          (* L.progress "[Method] %s and %s : %b@." name name' (String.equal name name') ;
+             L.progress "[Class] %s and %s : %b@." class_name class_name' (String.equal class_name class_name') ; *)
+          String.equal name name' && String.equal class_name class_name')
+  | None ->
+      List.exists !_executed_procs ~f:(fun (name', _) -> String.equal name name')
+
+
+(* Procname.Set.find_first_opt
+   (fun proc ->
+     match Procname.get_class_name proc with
+     | Some class_name_of_proc ->
+         L.progress "compare %s and %s: %b@." (Procname.get_method proc) name
+           (String.equal (Procname.get_method proc) name) ;
+         L.progress "compare_class %s and %s : %b@." class_name_of_proc class_name
+           (String.equal class_name_of_proc class_name) ;
+         String.equal (Procname.get_method proc) name && String.equal class_name_of_proc class_name
+     | _ ->
+         false)
+   procs *)
+
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
   let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
+  let procname = Procdesc.get_proc_name proc_desc in
   if List.exists formals ~f:Pvar.is_frontend_tmp then (* In this case, IR might be incomplete *)
     None
-  else if is_all_target_funs_analyzed analysis_data then None
+  else if (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier) && not (is_executed procname)
+  then None (* && is_all_target_funs_analyzed analysis_data then None *)
   else
     let inv_map = cached_compute_invariant_map analysis_data in
     let cfg = CFG.from_pdesc proc_desc in

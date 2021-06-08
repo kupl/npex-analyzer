@@ -10,39 +10,10 @@ module PC = SymDom.PC
 module Symbol = SymDom.Symbol
 module SymExp = SymDom.SymExp
 module SymHeap = SymDom.SymHeap
+module Reg = SymDom.Reg
+module Mem = SymDom.Mem
 
-module Reg = struct
-  include WeakMap.Make (Ident) (Val)
-
-  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
-end
-
-module Mem = struct
-  (* Allocsite[Index] has null as default value 
-   * Other location has bottom as default value *)
-  include WeakMap.Make (Loc) (Val)
-
-  let strong_update k v t =
-    match (k, v) with
-    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _), v when Val.is_null v && not (mem k t) ->
-        t
-    | _ ->
-        strong_update k v t
-
-
-  let find k t =
-    match k with
-    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
-        (* Newly allocated array has null as default value *)
-        (* TODO: what if primitive array? *)
-        Val.default_null
-    | _ ->
-        find k t
-
-
-  let weak_join ~lhs ~rhs = mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
-end
-
+(* TODO: add counter for each state *)
 type t =
   { reg: Reg.t
   ; mem: Mem.t
@@ -51,8 +22,10 @@ type t =
   ; is_exceptional: bool
   ; applied_models: NullModel.t
   ; probability: float
+  ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
-  ; fault: NullPoint.t option }
+  ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
+  ; is_infer_failed: bool }
 
 let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault} =
   F.fprintf fmt
@@ -84,28 +57,33 @@ let bottom =
   ; is_npe_alternative= false
   ; is_exceptional= false
   ; applied_models= NullModel.empty
-  ; probability= 1.0
+  ; probability= 0.5
   ; nullptrs= Val.Set.empty
-  ; fault= None }
+  ; fault= None
+  ; executed_procs= Procname.Set.empty
+  ; is_infer_failed= false }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
 
-(* type get_summary = Procname.t -> t option *)
-
-(* Basic Queries *)
-
+(** Basic Queries *)
 let is_unknown_loc {mem} l = Loc.is_unknown l || not (Mem.mem l mem)
 
 let is_unknown_id {reg} id = Val.is_bottom (Reg.find id reg)
 
 let is_exceptional {is_exceptional} = is_exceptional
 
+let is_infer_failed {is_infer_failed} = is_infer_failed
+
+let is_inferred {applied_models; fault} = (not (NullModel.is_empty applied_models)) || Option.is_some fault
+
 let is_npe_alternative {is_npe_alternative} = is_npe_alternative
 
 let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
 
-(* Read & Write *)
+let is_fault_null astate v = Val.Set.mem v astate.nullptrs
+
+(** Read & Write *)
 let read_loc {mem} l = Mem.find l mem
 
 let read_id {reg} id = Reg.find id reg
@@ -114,7 +92,7 @@ let equal_values astate v = PC.equal_values astate.pc v
 
 let inequal_values astate v = PC.inequal_values astate.pc v
 
-let all_values {reg; pc; mem} =
+let all_values {reg; pc; mem; nullptrs} =
   let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
   let pc_values = PC.all_values pc |> Val.Set.of_list in
   let mem_values =
@@ -127,7 +105,33 @@ let all_values {reg; pc; mem} =
             Val.Set.add v)
       mem Val.Set.empty
   in
-  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values
+  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values |> Val.Set.union nullptrs
+
+
+let all_symbols astate =
+  let rec add_if_symbol v acc_symvals =
+    match v with
+    | Val.Vint (SymExp.Symbol _) ->
+        Val.Set.add v acc_symvals
+    | Val.Vheap (SymHeap.Symbol _) ->
+        Val.Set.add v acc_symvals
+    | Val.Vextern (_, args) ->
+        List.fold args ~init:acc_symvals ~f:(fun acc_symvals' v -> add_if_symbol v acc_symvals')
+    | _ ->
+        acc_symvals
+  in
+  let symvals_appered = Val.Set.fold add_if_symbol (all_values astate) Val.Set.empty in
+  Val.Set.fold
+    (fun v ->
+      let s =
+        match v with
+        | Val.Vint (Symbol s) | Val.Vheap (Symbol s) ->
+            s
+        | _ ->
+            L.(die InternalError) "%a is non-symbolic values" Val.pp v
+      in
+      List.map (Symbol.sub_symbols s) ~f:(fun s -> Val.Vheap (Symbol s)) |> Val.Set.of_list |> Val.Set.union)
+    symvals_appered symvals_appered
 
 
 let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
@@ -179,20 +183,6 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
 
 
 let add_pc astate pathcond : t list =
-  let pathcond_neg_stripped =
-    (* neg(a) == true => a == false *)
-    match pathcond with
-    | PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v]))
-    | PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i))
-      when Procname.equal proc Val.proc_neg ->
-        PathCond.PEquals (v, Val.Vint (SymExp.IntLit (IntLit.neg i)))
-    | PathCond.Not (PathCond.PEquals (Val.Vint (SymExp.IntLit i), Val.Vextern (proc, [v])))
-    | PathCond.Not (PathCond.PEquals (Val.Vextern (proc, [v]), Val.Vint (SymExp.IntLit i)))
-      when Procname.equal proc Val.proc_neg ->
-        PathCond.PEquals (v, Val.Vint (SymExp.IntLit i))
-    | _ ->
-        pathcond
-  in
   let replace_extern astate pc_set =
     (* HEURISTICS: replace an extern variable ex by v if there exists ex1 = ex2 or exn(ex) = exn(ex2) *)
     PC.PCSet.fold
@@ -266,8 +256,21 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
   add_pc astate_reg_stored call_cond
 
 
-let init_with_formals formals : t =
-  List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
+let init proc_desc : t =
+  let formals = Procdesc.get_pvar_formals proc_desc in
+  let init_with_formals =
+    List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
+  in
+  let init_with_executed_procs =
+    {init_with_formals with executed_procs= Procname.Set.singleton (Procdesc.get_proc_name proc_desc)}
+  in
+  match List.find formals ~f:(fun (pv, _) -> Pvar.is_this pv) with
+  | Some (this_pvar, _) ->
+      let null = Val.make_null (Node.of_pnode (Procdesc.get_start_node proc_desc) Sil.skip_instr) in
+      let this_value = read_loc init_with_executed_procs (Loc.of_pvar this_pvar) in
+      {init_with_executed_procs with pc= PC.add (PathCond.make_physical_equals Binop.Ne null this_value) PC.empty}
+  | None ->
+      init_with_executed_procs
 
 
 let append_ctx astate offset =
@@ -353,28 +356,24 @@ module SymResolvedMap = struct
 
 
   let construct astate callee_state init =
-    let symvals_to_resolve =
-      let rec add_if_symbol v acc_symvals =
-        match v with
-        | Val.Vint (SymExp.Symbol _) ->
-            Val.Set.add v acc_symvals
-        | Val.Vheap (SymHeap.Symbol _) ->
-            Val.Set.add v acc_symvals
-        | Val.Vextern (_, args) ->
-            List.fold args ~init:acc_symvals ~f:(fun acc_symvals' v -> add_if_symbol v acc_symvals')
+    let symvals_to_resolve = all_symbols callee_state in
+    let compare v1 v2 =
+      let _length = function
+        | Val.Vint (SymExp.Symbol (_, accesses)) | Val.Vheap (SymHeap.Symbol (_, accesses)) ->
+            List.length accesses
         | _ ->
-            acc_symvals
+            L.(die InternalError) "nonono"
       in
-      Val.Set.fold add_if_symbol (all_values callee_state) Val.Set.empty
+      _length v1 - _length v2
     in
-    let symvals = List.sort (Val.Set.elements symvals_to_resolve) ~compare:Val.compare in
+    let symvals = List.sort (Val.Set.elements symvals_to_resolve) ~compare in
     let update_resolved_loc s typ resolved_loc acc =
       if is_unknown_loc astate resolved_loc then
         match Val.symbol_from_loc_opt typ resolved_loc with
         | Some symval ->
             add s symval acc
         | None ->
-            add s (Val.of_typ typ) acc
+            add s (Val.top_of_typ typ) acc
       else add s (read_loc astate resolved_loc) acc
     in
     List.fold symvals ~init ~f:(fun acc v ->
@@ -457,14 +456,23 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
         (* TODO: this will not be merged *)
         Some fault
   in
+  let applied_models' =
+    NullModel.union (fun _ l _ -> Some l) astate.applied_models callee_summary.applied_models
+  in
+  let probability' = NullModel.compute_probability applied_models' in
+  let executed_procs' = Procname.Set.union astate.executed_procs callee_summary.executed_procs in
   let astate' =
-    { astate with
-      mem= mem'
+    { reg= astate.reg
+    ; mem= mem'
     ; pc= pc'
-    ; is_exceptional= callee_summary.is_exceptional
     ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative
+    ; is_exceptional= callee_summary.is_exceptional (* since exceptional state cannot execute fuction *)
     ; nullptrs= nullptrs'
-    ; fault= fault' }
+    ; fault= fault'
+    ; applied_models= applied_models'
+    ; probability= probability'
+    ; executed_procs= executed_procs'
+    ; is_infer_failed= callee_summary.is_infer_failed }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated =====@." ;
@@ -588,10 +596,13 @@ let unify ~base:lhs rhs =
 let joinable lhs rhs =
   Bool.equal lhs.is_npe_alternative rhs.is_npe_alternative
   && Bool.equal lhs.is_exceptional rhs.is_exceptional
+  && Bool.equal lhs.is_infer_failed rhs.is_infer_failed
   && NullModel.joinable lhs.applied_models rhs.applied_models
+  && Option.equal NullPoint.equal lhs.fault rhs.fault
+  && has_no_significant_diff lhs rhs
 
 
-let weak_join lhs rhs =
+let weak_join lhs rhs : t =
   (* Assumption: lhs and rhs are joinable *)
   if phys_equal lhs rhs then lhs
   else if is_bottom lhs then rhs
@@ -601,11 +612,26 @@ let weak_join lhs rhs =
     let reg = Reg.weak_join ~lhs:lhs.reg ~rhs:rhs.reg in
     let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
     let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
-    let applied_models =
-      NullModel.union
-        (fun _ mval1 mval2 ->
-          if NullModel.MValueSet.equal mval1 mval2 then Some mval1 else raise (Unexpected "Not joinable!"))
-        lhs.applied_models rhs.applied_models
+    let applied_models = NullModel.weak_join ~lhs:lhs.applied_models ~rhs:rhs.applied_models in
+    let probability = NullModel.compute_probability applied_models in
+    let is_npe_alternative = lhs.is_npe_alternative || rhs.is_npe_alternative in
+    let is_exceptional = lhs.is_exceptional || rhs.is_exceptional in
+    let fault = lhs.fault (* since lhs.fault = rhs.fault *) in
+    let nullptrs = Val.Set.union lhs.nullptrs rhs.nullptrs in
+    let executed_procs = Procname.Set.union lhs.executed_procs rhs.executed_procs in
+    let is_infer_failed = lhs.is_infer_failed (* since lhs.is_infer_failed = rhs.is_infer_failed *) in
+    let joined =
+      { reg
+      ; mem
+      ; pc
+      ; applied_models
+      ; probability
+      ; is_npe_alternative
+      ; is_exceptional
+      ; fault
+      ; nullptrs
+      ; executed_procs
+      ; is_infer_failed }
     in
     let probability = (lhs.probability +. rhs.probability) /. 2.0 in
     {lhs with reg; mem; pc; applied_models; probability}

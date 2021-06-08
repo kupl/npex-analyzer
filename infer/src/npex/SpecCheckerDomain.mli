@@ -2,10 +2,8 @@ module Loc = SymDom.Loc
 module Val = SymDom.Val
 module PathCond = SymDom.PathCond
 module PC = SymDom.PC
-
-module Reg : module type of WeakMap.Make (Ident) (Val)
-
-module Mem : module type of WeakMap.Make (Loc) (Val)
+module Reg = SymDom.Reg
+module Mem = SymDom.Mem
 
 type t =
   { reg: Reg.t
@@ -15,8 +13,10 @@ type t =
   ; is_exceptional: bool
   ; applied_models: NullModel.t
   ; probability: float
+  ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
-  ; fault: NullPoint.t option }
+  ; executed_procs: Procname.Set.t
+  ; is_infer_failed: bool }
 
 val pp : Format.formatter -> t -> unit
 
@@ -37,6 +37,12 @@ val is_valid_pc : t -> PathCond.t -> bool
 val is_npe_alternative : t -> bool
 
 val is_exceptional : t -> bool
+
+val is_infer_failed : t -> bool
+
+val is_inferred : t -> bool
+
+val is_fault_null : t -> Val.t -> bool
 
 val joinable : t -> t -> bool
 
@@ -74,17 +80,23 @@ val store_loc : t -> Loc.t -> Val.t -> t
 
 val store_reg : t -> Ident.t -> Val.t -> t
 
-val add_model : t -> NullModel.Pos.t -> NullModel.MValue.t -> t
+val add_model : t -> NullModel.Pos.t -> NullModel.MValue.t -> t list
 
 val set_exception : t -> t
 
 val set_fault : t -> nullpoint:NullPoint.t -> t
 
+val set_infer_failed : t -> t
+
 val get_nullptrs : t -> Val.Set.t
 
 val set_nullptrs : t -> Val.Set.t -> t
 
+val add_executed_proc : t -> Procname.t -> t
+
 val add_pc : t -> PathCond.t -> t list
+
+val remove_unreachables : t -> t
 
 val mark_npe_alternative : t -> t
 
