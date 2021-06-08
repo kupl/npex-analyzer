@@ -213,15 +213,19 @@ module DisjReady = struct
     let callee = Procdesc.get_proc_name callee_pdesc in
     let ret_var = Procdesc.get_ret_var callee_pdesc in
     let actual_values = List.mapi arg_typs ~f:(fun i (arg, _) -> Domain.eval astate node instr arg ~pos:(i + 1)) in
-    let resolved_disjuncts = Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary in
-    L.d_printfln "%d states are instantiated from %d summaries from %a"
+    let callee_summary_filtered =
+      if Config.npex_launch_spec_verifier then SpecCheckerSummary.get_only_normals callee_summary
+      else callee_summary
+    in
+    let resolved_disjuncts = Summary.resolve_summary astate ~actual_values ~callee_pdesc callee_summary_filtered in
+    L.d_printfln "%d states are instantiated from %d summaries from %a" (List.length resolved_disjuncts)
       (List.length (Summary.get_disjuncts callee_summary))
-      (List.length resolved_disjuncts) Procname.pp callee ;
+      Procname.pp callee ;
     let bind_return astate' =
       let return_value =
         let _value = Domain.read_loc astate' (Domain.Loc.of_pvar ret_var) in
         (* TODO: why this is happening? *)
-        if Domain.Val.is_top _value then Domain.Val.of_typ ret_typ else _value
+        if Domain.Val.is_top _value then Domain.Val.top_of_typ ret_typ else _value
       in
       let astate_ret_binded =
         if Domain.is_exceptional astate' then
