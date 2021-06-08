@@ -2,6 +2,9 @@ open! IStd
 open! Vocab
 module L = Logging
 module Domain = SpecCheckerDomain
+module SymHeap = SymDom.SymHeap
+module Val = SymDom.Val
+module Loc = SymDom.Loc
 module Node = InstrNode
 
 type exec =
@@ -87,7 +90,10 @@ module BuiltIn = struct
       try
         let value = Domain.eval astate node instr arg_exp |> Domain.Val.unwrap_exn in
         [Domain.unwrap_exception (Domain.store_reg astate ret_id value)]
-      with Unexpected msg -> L.(die InternalError) "%s@.%a@." msg Domain.pp astate
+      with Unexpected msg ->
+        L.progress "[WARNING]: ==============@.%s@." msg ;
+        []
+      (* L.(die InternalError) "%s@.%a@." msg Domain.pp astate *)
     in
     (is_model, exec)
 
@@ -150,7 +156,9 @@ module Collection = struct
       let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
       let this_loc = Domain.eval_lv astate node instr this_exp in
       let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
-      [Domain.store_loc astate is_empty_field_loc Domain.Val.one]
+      let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
+      let astate_stored = Domain.store_loc astate is_empty_field_loc is_empty_value in
+      Domain.add_pc astate_stored (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.one)
     in
     (is_model, exec)
 
@@ -239,9 +247,11 @@ module Collection = struct
       let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
       let this_loc = Domain.eval_lv astate node instr this_exp in
       let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
+      let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
       let return_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
       let astate_return_stored = Domain.store_reg astate ret_id return_value in
-      [Domain.store_loc astate_return_stored is_empty_field_loc Domain.Val.zero]
+      let astate_stored = Domain.store_loc astate_return_stored is_empty_field_loc is_empty_value in
+      Domain.add_pc astate_stored (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.zero)
     in
     (is_model, exec)
 
