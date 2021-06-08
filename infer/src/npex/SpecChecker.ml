@@ -522,7 +522,7 @@ end
 module DisjunctiveConfig : TransferFunctions.DisjunctiveConfig = struct
   let join_policy = `UnderApproximateAfter 20
 
-  let widen_policy = `UnderApproximateAfterNumIterations 2
+  let widen_policy = `UnderApproximateAfterNumIterations 1
 end
 
 module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
