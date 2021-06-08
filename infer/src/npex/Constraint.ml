@@ -170,6 +170,7 @@ module MakePC (Val : S) = struct
   module PathCond = Make (Val)
   module PCSet = PrettyPrintable.MakePPSet (PathCond)
   module ConstMap = PrettyPrintable.MakePPMonoMap (Val) (Val)
+  module ValSet = PrettyPrintable.MakePPSet (Val)
 
   type t = {pc_set: PCSet.t; const_map: ConstMap.t}
 
@@ -283,7 +284,9 @@ module MakePC (Val : S) = struct
   let replace_value {pc_set; const_map} ~(src : Val.t) ~(dst : Val.t) =
     let pc_set = PCSet.map (PathCond.replace_value ~src ~dst) pc_set in
     let const_map =
-      ConstMap.fold (fun v const -> ConstMap.add (Val.replace_sub ~src ~dst v) const) const_map ConstMap.empty
+      ConstMap.fold
+        (fun v const -> ConstMap.add (Val.replace_sub ~src ~dst v) (Val.replace_sub ~src ~dst const))
+        const_map ConstMap.empty
     in
     {pc_set; const_map}
 
@@ -292,44 +295,27 @@ module MakePC (Val : S) = struct
 
   let merge pc1 pc2 = PCSet.fold add (PCSet.inter (to_pc_set pc1) (to_pc_set pc2)) empty
 
-  let check_sat pc1 pc2 =
+  let check_sat ?(print_unsat = false) pc1 pc2 =
     let pc_unioned = join pc1 pc2 in
     let result = not (is_invalid pc_unioned) in
-    let debug_msg =
-      if Config.debug_mode then
-        F.asprintf "===== check sat =====@. - lhs: %a@. - rhs: %a@. - unioned: %a@. - result: %b@." pp pc1 pp pc2
-          pp pc_unioned result
-      else F.asprintf "===== check sat =====@. - lhs: %a@. - rhs: %a@. - result: %b@." pp pc1 pp pc2 result
-    in
-    if Config.debug_mode then L.progress "%s" debug_msg ;
+    if print_unsat then
+      L.progress "===== check sat =====@. - lhs: %a@. - rhs: %a@. - unioned: %a@. - result: %b@." pp pc1 pp pc2 pp
+        pc_unioned result ;
     result
 
 
-  let check_valid pc1 pc2 =
+  let check_valid ?(print_invalid = false) pc1 pc2 =
     let pc_set1 = PCSet.filter (not <<< PathCond.is_valid) (to_pc_set pc1) in
     let pc_set2 = PCSet.filter (not <<< PathCond.is_valid) (to_pc_set pc2) in
     let result = (* TODO: check *) PCSet.equal pc_set1 pc_set2 in
-    let debug_msg =
-      F.asprintf "===== check validity ====@. - lhs: %a@. - rhs: %a@. - result: %b@." pp pc1 pp pc2 result
-    in
-    if Config.debug_mode then L.progress "%s" debug_msg ;
+    if print_invalid then
+      L.progress "===== check validity ====@. - lhs: %a@. - rhs: %a@. - result: %b@." pp pc1 pp pc2 result ;
     result
 
 
-  let equal_values {pc_set; const_map} v =
-    match ConstMap.find_opt v const_map with
-    | Some const ->
-        [v; const]
-    | None ->
-        PCSet.fold
-          (function
-            | PathCond.PEquals (v1, v2) when Val.equal v1 v ->
-                fun acc -> v2 :: acc
-            | PathCond.PEquals (v1, v2) when Val.equal v2 v ->
-                fun acc -> v1 :: acc
-            | _ ->
-                fun acc -> acc)
-          pc_set [v]
+  let equal_values {const_map} v =
+    (* only returns constant values *)
+    match ConstMap.find_opt v const_map with Some const -> [v; const] | None -> [v]
 
 
   let inequal_values {pc_set} v =
