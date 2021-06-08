@@ -22,11 +22,14 @@ type get_summary = Procname.t -> t option
 let empty : t = []
 
 let to_summary proc_desc disjuncts =
+  let disjuncts = join_list disjuncts ~joinable:Domain.joinable ~join:Domain.weak_join ~pp:Domain.pp in
   let summary = List.map ~f:(StateWithFeature.from_state proc_desc) disjuncts |> StateWithFeature.merge in
   (* L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)
      Procname.pp (Procdesc.get_proc_name proc_desc) ; *)
   summary
 
+
+let get_only_normals : t -> t = List.filter ~f:(not <<< Domain.is_inferred <<< StateWithFeature.get_astate)
 
 module CtxCounter = SymDom.Counter (Procname)
 

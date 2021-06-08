@@ -16,3 +16,5 @@ val to_summary : Procdesc.t -> Domain.t list -> t
 val get_disjuncts : t -> Domain.t list
 
 val get_local_disjuncts : t -> Domain.t list
+
+val get_only_normals : t -> t

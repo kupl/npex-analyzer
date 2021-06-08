@@ -234,3 +234,22 @@ let join_list list ~joinable ~join ~pp =
 let list_top_n list ~n ~compare = List.split_n (List.sort list ~compare) n |> fst
 
 let is_double_pointer typ = match Typ.(typ.desc) with Tptr (subtyp, _) -> Typ.is_pointer subtyp | _ -> false
+
+let proc_to_json_opt proc =
+  let procname = Procname.get_method proc in
+  let loc = match Procdesc.load proc with Some pdesc -> Procdesc.get_loc pdesc | None -> Location.dummy in
+  let line = Location.(loc.line) in
+  let filepath = Location.(loc.file) |> SourceFile.to_string in
+  let result =
+    match Procname.get_class_name proc with
+    | Some classname ->
+        Some
+          (`Assoc
+            [ ("name", `String procname)
+            ; ("class", `String classname)
+            ; ("line", `Int line)
+            ; ("filepath", `String filepath) ])
+    | None ->
+        None
+  in
+  result
