@@ -18,10 +18,15 @@ module L = Logging
 module VDom = AbstractDomain.Flat (JavaClassName)
 
 module CFG = ProcCfg.Normal
-module Domain = AbstractDomain.Map (Var) (VDom)
+
+module Domain = struct
+  include AbstractDomain.Map (Var) (VDom)
+
+  let add k v t = if VDom.is_top v then t else add k v t
+end
 
 let get_var (astate : Domain.t) (v : Var.t) : VDom.t =
-  match Domain.find_opt v astate with Some ab -> ab | None -> VDom.bottom
+  match Domain.find_opt v astate with Some ab -> ab | None -> VDom.top
 
 
 let rec eval_expr (astate : Domain.t) (expr : Exp.t) : VDom.t =
