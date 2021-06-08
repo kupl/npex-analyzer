@@ -366,7 +366,130 @@ module IO = struct
   let models = [init; close; read]
 end
 
-let models : model list = BuiltIn.models @ [invoke] @ Collection.models @ IO.models
+module String = struct
+  let classes = ["java.lang.String"]
+
+  let valueField = Fieldname.make (Typ.Name.Java.from_string "String") "value"
+
+  let read_value astate node instr str_exp =
+    match Domain.eval astate node instr str_exp with
+    | Val.Vheap (SymHeap.String _) as str_value ->
+        (astate, str_value)
+    | Val.Vheap sh ->
+        let str_field = Loc.append_field ~fn:valueField (Loc.SymHeap sh) in
+        let astate_unknown_resolved = Domain.resolve_unknown_loc astate Typ.void_star str_field in
+        let str_value = Domain.read_loc astate str_field in
+        (astate_unknown_resolved, str_value)
+    | _ as v ->
+        L.progress "[WARNING]: %a is not allowed as string value@." Val.pp v ;
+        let str_value = Val.make_extern (Node.of_pnode node instr) Typ.void_star in
+        (astate, str_value)
+
+
+  let init : model =
+    (* TODO: modeling new String() *)
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _); (_, _)], _, _) when Procname.Java.is_constructor mthd ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: (str_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let value_field_loc = Domain.Loc.append_field this_loc ~fn:valueField in
+      let astate, str_value = read_value astate node instr str_exp in
+      [Domain.store_loc astate value_field_loc str_value]
+    in
+    (is_model, exec)
+
+
+  let equals : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _); (_, _)], _, _)
+        when String.equal (Procname.get_method callee) "equals" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: (str_exp, _) :: _) = arg_typs in
+      let astate, lhs_value = read_value astate node instr this_exp in
+      let astate, rhs_value = read_value astate node instr str_exp in
+      let equal_states =
+        let equal_cond = Domain.PathCond.make_physical_equals Binop.Eq lhs_value rhs_value in
+        Domain.add_pc (Domain.store_reg astate ret_id Val.one) equal_cond
+      in
+      let non_equal_states =
+        let non_equal_cond = Domain.PathCond.make_physical_equals Binop.Ne lhs_value rhs_value in
+        Domain.add_pc (Domain.store_reg astate ret_id Val.zero) non_equal_cond
+      in
+      equal_states @ non_equal_states
+    in
+    (is_model, exec)
+
+
+  let isEmpty : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal (Procname.get_method callee) "isEmpty" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let astate, str_value = read_value astate node instr this_exp in
+      match str_value with
+      | Val.Vheap (SymHeap.String str) when String.equal str "" ->
+          [Domain.store_reg astate ret_id Val.one]
+      | Val.Vheap (SymHeap.String _) ->
+          [Domain.store_reg astate ret_id Val.zero]
+      | _ ->
+          let empty_states =
+            let empty_cond = Domain.PathCond.make_physical_equals Binop.Eq str_value (Val.make_string "") in
+            Domain.add_pc (Domain.store_reg astate ret_id Val.one) empty_cond
+          in
+          let non_empty_states =
+            let empty_cond = Domain.PathCond.make_physical_equals Binop.Ne str_value (Val.make_string "") in
+            Domain.add_pc (Domain.store_reg astate ret_id Val.zero) empty_cond
+          in
+          empty_states @ non_empty_states
+    in
+    (is_model, exec)
+
+
+  let is_string = function Val.Vheap (SymHeap.String _) -> true | _ -> false
+
+  let length : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when String.equal (Procname.get_method callee) "length"
+        ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr callee (ret_id, ret_typ) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let astate, str_value = read_value astate node instr this_exp in
+      match List.find (Domain.equal_values astate str_value) ~f:is_string with
+      | Some (Val.Vheap (SymHeap.String str)) ->
+          let length_value = Val.of_intlit (IntLit.of_int (String.length str)) in
+          [Domain.store_reg astate ret_id length_value]
+      | _ ->
+          Domain.bind_extern_value astate (Node.of_pnode node instr) (ret_id, ret_typ) callee [str_value]
+    in
+    (is_model, exec)
+
+
+  let models = [init; isEmpty; length; equals]
+end
+
+let models : model list = BuiltIn.models @ [invoke] @ Collection.models @ IO.models @ String.models
 
 let find_model_opt callee instr = List.find models ~f:(fun (is_model, _) -> is_model callee instr)
 
