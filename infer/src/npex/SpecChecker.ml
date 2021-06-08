@@ -361,6 +361,48 @@ module DisjReady = struct
         let non_null_states =
           let value = Domain.read_loc state_unknown_resolved loc in
           Domain.store_reg state_unknown_resolved id value |> add_non_null_constraints node instr e
+        in
+        let null_states =
+          if Domain.Loc.is_symheap loc then
+            (* TODO: deal with null.f, null[x] cases
+             * Currently, we assume _.f and _[] location is non-null *)
+            let value = loc |> Domain.Loc.to_symheap |> Domain.Val.of_symheap in
+            throw_uncaught_exn state_unknown_resolved analysis_data node instr value
+          else []
+        in
+        null_states @ non_null_states
+    | Sil.Store {e1; e2= Exp.BinOp (Binop.PlusA _, x, Const (Cint y))} when IntLit.isone y ->
+        (* i' = i + 1 => just add condition: i' > i *)
+        let loc = Domain.eval_lv astate node instr e1 in
+        let v1 = Domain.eval astate node instr x in
+        let value = Domain.Val.make_extern instr_node Typ.int in
+        let astate_stored = Domain.store_loc astate loc value in
+        Domain.add_pc astate_stored (Domain.PathCond.make_lt_pred v1 value)
+    | Sil.Store {e1; e2= Exp.BinOp (Binop.MinusA _, x, y) as e2} ->
+        (* e1 = x - y *)
+        let loc = Domain.eval_lv astate node instr e1 in
+        let v1 = Domain.eval astate node instr x in
+        let v2 = Domain.eval astate node instr y in
+        if Domain.is_valid_pc astate (Domain.PathCond.make_lt_pred v1 v2) then
+          (* x < y => e1 < 0 *)
+          let value = Domain.Val.make_extern instr_node Typ.int in
+          let astate_stored = Domain.store_loc astate loc value in
+          Domain.add_pc astate_stored (Domain.PathCond.make_lt_pred value Domain.Val.zero)
+        else if Domain.is_valid_pc astate (Domain.PathCond.make_le_pred v1 v2) then
+          (* x <= y => e1 <= 0 *)
+          let value = Domain.Val.make_extern instr_node Typ.int in
+          let astate_stored = Domain.store_loc astate loc value in
+          Domain.add_pc astate_stored (Domain.PathCond.make_lt_pred value Domain.Val.zero)
+        else if Domain.is_valid_pc astate (Domain.PathCond.make_lt_pred v2 v1) then
+          (* x > y => e1 > 0 *)
+          let value = Domain.Val.make_extern instr_node Typ.int in
+          let astate_stored = Domain.store_loc astate loc value in
+          Domain.add_pc astate_stored (Domain.PathCond.make_lt_pred Domain.Val.zero value)
+        else if Domain.is_valid_pc astate (Domain.PathCond.make_le_pred v2 v1) then
+          (* x >= y => e1 >= 0 *)
+          let value = Domain.Val.make_extern instr_node Typ.int in
+          let astate_stored = Domain.store_loc astate loc value in
+          Domain.add_pc astate_stored (Domain.PathCond.make_le_pred Domain.Val.zero value)
         else
           let value = Domain.eval astate node instr e2 in
           [Domain.store_loc astate loc value]
@@ -368,14 +410,6 @@ module DisjReady = struct
         let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
         [Domain.set_exception (Domain.store_loc astate loc value)]
-    (* | Sil.Store {e1= Exp.Lvar pv; e2= Exp.Const (Cint intlit); typ}
-       when IntLit.iszero intlit
-            && Procdesc.Node.get_succs node
-               |> List.hd_exn
-               |> Procdesc.Node.get_kind
-               |> Procdesc.Node.equal_nodekind Procdesc.Node.Join_node ->
-         (* for (i = 0; ...) *)
-         [Domain.store_loc astate (Domain.Loc.of_pvar pv) (Domain.Val.make_extern instr_node typ)] *)
     | Sil.Store {e1= Exp.Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
         let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
         let value = Domain.eval astate node instr e2 ~pos:0 in
