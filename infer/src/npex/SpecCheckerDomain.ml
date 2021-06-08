@@ -575,25 +575,185 @@ let rec eval_lv astate node instr exp =
       L.(die InternalError) "%a is not allowed as lvalue expression in java" Exp.pp exp
 
 
-(** For Join *)
-let unify ~base:lhs rhs =
-  let is_node_value = function
-    | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
-        true
-    | _ ->
+(** remove unreachable *)
+let compute_reachables_from ({mem} as astate) =
+  let pc_relevant v = equal_values astate v @ inequal_values astate v in
+  let pointsto_val =
+    Mem.fold
+      (fun l v acc ->
+        match l with
+        | Loc.Var pv when Pvar.is_return pv ->
+            Val.Set.add v acc
+        | (Loc.Field (Loc.Var gv, _) | Loc.Index (Loc.Var gv, _)) when Pvar.is_global gv ->
+            Val.Set.add v acc
+        | (Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _)) when SymHeap.is_symbolic sh ->
+            Val.Set.add (Val.Vheap sh) acc |> Val.Set.add v
+        | _ when Val.is_symbolic v ->
+            Val.Set.add v acc
+        | _ ->
+            acc)
+      mem Val.Set.empty
+  in
+  Val.Set.elements pointsto_val
+  |> List.concat_map ~f:pc_relevant
+  |> List.concat_map ~f:Val.get_subvalues
+  |> Val.Set.of_list
+
+
+let remove_unreachables ({mem; pc} as astate) =
+  let all_heaps =
+    all_values astate |> Val.Set.elements |> List.concat_map ~f:Val.get_subvalues |> Val.Set.of_list
+  in
+  let reachable_heaps = compute_reachables_from astate in
+  let unreachable_heaps = Val.Set.diff all_heaps reachable_heaps in
+  let is_unreachable_value v =
+    List.exists (Val.get_subvalues v) ~f:(fun subval -> Val.Set.mem subval unreachable_heaps)
+  in
+  let is_reachable_loc = function
+    | (Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _))
+      when Val.Set.mem (Val.Vheap sh) unreachable_heaps ->
         false
+    | _ ->
+        true
+  in
+  let mem' = Mem.filter (fun l v -> is_reachable_loc l && not (is_unreachable_value v)) mem in
+  let pc' =
+    PC.filter_by_value ~f:(fun v -> List.exists (Val.get_subvalues v) ~f:(not <<< is_unreachable_value)) pc
+  in
+  {astate with mem= mem'; pc= pc'}
+
+
+(** For Join *)
+let unify lhs rhs : t * t =
+  (* let is_node_value = function
+       | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
+           true
+       | _ ->
+           false
+     in *)
+  let all_locs =
+    (* TODO: unify non-memory symbols? or guarantee all symbols are in memory *)
+    Mem.fold (fun l _ acc -> l :: acc) lhs.mem []
+  in
+  let extern_locs, concrete_locs =
+    List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
+  in
+  let rec _unify worklist rest (lhs, rhs) =
+    (* TODO: fix scalability issues *)
+    let next_vals, next_lhs, next_rhs =
+      List.fold worklist ~init:(Val.Set.empty, lhs, rhs) ~f:(fun (vals, lhs, rhs) l ->
+          if Mem.mem l rhs.mem then
+            let v_lhs = Mem.find l lhs.mem in
+            let v_rhs = Mem.find l rhs.mem in
+            match v_lhs with
+            | _ when Val.equal v_lhs v_rhs ->
+                (Val.Set.add v_lhs vals, lhs, rhs)
+            | Val.Vint _ ->
+                let new_value = Val.make_extern Node.dummy Typ.int in
+                (vals, replace_value lhs ~src:v_lhs ~dst:new_value, replace_value rhs ~src:v_rhs ~dst:new_value)
+            | Val.Vheap _ ->
+                let new_value = Val.make_extern Node.dummy Typ.void_star in
+                ( Val.Set.add new_value vals
+                , replace_value lhs ~src:v_lhs ~dst:new_value
+                , replace_value rhs ~src:v_rhs ~dst:new_value )
+            | Vexn v_lhs' ->
+                let new_value = Val.make_extern Node.dummy Typ.void_star in
+                let v_rhs' = Val.unwrap_exn v_rhs in
+                (* exception heap cannot points-to something *)
+                (vals, replace_value lhs ~src:v_lhs' ~dst:new_value, replace_value rhs ~src:v_rhs' ~dst:new_value)
+            | Vextern _ ->
+                (* uninterpretted function term is not in memory *)
+                (vals, lhs, rhs)
+            | Bot | Top ->
+                (vals, lhs, rhs)
+          else (vals, lhs, rhs))
+      (* let v_lhs = Mem.find l lhs.mem in
+         if is_node_value (Mem.find l lhs.mem) then
+           let v_rhs = Mem.find l rhs.mem in
+           if Val.equal v_lhs v_rhs then (Val.Set.add v_lhs nexts, rhs)
+           else if is_node_value v_rhs then (Val.Set.add v_lhs nexts, replace_value rhs ~src:v_rhs ~dst:v_lhs)
+           else (nexts, rhs)
+         else (nexts, rhs)) *)
+    in
+    let next_worklist, next_rest =
+      List.partition_tf rest
+        ~f:(Loc.is_rec ~f:(function Loc.SymHeap sh -> Val.Set.mem (Val.Vheap sh) next_vals | _ -> false))
+    in
+    if List.is_empty next_worklist then (next_lhs, next_rhs)
+    else _unify next_worklist next_rest (next_lhs, next_rhs)
   in
   (* TODO: replace variable first *)
+  _unify concrete_locs extern_locs (lhs, rhs)
+
+
+let get_null_locs astate =
   Mem.fold
-    (fun l v_lhs acc ->
-      if is_node_value v_lhs then
-        let v_rhs = Mem.find l rhs.mem in
-        if is_node_value v_rhs then replace_value acc ~src:v_rhs ~dst:v_lhs else acc
+    (fun l v acc ->
+      if (Loc.is_var l || Val.is_symbolic v) && List.exists (equal_values astate v) ~f:Val.is_null then
+        Loc.Set.add l acc
       else acc)
-    lhs.mem rhs
+    astate.mem Loc.Set.empty
+
+
+let collect_summary_symbols astate =
+  (* TODO: HEURISTICS *)
+  Mem.fold
+    (fun l v acc ->
+      match (l, v) with
+      | (Loc.Field _, Val.Vint (Symbol s) | Loc.Index _, Val.Vint (Symbol s)) when Symbol.is_pvar s ->
+          Val.Set.add v acc
+      | _ ->
+          acc)
+    astate.mem Val.Set.empty
 
 
 let joinable lhs rhs =
+  let has_const_diff_value lhs rhs =
+    Mem.exists
+      (fun l v ->
+        (not (Loc.is_extern l))
+        &&
+        (* Loc.is_concrete l
+           && *)
+        (* let equal_values_lhs, inequal_values_lhs = equal_values lhs v, inequal_values lhs v in
+           let equal_values_rhs, inequal_values_rhs = equal_values rhs v, inequal_values rhs v in *)
+        (* TODO: lhs may have inequal values *)
+        match List.find (equal_values lhs v) ~f:Val.is_constant with
+        | Some v -> (
+          match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+          | Some v' ->
+              not (Val.equal v v')
+          | None -> (
+            match List.find (inequal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+            | Some v' ->
+                Val.equal v v'
+            | None ->
+                false ) )
+        | None -> (
+          match List.find (inequal_values lhs v) ~f:Val.is_constant with
+          | Some v -> (
+            match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+            | Some v' ->
+                Val.equal v v'
+            | None ->
+                false )
+          | None ->
+              false ))
+      lhs.mem
+  in
+  let has_no_significant_diff lhs rhs =
+    if Config.npex_launch_localize then true
+    else
+      (* Loc.Set.equal (get_null_locs lhs) (get_null_locs rhs) *)
+      Val.Set.equal (collect_summary_symbols lhs) (collect_summary_symbols rhs)
+      &&
+      let lhs, rhs = unify lhs rhs in
+      not (has_const_diff_value lhs rhs)
+    (* && not (has_const_diff_value lhs (unify ~base:lhs rhs)) *)
+    (* let rhs = unify ~base:lhs rhs in
+       let satisfiable lhs rhs = PC.check_sat lhs.pc rhs.pc in
+       satisfiable lhs rhs *)
+  in
   Bool.equal lhs.is_npe_alternative rhs.is_npe_alternative
   && Bool.equal lhs.is_exceptional rhs.is_exceptional
   && Bool.equal lhs.is_infer_failed rhs.is_infer_failed
@@ -607,8 +767,12 @@ let weak_join lhs rhs : t =
   if phys_equal lhs rhs then lhs
   else if is_bottom lhs then rhs
   else if is_bottom rhs then lhs
-  else
-    let rhs = unify ~base:lhs rhs in
+  else (
+    L.d_printfln " - Before Join - " ;
+    L.d_printfln "Left@.%a@.Right@.%a@." pp lhs pp rhs ;
+    let lhs, rhs = unify lhs rhs in
+    L.d_printfln " - Unified Left - @.%a@." pp lhs ;
+    L.d_printfln " - Unified Right - @.%a@." pp rhs ;
     let reg = Reg.weak_join ~lhs:lhs.reg ~rhs:rhs.reg in
     let mem = Mem.weak_join ~lhs:lhs.mem ~rhs:rhs.mem in
     let pc = PC.weak_join ~lhs:lhs.pc ~rhs:rhs.pc in
@@ -633,5 +797,46 @@ let weak_join lhs rhs : t =
       ; executed_procs
       ; is_infer_failed }
     in
-    let probability = (lhs.probability +. rhs.probability) /. 2.0 in
-    {lhs with reg; mem; pc; applied_models; probability}
+    L.d_printfln " - Joined - @.%a@." pp joined ;
+    joined )
+
+
+module Feature = struct
+  type t = {is_npe_alternative: bool; is_exceptional: bool; fault: NullPoint.t option; is_infer_failed: bool}
+  [@@deriving compare]
+
+  let pp fmt x =
+    F.fprintf fmt "%b:%b:%a:%b" x.is_npe_alternative x.is_exceptional (Pp.option NullPoint.pp) x.fault
+      x.is_infer_failed
+end
+
+module FeatureMap = PrettyPrintable.MakePPMap (Feature)
+
+let merge disjuncts =
+  let add_state (feature_map : t list FeatureMap.t) (state : t) =
+    let feature =
+      Feature.
+        { is_npe_alternative= state.is_npe_alternative
+        ; is_exceptional= state.is_exceptional
+        ; fault= state.fault
+        ; is_infer_failed= state.is_infer_failed }
+    in
+    match FeatureMap.find_opt feature feature_map with
+    | Some states ->
+        FeatureMap.add feature (state :: states) feature_map
+    | None ->
+        FeatureMap.add feature [state] feature_map
+  in
+  let feature_partitioned = List.fold disjuncts ~init:FeatureMap.empty ~f:add_state in
+  let rec _merge worklist acc =
+    match worklist with
+    | [] ->
+        acc
+    | hd :: tl ->
+        let joinable, unjoinable = List.partition_tf tl ~f:(joinable hd) in
+        if List.is_empty joinable then _merge tl (hd :: acc)
+        else
+          let joinable' = List.map joinable ~f:(weak_join hd) in
+          _merge (joinable' @ unjoinable) acc
+  in
+  FeatureMap.fold (fun _ disjuncts -> _merge disjuncts) feature_partitioned []

@@ -261,7 +261,8 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
           | None ->
               some_post
           | Some joined_post ->
-              let res = Domain.join post joined_post in
+              (* NPEX HEURISTICS: disable join here *)
+              let res = post @ joined_post in
               if Config.write_html then debug_absint_operation (`Join (joined_post, post, res)) ;
               Some res ))
 
@@ -436,23 +437,7 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
           List.exists not_in ~f:(fun disj_not_in -> T.Domain.leq ~lhs:disjunct ~rhs:disj_not_in) |> not)
 
 
-    let join : t -> t -> t =
-      let _join l = join_list l ~join:T.Domain.weak_join ~joinable:T.Domain.joinable in
-      fun lhs rhs ->
-        if phys_equal lhs rhs then lhs
-        else
-          let (`UnderApproximateAfter n) = DConfig.join_policy in
-          let sorted = List.sort (lhs @ rhs) ~compare:(fun l r -> T.Domain.cardinal l - T.Domain.cardinal r) in
-          let npe_alternative_states, non_alternatives = List.partition_tf ~f:T.Domain.is_npe_alternative sorted in
-          let npe_length = List.length npe_alternative_states in
-          let non_npe_length = List.length non_alternatives in
-          (* NPEX: join only when states explode *)
-          if npe_length + non_npe_length < n then lhs @ rhs
-          else if npe_length < n then
-            (* NPEX: prefer npe alternative states to normal states *)
-            npe_alternative_states @ _join non_alternatives
-          else _join (npe_alternative_states @ non_alternatives)
-
+    let join : t -> t -> t = fun lhs rhs -> if phys_equal lhs rhs then lhs else T.Domain.merge (lhs @ rhs)
 
     (** check if elements of [disj] appear in [of_] in the same order, using pointer equality on
         abstract states to compare elements quickly *)
@@ -485,9 +470,7 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
       else if num_iters > max_iter then (
         L.d_printfln "Iteration %d is greater than max iter %d, stopping." num_iters max_iter ;
         prev )
-      else
-        let post = join prev next in
-        if leq ~lhs:post ~rhs:prev then prev else post
+      else prev @ next
 
 
     let pp f disjuncts =
@@ -498,13 +481,17 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
   end
 
   let exec_instr pre_disjuncts analysis_data node instr =
-    List.foldi pre_disjuncts ~init:[] ~f:(fun i post_disjuncts pre_disjunct ->
-        L.d_printfln "@[<v2>Executing instruction from disjunct #%d@;" i ;
-        let disjuncts' = T.exec_instr pre_disjunct analysis_data node instr in
-        ( if Config.write_html then
-          let n = List.length disjuncts' in
-          L.d_printfln "@]@\n@[Got %d disjunct%s back@]" n (if Int.equal n 1 then "" else "s") ) ;
-        Domain.join post_disjuncts disjuncts')
+    let post_disjuncts =
+      List.foldi pre_disjuncts ~init:[] ~f:(fun i post_disjuncts pre_disjunct ->
+          L.d_printfln "@[<v2>Executing instruction from disjunct #%d@;" i ;
+          let disjuncts' = T.exec_instr pre_disjunct analysis_data node instr in
+          ( if Config.write_html then
+            let n = List.length disjuncts' in
+            L.d_printfln "@]@\n@[Got %d disjunct%s back@]" n (if Int.equal n 1 then "" else "s") ) ;
+          (* NPEX HEURISTICS: disable join here*)
+          post_disjuncts @ disjuncts')
+    in
+    post_disjuncts
 
 
   let exec_node_instrs old_state_opt ~exec_instr pre instrs =
@@ -515,15 +502,21 @@ module MakeSpecTransferFunctions (T : SpecTransfer) (DConfig : TransferFunctions
       | Some {State.pre= previous_pre; _} ->
           not (List.mem ~equal:phys_equal previous_pre disjunct)
     in
-    let current_post = match old_state_opt with None -> [] | Some {State.post; _} -> post in
-    List.foldi pre ~init:current_post ~f:(fun i post_disjuncts pre_disjunct ->
-        if is_new_pre pre_disjunct then (
-          L.d_printfln "@[<v2>Executing node from disjunct #%d@;" i ;
-          let disjuncts' = Instrs.fold ~init:[pre_disjunct] instrs ~f:exec_instr in
-          L.d_printfln "@]@\n" ; Domain.join post_disjuncts disjuncts' )
-        else (
-          L.d_printfln "@[Skipping already-visited disjunct #%d@]@;" i ;
-          post_disjuncts ))
+    let old_post = match old_state_opt with None -> [] | Some {State.post; _} -> post in
+    let new_post =
+      List.foldi pre ~init:[] ~f:(fun i post_disjuncts pre_disjunct ->
+          if is_new_pre pre_disjunct then (
+            L.d_printfln "@[<v2>Executing node from disjunct #%d@;" i ;
+            let disjuncts' = Instrs.fold ~init:[pre_disjunct] instrs ~f:exec_instr in
+            L.d_printfln "@]@\n" ;
+            (* NPEX HEURISTICS: disable join here*)
+            post_disjuncts @ disjuncts' )
+          else (
+            L.d_printfln "@[Skipping already-visited disjunct #%d@]@;" i ;
+            post_disjuncts ))
+    in
+    (* NPEX HEURISTICS: merge states if more than one states are generated *)
+    if List.length new_post > 1 then old_post @ Domain.join new_post [] else old_post @ new_post
 
 
   let pp_session_name node f = T.pp_session_name node f

@@ -46,11 +46,15 @@ val is_fault_null : t -> Val.t -> bool
 
 val joinable : t -> t -> bool
 
+val unify : t -> t -> t * t
+
 val all_values : t -> Val.Set.t
 
 val equal_values : t -> Val.t -> Val.t list
 
 val inequal_values : t -> Val.t -> Val.t list
+
+val collect_summary_symbols : t -> Val.Set.t
 
 val resolve_unknown_loc : t -> Typ.t -> Loc.t -> t
 
@@ -105,5 +109,7 @@ val unwrap_exception : t -> t
 val append_ctx : t -> int -> t
 
 val weak_join : t -> t -> t
+
+val merge : t list -> t list
 
 val cardinal : t -> int
