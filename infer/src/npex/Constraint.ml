@@ -202,7 +202,8 @@ module MakePC (Val : S) = struct
       pc_set const_map_str
 
 
-  let pp fmt x = PCSet.pp fmt (to_pc_set x)
+  (* let pp fmt x = PCSet.pp fmt (to_pc_set x) *)
+  let pp fmt {const_map; pc_set} = F.fprintf fmt "(%a, %a)" ConstMap.pp const_map PCSet.pp pc_set
 
   let debug_if_invalid_pc transitives original_cond =
     if List.exists transitives ~f:PathCond.is_invalid then
@@ -346,6 +347,8 @@ module MakePC (Val : S) = struct
     in
     {pc_set; const_map}
 
+
+  let invalid = {empty with pc_set= PCSet.singleton PathCond.false_cond}
 
   let cardinal {pc_set; const_map} = PCSet.cardinal pc_set + ConstMap.cardinal const_map
 end
