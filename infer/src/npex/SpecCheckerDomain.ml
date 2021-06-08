@@ -40,6 +40,7 @@ let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; appli
     [@@ocamlformat "disable"]
 
 let cardinal x =
+  (* To minimize randomness in fixed-point iteration *)
   let is_npe_alternative = if x.is_npe_alternative then 1 else 0 in
   let is_exceptional = if x.is_exceptional then 1 else 0 in
   let reg = Reg.cardinal x.reg in
@@ -48,7 +49,10 @@ let cardinal x =
   is_npe_alternative + is_exceptional + reg + mem + pc
 
 
-let leq ~lhs ~rhs = phys_equal lhs rhs
+let leq ~lhs ~rhs =
+  (* Optimization in disjunctive analysis: prune redundant states *)
+  phys_equal lhs rhs
+
 
 let bottom =
   { reg= Reg.bottom
@@ -196,7 +200,7 @@ let add_pc astate pathcond : t list =
       pc_set astate
   in
   let pathcond_to_add = PathCond.normalize pathcond in
-  if PC.is_valid pathcond_to_add astate.pc then
+  if PC.is_valid pathcond_to_add astate.pc then 
     (* Avoid overwritting modelNull by normalNull *)
     [astate]
   else
@@ -212,18 +216,24 @@ let unwrap_exception astate = {astate with is_exceptional= false}
 
 let set_fault astate ~nullpoint = {astate with fault= Some nullpoint}
 
+let set_infer_failed astate = {astate with is_infer_failed= true}
+
 let get_nullptrs astate = astate.nullptrs
 
 let set_nullptrs astate vals = {astate with nullptrs= Val.Set.union vals astate.nullptrs}
 
+let add_executed_proc astate proc = {astate with executed_procs= Procname.Set.add proc astate.executed_procs}
+
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
-  match Val.symbol_from_loc_opt typ loc with
-  | Some symval ->
-      let mem' = Mem.add loc symval astate.mem in
-      {astate with mem= mem'}
-  | None ->
-      store_loc astate loc (Val.make_extern Node.dummy typ)
+  if is_unknown_loc astate loc then
+    match Val.symbol_from_loc_opt typ loc with
+    | Some symval ->
+        let mem' = Mem.add loc symval astate.mem in
+        {astate with mem= mem'}
+    | None ->
+        store_loc astate loc (Val.make_extern Node.dummy typ)
+  else astate
 
 
 let bind_exn_extern astate instr_node ret_var callee arg_values =
@@ -283,12 +293,16 @@ let append_ctx astate offset =
 
 
 let add_model astate pos mval =
-  { astate with
-    applied_models= NullModel.add_element pos mval astate.applied_models
-  ; probability=
-      (* Incremental average *)
-      astate.probability
-      +. ((snd mval -. astate.probability) /. (NullModel.cardinal astate.applied_models + 1 |> Float.of_int)) }
+  match NullModel.find_opt pos astate.applied_models with
+  | Some mvals when NullModel.MValueSet.equal mvals (NullModel.MValueSet.singleton mval) ->
+      [astate]
+  | Some _ ->
+      L.d_printfln " - model %a is not appliable" NullModel.MValue.pp mval ;
+      []
+  | None ->
+      [ { astate with
+          applied_models= NullModel.add_element pos mval astate.applied_models
+        ; probability= NullModel.compute_probability astate.applied_models } ]
 
 
 (** Summary resolve *)
@@ -390,6 +404,7 @@ module SymResolvedMap = struct
         | Symbol.Global (pv, Symbol.Field fn), [] ->
             update_resolved_loc (base, accesses) typ (Loc.of_pvar pv |> Loc.append_field ~fn) acc
         | Symbol.Param _, [] ->
+            (* already resolved at init *)
             acc
         | base, Symbol.Field fn :: remain' ->
             let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
@@ -480,6 +495,9 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
       sym_resolved_map ;
     None )
+  else if not (NullModel.joinable astate.applied_models callee_summary.applied_models) then
+    (* e.g., p = null; foo(null); foo(null); but apply unjoinable model in foo *)
+    None
   else Some astate'
 
 
@@ -550,6 +568,9 @@ let rec eval_lv astate node instr exp =
     match Reg.find id astate.reg with
     | Val.Vheap h ->
         Loc.SymHeap h
+    | Val.Top ->
+        L.progress "[WARNING]: lvalue expression %a is evaluated to top" Exp.pp exp ;
+        Loc.unknown
     | _ as v ->
         L.(die InternalError) "lvalue expression %a cannot be evaluated to %a" Exp.pp exp Val.pp v )
   | Exp.Var id ->
