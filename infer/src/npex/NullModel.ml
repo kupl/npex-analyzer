@@ -10,7 +10,7 @@ module Pos = struct
       | Sil.Call (_, Const (Cfun procname), _, _, {cf_virtual}) when cf_virtual ->
           let method_name = Procname.get_method procname in
           if Int.equal pos 0 then F.asprintf "NULL.%s(_)" method_name
-          else F.asprintf "_.%s(%d-th NULL)" method_name (pos - 1)
+          else F.asprintf "_.%s(%d-th NULL)" method_name pos
       | Sil.Call (_, Const (Cfun procname), _, _, _) ->
           let method_name = Procname.get_method procname in
           F.asprintf "_.%s(%d-th NULL)" method_name pos
@@ -38,7 +38,7 @@ module MValue = struct
 
   let equal = [%compare.equal: t]
 
-  let no_apply = ([], 1.0)
+  let no_apply = ([], 0.5)
 
   let rec pp_model_exp fmt = function
     | NULL ->
@@ -75,6 +75,8 @@ module MValue = struct
         Some (make_const ~prob (Const.Cint IntLit.zero))
     | "1" | "true" ->
         Some (make_const ~prob (Const.Cint IntLit.one))
+    | "0.0" ->
+        Some (make_const ~prob (Const.Cfloat 0.0))
     | "null" ->
         Some (make_null ~prob)
     | "NPEX_SKIP_VALUE" | "\"NPEX_SKIP_VALUE\"" ->
@@ -83,6 +85,8 @@ module MValue = struct
         Some (make_nonnull ~prob)
     | "\"\"" ->
         Some (make_const ~prob (Const.Cstr ""))
+    | "\"null\"" ->
+        Some (make_const ~prob (Const.Cstr "null"))
     | _ ->
         (* TODO: *)
         L.progress "[WARNING]: model value %s is not resolved@." mval_str ;
@@ -96,6 +100,7 @@ module MValueSet = PrettyPrintable.MakePPSet (MValue)
 include PrettyPrintable.MakePPMonoMap (Pos) (MValueSet)
 
 let joinable lhs rhs =
+  (* TODO: should apply same model for same deref-field *)
   fold
     (fun pos mval_lhs acc ->
       if acc then
@@ -142,10 +147,6 @@ end
 module LocFieldNodeMap = struct
   include PrettyPrintable.MakePPMonoMap (LocField) (InstrNode)
 
-  let dummy_index = -100
-
-  let find_opt loc_field = find_opt LocField.{loc_field with index= dummy_index}
-
   let construct pdesc =
     let all_instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
     List.fold all_instr_nodes ~init:empty ~f:(fun acc instr_node ->
@@ -153,7 +154,7 @@ module LocFieldNodeMap = struct
         match InstrNode.get_instr instr_node with
         | Sil.Call (_, Const (Cfun procname), _, _, _) ->
             let invoked_field = Procname.get_method procname in
-            add (LocField.make loc invoked_field dummy_index) instr_node acc
+            add (LocField.make loc invoked_field 0) instr_node acc
         | _ ->
             acc)
 end
@@ -186,22 +187,28 @@ module LocFieldMValueMap = struct
           Location.{line; file; col= -1}
         in
         (*TODO: resolve model index by function type *)
-        let model_index = (site_model |> member "null_pos" |> to_int) + 1 in
+        let model_index =
+          let _model_index = site_model |> member "null_pos" |> to_int in
+          let invo_kind = site_model |> member "key" |> member "invo_kind" |> to_string in
+          if String.equal invo_kind "STATIC" then _model_index else _model_index + 1
+        in
         let invoked_field = site_model |> member "site" |> member "deref_field" |> to_string in
-        let mvalues = site_model |> member "proba" |> to_assoc in
+        let mvalues =
+          site_model
+          |> member "proba"
+          |> to_assoc
+          |> List.filter_map ~f:(fun (mval_str, prob_json) ->
+                 let prob = prob_json |> to_float in
+                 MValue.from_string_opt mval_str ~prob)
+        in
         let mvalues_top3 =
           (* HEURISTICS for state explosion *)
           (* TODO: or remove it by pruning states with too low probability *)
-          let compare_prob (_, l_prob) (_, r_prob) = to_float r_prob -. to_float l_prob |> Int.of_float in
+          let compare_prob (_, l_prob) (_, r_prob) = (r_prob -. l_prob) *. 100.0 |> Int.of_float in
           list_top_n mvalues ~compare:compare_prob ~n:3
         in
-        List.fold mvalues_top3 ~init:acc ~f:(fun acc (mval_str, prob_json) ->
-            let prob = prob_json |> to_float in
-            match MValue.from_string_opt mval_str ~prob with
-            | Some mval ->
-                add_elt (LocField.make loc invoked_field model_index) mval acc
-            | None ->
-                acc)
+        List.fold mvalues_top3 ~init:acc ~f:(fun acc mval ->
+            add_elt (LocField.make loc invoked_field model_index) mval acc)
       with Unexpected _ ->
         L.progress "[WARNING]: could not find source file %s from captured files@." filename ;
         acc
@@ -236,18 +243,29 @@ module LocFieldMValueMap = struct
       !_cached
 end
 
+let compute_probability t =
+  let sum = fold (fun _ mvals acc -> (MValueSet.choose mvals |> snd) +. acc) t 0.5 in
+  sum /. Float.of_int (cardinal t + 1)
+
+
 let construct pdesc : t =
   (* OPTIMIZE: only construct null_model for each proc_desc *)
   let loc_field_node_map = LocFieldNodeMap.construct pdesc in
   let loc_field_mvalue_map = LocFieldMValueMap.from_marshal () in
   LocFieldNodeMap.fold
     (fun loc_field instr_node acc ->
-      let possible_indice = [-1; 0; 1] in
+      let possible_indice = [0; 1; 2] in
       List.fold possible_indice ~init:acc ~f:(fun acc index ->
-          let loc_field = LocField.{loc_field with index} in
+          (* For null.toString(),
+             * index = 0
+             * index in json = -1
+           * For SystemLib.write(null),
+             * index = 0
+             * index in json = 0 *)
+          let loc_field = LocField.{loc_field with index= index + loc_field.index} in
           match LocFieldMValueMap.find_opt loc_field loc_field_mvalue_map with
           | Some mvalues ->
-              let pos : Pos.t = (instr_node, LocField.(loc_field.index)) in
+              let pos : Pos.t = (instr_node, index) in
               add pos mvalues acc
           | None ->
               acc))
