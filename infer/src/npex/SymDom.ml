@@ -688,7 +688,7 @@ module ValCore = struct
 
 
   let rec replace_sub (x : t) ~(src : t) ~(dst : t) =
-    if equal x src then dst
+    if phys_equal x src then dst
     else
       match (x, dst) with
       | Vextern _, Vextern _ ->
@@ -702,7 +702,16 @@ module ValCore = struct
 
 
   let rec replace_by_map x ~f =
-    match x with Vextern (mthd, args) -> Vextern (mthd, List.map args ~f:(replace_by_map ~f)) | _ -> f x
+    let applied = f x in
+    if equal applied x then
+      match x with
+      | Vextern (mthd, args) ->
+          Vextern (mthd, List.map args ~f:(replace_by_map ~f))
+      | Vexn v ->
+          f v
+      | _ ->
+          x
+    else applied
 
 
   let rec get_subvalues = function
