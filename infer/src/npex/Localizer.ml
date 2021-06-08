@@ -31,19 +31,9 @@ module ExecutedProcs = AbstractDomain.FiniteSet (Procname)
 module Domain = AbstractDomain.Pair (Faults) (ExecutedProcs)
 module Summary = Domain
 
-let check_instr proc_desc analysis_data pre null_values node instr : SpecCheckerDomain.t list * Fault.t option =
+let check_instr proc_desc analysis_data post null_values node instr : Fault.t option =
   let location = InstrNode.of_pnode node instr in
   let open SpecCheckerDomain in
-  let post =
-    List.concat_map pre ~f:(fun astate ->
-        let post = SpecChecker.DisjReady.exec_instr astate analysis_data node instr in
-        (* L.progress "@.=====Pre state at %a ======@." (Sil.pp_instr ~print_types:true Pp.text) instr ;
-           L.progress "%a" SpecCheckerDomain.pp astate ;
-           L.progress "@.=====Post state at %a ======@." (Sil.pp_instr ~print_types:true Pp.text) instr ;
-           L.progress "%a" (Pp.seq SpecCheckerDomain.pp) post ;
-           L.progress "@.===========================@." ; *)
-        post)
-  in
   let is_target_null_exp exp ~pos =
     (* x = null; // localize "x" as null-src
          x.foo(); // TODO: localize "x"
@@ -68,7 +58,7 @@ let check_instr proc_desc analysis_data pre null_values node instr : SpecChecker
         try
           let value = eval astate ~pos node instr exp in
           is_target value && is_nullable value astate
-        with _ -> (* Some exceptional states may fail to evaluate expression *) false)
+        with _ -> false)
   in
   let check_exp exp ~pos =
     match AccessExpr.from_IR_exp_opt proc_desc exp with
@@ -96,14 +86,14 @@ let check_instr proc_desc analysis_data pre null_values node instr : SpecChecker
     | _ ->
         None
   in
-  (post, fault_opt)
+  fault_opt
 
 
-let check_node proc_desc analysis_data pre nullvalues node =
-  let _, faults =
-    Instrs.fold (CFG.instrs node) ~init:(pre, Faults.empty) ~f:(fun (states, faults) instr ->
-        let new_states, new_faults = check_instr proc_desc analysis_data states nullvalues node instr in
-        match new_faults with Some fault -> (new_states, Faults.add fault faults) | _ -> (new_states, faults))
+let check_node proc_desc analysis_data post nullvalues node =
+  let faults =
+    Instrs.fold (CFG.instrs node) ~init:Faults.empty ~f:(fun faults instr ->
+        let new_faults = check_instr proc_desc analysis_data post nullvalues node instr in
+        match new_faults with Some fault -> Faults.add fault faults | _ -> faults)
   in
   faults
 
@@ -111,6 +101,7 @@ let check_node proc_desc analysis_data pre nullvalues node =
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t option =
   (* let proc_name = Procdesc.get_proc_name proc_desc in *)
   let cfg = CFG.from_pdesc proc_desc in
+  let proc_name = Procdesc.get_proc_name proc_desc in
   let analysis_data =
     SpecChecker.DisjReady.analysis_data (InterproceduralAnalysis.bind_payload interproc ~f:snd)
   in
@@ -119,20 +110,25 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
     SpecChecker.compute_summary proc_desc cfg inv_map |> SpecCheckerSummary.get_local_disjuncts
   in
   let nullvalues =
-    List.fold specchecker_summaries ~init:Val.Set.empty ~f:(fun acc astate ->
-        Val.Set.union acc (SpecCheckerDomain.get_nullptrs astate))
+    CFG.fold_nodes cfg ~init:Val.Set.empty ~f:(fun acc node ->
+        match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
+        | Some {post} ->
+            List.fold post ~init:acc ~f:(fun acc astate ->
+                Val.Set.union acc (SpecCheckerDomain.get_nullptrs astate))
+        | None ->
+            acc)
   in
-  if Config.debug_level_analysis > 0 && not (Val.Set.is_empty nullvalues) then
-    L.progress " - find null value assigns@.   - null_values: %a@.   - method: %a@." Val.Set.pp nullvalues
-      Procname.pp (Procdesc.get_proc_name proc_desc) ;
   let faults =
     CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
         match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
-        | Some {pre} ->
-            Faults.union (check_node proc_desc analysis_data pre nullvalues node) faults
+        | Some {post} ->
+            Faults.union (check_node proc_desc analysis_data post nullvalues node) faults
         | None ->
             faults)
   in
+  if Config.debug_level_analysis > 0 && not (Val.Set.is_empty nullvalues) then
+    L.progress " - find null value assigns@.   - null_values: %a@.   - method: %a   - faults: %a@." Val.Set.pp
+      nullvalues Procname.pp proc_name Faults.pp faults ;
   let param_faults =
     Val.Set.fold
       (fun v acc ->

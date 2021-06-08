@@ -467,7 +467,15 @@ module DisjReady = struct
             | Var.ProgramVar _ ->
                 false)
         in
-        [Domain.remove_temps astate ~line:(get_line node) real_temps]
+        (* For localization, do not remove temps that pointsto given null *)
+        let non_null_temps =
+          List.filter real_temps ~f:(function
+            | Var.LogicalVar id ->
+                Domain.is_fault_null astate (Domain.read_id astate id)
+            | Var.ProgramVar pv ->
+                Domain.is_fault_null astate (Domain.read_loc astate (Domain.Loc.of_pvar pv)))
+        in
+        [Domain.remove_temps astate ~line:(get_line node) non_null_temps]
     (* | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
         [Domain.remove_pvar astate ~line:(get_line node) ~pv] *)
     | Sil.Metadata (Nullify (pv, _)) when Domain.Loc.of_pvar pv |> Domain.Loc.is_temp ->
