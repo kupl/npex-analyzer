@@ -348,12 +348,12 @@ module DisjReady = struct
     | Sil.Load {id} when Ident.is_none id ->
         (* Ignore empty dereference and null-check on virtual invocation *)
         [astate]
-    | Sil.Load {id; e= Exp.Lvar pv} when Pvar.is_frontend_tmp pv && not (is_catch_var pv) ->
+    (* | Sil.Load {id; e= Exp.Lvar pv} when Pvar.is_frontend_tmp pv && not (is_catch_var pv) ->
         (* CatchVar could be undefined if there is no catch statement *)
         let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
         if Domain.is_unknown_loc astate loc then L.(die InternalError) "%a is unknown@." Domain.Loc.pp loc ;
         let value = Domain.read_loc astate loc in
-        [Domain.store_reg astate id value]
+        [Domain.store_reg astate id value] *)
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate node instr e in
         (* symbolic location is introduced if location is unknown *)
@@ -368,14 +368,14 @@ module DisjReady = struct
         let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
         [Domain.set_exception (Domain.store_loc astate loc value)]
-    | Sil.Store {e1= Exp.Lvar pv; e2= Exp.Const (Cint intlit); typ}
-      when IntLit.iszero intlit
-           && Procdesc.Node.get_succs node
-              |> List.hd_exn
-              |> Procdesc.Node.get_kind
-              |> Procdesc.Node.equal_nodekind Procdesc.Node.Join_node ->
-        (* for (i = 0; ...) *)
-        [Domain.store_loc astate (Domain.Loc.of_pvar pv) (Domain.Val.make_extern instr_node typ)]
+    (* | Sil.Store {e1= Exp.Lvar pv; e2= Exp.Const (Cint intlit); typ}
+       when IntLit.iszero intlit
+            && Procdesc.Node.get_succs node
+               |> List.hd_exn
+               |> Procdesc.Node.get_kind
+               |> Procdesc.Node.equal_nodekind Procdesc.Node.Join_node ->
+         (* for (i = 0; ...) *)
+         [Domain.store_loc astate (Domain.Loc.of_pvar pv) (Domain.Val.make_extern instr_node typ)] *)
     | Sil.Store {e1= Exp.Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
         let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
         let value = Domain.eval astate node instr e2 ~pos:0 in
@@ -419,10 +419,10 @@ module DisjReady = struct
         exec_unknown_call astate node instr ret_typ arg_typs
     | Sil.Prune (bexp, _, _, _) ->
         exec_prune astate node instr bexp
-    (* | Sil.Metadata (ExitScope (vars, _)) ->
-           [Domain.remove_temps astate vars]
-       | Sil.Metadata (Nullify (pv, _)) ->
-           [Domain.remove_pvar astate ~pv] *)
+        (* | Sil.Metadata (ExitScope (vars, _)) ->
+              [Domain.remove_temps astate vars]
+           | Sil.Metadata (Nullify (pv, _)) ->
+              [Domain.remove_pvar astate ~pv] *)
     | Sil.Metadata (ExitScope (vars, _)) ->
         let real_temps =
           List.filter vars ~f:(function
