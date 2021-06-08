@@ -13,19 +13,7 @@ let pp fmt (pc_formula, state_formula) =
   F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.pp pc_formula Formula.pp state_formula
 
 
-let symbol_to_ap : Symbol.t -> AccessExpr.t =
-  let append_symbol_access aexpr = function
-    | Symbol.Field fn ->
-        AccessExpr.append_access aexpr (AccessExpr.FieldAccess fn)
-    | Symbol.Index intlit ->
-        AccessExpr.append_access aexpr (AccessExpr.ArrayAccess (AccessExpr.of_const (Cint intlit)))
-  in
-  function
-  | Symbol.Global (pv, access), accesses ->
-      List.fold (access :: accesses) ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
-  | Symbol.Param pv, accesses ->
-      List.fold accesses ~init:(AccessExpr.of_formal pv) ~f:append_symbol_access
-
+let symbol_to_ap : Symbol.t -> AccessExpr.t = Symbol.to_ap
 
 let rec symheap_to_ap astate : SymHeap.t -> APSet.t =
   let open SymDom in
@@ -73,8 +61,11 @@ and symexp_to_ap astate : SymExp.t -> APSet.t =
       APSet.empty
   in
   function
-  | SymExp.IntLit intlit ->
-      APSet.singleton (AccessExpr.of_const (Const.Cint intlit))
+  | SymExp.IntLit intlit as symexp ->
+      (* HEURISTICS: to make cond strLen < width from 4 < width *)
+      let var_aps = var_aps_of symexp in
+      APSet.add (AccessExpr.of_const (Const.Cint intlit)) var_aps
+      (* APSet.singleton (AccessExpr.of_const (Const.Cint intlit)) *)
   | SymExp.FloatLit flit ->
       APSet.singleton (AccessExpr.of_const (Const.Cfloat flit))
   | SymExp.Symbol s ->
@@ -159,16 +150,25 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
         Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
   in
   let summary_formula =
-    let filter_local = APSet.filter (not <<< AccessExpr.is_local proc_desc) in
-    (* let filter_local = APSet.filter (fun _ -> true) in *)
+    let astate' =
+      List.fold (Domain.Mem.bindings mem) ~init:astate ~f:(fun acc (l, _) ->
+          match l with
+          | Loc.Var pv when Pvar.is_return pv ->
+              acc
+          | Loc.Var pv ->
+              Domain.remove_pvar ~pv ~line:0 acc
+          | _ ->
+              acc)
+    in
     Domain.Mem.fold
       (fun l v ->
-        let aps_loc, aps_val = (loc_to_ap astate l, val_to_ap astate v) in
+        let aps_loc, aps_val = (loc_to_ap astate' l, val_to_ap astate' v) in
         (* L.debug_dev "@. - make %a = %a@." APSet.pp aps_loc APSet.pp aps_val ; *)
-        let formula = make_formula Binop.Eq (filter_local aps_loc) (filter_local aps_val) in
+        let formula = make_formula Binop.Eq aps_loc aps_val in
         (* L.debug_dev " - formula : %a@." Formula.pp formula ; *)
         Formula.join formula)
-      mem Formula.empty
+      Domain.(astate'.mem)
+      Formula.empty
   in
   let pc_formula =
     let pathcond_to_formula = function
