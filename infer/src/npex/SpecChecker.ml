@@ -242,21 +242,24 @@ module DisjReady = struct
 
   let exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee =
     let instr_node = Node.of_pnode node instr in
-    L.d_printfln "*** No Summary Found ***" ;
-    match (instr, callee) with
-    | Sil.Call (_, _, _, _, {cf_virtual}), _
-      when cf_virtual
-           && List.hd_exn arg_typs |> snd |> Typ.is_pointer
-           && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
-        exec_unknown_getter astate node instr callee (ret_id, ret_typ) arg_typs
-    | _, Procname.Java mthd ->
-        (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
-        let ret_typ = Procname.Java.get_return_typ mthd in
-        let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-        Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
-    | _ ->
-        let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-        Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
+    let result =
+      match (instr, callee) with
+      | Sil.Call (_, _, [(_, arg_typ)], _, {cf_virtual}), _
+        when cf_virtual && Typ.is_pointer arg_typ && String.is_prefix (Procname.get_method callee) ~prefix:"get" ->
+          (* model only getter without arguments *)
+          exec_unknown_getter astate node instr callee (ret_id, ret_typ) arg_typs
+      | _, Procname.Java mthd ->
+          (* Formal return type is more precise than actual return type (i.e., ret_typ) *)
+          let ret_typ = Procname.Java.get_return_typ mthd in
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
+      | _ ->
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          Domain.bind_extern_value astate instr_node (ret_id, ret_typ) callee arg_values
+    in
+    L.d_printfln "*** No summary found, %d states are returned by analyzing it as uninterpretted function... ***"
+      (List.length result) ;
+    result
 
 
   let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
@@ -271,16 +274,6 @@ module DisjReady = struct
           |> List.map ~f:(init_uninitialized_fields (Procdesc.get_proc_name callee_pdesc) arg_typs node instr)
       | Some (callee_pdesc, callee_summary) ->
           instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary
-      | None when Domain.is_npe_alternative astate && Config.npex_launch_spec_inference -> (
-          (* TODO: remove this redundant calculation *)
-          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
-          match NullSpecModel.find_model_index astate node instr arg_values with
-          | Some pos ->
-              (* In case of invoking unknowon call by model-null, it would have low probability *)
-              let astate = Domain.add_model astate pos ([], 0.8) in
-              exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee
-          | None ->
-              exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee )
       | None ->
           exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee
 
@@ -292,34 +285,58 @@ module DisjReady = struct
     else []
 
 
-  let throw_uncaught_exn astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr null =
-    let instr_node = Node.of_pnode node instr in
-    L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ;
+  let throw_uncaught_exn astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr value =
+    (* let instr_node = Node.of_pnode node instr in
+       L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ; *)
     let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
     let astate_exn = Domain.set_exception astate in
-    let exn_value = Domain.Val.make_string "java.lang.NullPointerException" |> Domain.Val.to_exn in
-    (* TODO: should we maintain astate with uncaught exception? *)
-    [Domain.store_loc astate_exn return_loc exn_value]
+    let exn_value = Domain.Val.npe in
+    let null = Domain.Val.make_null ~pos:0 (Node.of_pnode node instr) in
+    let null_cond = Domain.PathCond.make_physical_equals Binop.Eq value null in
+    let states_with_nullcond = Domain.add_pc astate_exn null_cond in
+    (* Maintain astates with uncaught exception for patch validation and fault localization
+     * * validation: to check if patch introduce uncaught exception (e.g., NPE)
+     * * localization: to pass the target error to caller *)
+    (* Useless inference??? *)
+    let store_return_exn states =
+      List.map states ~f:(fun state_with_nullcond -> Domain.store_loc state_with_nullcond return_loc exn_value)
+    in
+    if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
+      if List.exists (Domain.equal_values astate value) ~f:NullSpecModel.is_model_null then
+        List.map states_with_nullcond ~f:Domain.set_infer_failed |> store_return_exn
+      else store_return_exn states_with_nullcond
+    else store_return_exn states_with_nullcond
 
 
   let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
     let normal_states =
-      match instr with
-      | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
-          (* null-check on "this", not on empty load instruction *)
-          let this_exp, _ = List.hd_exn arg_typs in
-          let this_value = Domain.eval astate node instr this_exp in
-          let equal_values = Domain.equal_values astate this_value in
-          if List.exists equal_values ~f:Domain.Val.is_null then
-            let null_value = List.find_exn equal_values ~f:Domain.Val.is_null in
-            throw_uncaught_exn astate analysis_data node instr
-              (Domain.Val.to_symheap null_value |> SymDom.SymHeap.to_null)
-          else
-            add_non_null_constraints node instr this_exp astate
-            |> List.concat_map ~f:(fun astate ->
-                   exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee)
-      | _ ->
-          exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+      let apply_no_model astate =
+        if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          match NullSpecModel.find_model_index astate node instr arg_values with
+          | Some pos ->
+              Domain.add_model astate pos NullModel.MValue.no_apply
+          | None ->
+              [astate]
+        else [astate]
+      in
+      let posts =
+        match instr with
+        | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
+            (* null-check on "this", not on empty load instruction *)
+            let this_exp, _ = List.hd_exn arg_typs in
+            let this_value = Domain.eval astate node instr this_exp in
+            let null_states = throw_uncaught_exn astate analysis_data node instr this_value in
+            let non_null_states =
+              add_non_null_constraints node instr this_exp astate
+              |> List.concat_map ~f:(fun astate ->
+                     exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee)
+            in
+            null_states @ non_null_states
+        | _ ->
+            exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee
+      in
+      List.concat_map posts ~f:apply_no_model
     in
     let inferenced_states = exec_null_model astate analysis_data node instr ret_typ arg_typs callee in
     normal_states @ inferenced_states
@@ -339,17 +356,14 @@ module DisjReady = struct
         [Domain.store_reg astate id value]
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate node instr e in
-        if Domain.Loc.is_null loc then
-          let null = Domain.Loc.to_symheap loc |> SymDom.SymHeap.to_null in
-          throw_uncaught_exn astate analysis_data node instr null
-        else if Domain.is_unknown_loc astate loc then
-          (* symbolic location is introduced at load instr *)
-          let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
+        (* symbolic location is introduced if location is unknown *)
+        let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
+        let non_null_states =
           let value = Domain.read_loc state_unknown_resolved loc in
           Domain.store_reg state_unknown_resolved id value |> add_non_null_constraints node instr e
         else
-          let value = Domain.read_loc astate loc in
-          [Domain.store_reg astate id value]
+          let value = Domain.eval astate node instr e2 in
+          [Domain.store_loc astate loc value]
     | Sil.Store {e1; e2= Exp.Exn _ as e2} ->
         let loc = Domain.eval_lv astate node instr e1 in
         let value = Domain.eval astate node instr e2 ~pos:0 in
@@ -368,12 +382,19 @@ module DisjReady = struct
         [Domain.store_loc astate loc value]
     | Sil.Store {e1; e2} ->
         let loc = Domain.eval_lv astate node instr e1 in
-        if Domain.Loc.is_null loc then
-          let null = Domain.Loc.to_symheap loc |> SymDom.SymHeap.to_null in
-          throw_uncaught_exn astate analysis_data node instr null
-        else
+        let null_states =
+          if Domain.Loc.is_symheap loc then
+            (* TODO: deal with null.f, null[x] cases
+             * Currently, we assume _.f and _[] location is non-null *)
+            let value = loc |> Domain.Loc.to_symheap |> Domain.Val.of_symheap in
+            throw_uncaught_exn astate analysis_data node instr value
+          else []
+        in
+        let non_null_states =
           let value = Domain.eval astate node instr e2 ~pos:0 in
           Domain.store_loc astate loc value |> add_non_null_constraints node instr e1
+        in
+        null_states @ non_null_states
     | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when Models.is_new proc ->
         (* allocation instruction *)
         let value = Domain.Val.make_allocsite instr_node in
@@ -490,10 +511,7 @@ let is_all_target_funs_analyzed : DisjReady.analysis_data -> bool =
 
 let compute_invariant_map : DisjReady.analysis_data -> Analyzer.invariant_map =
  fun ({interproc= {proc_desc}} as analysis_data) ->
-  let formals = Procdesc.get_pvar_formals proc_desc in
-  Analyzer.exec_pdesc ~do_narrowing:false
-    ~initial:[SpecCheckerDomain.init_with_formals formals]
-    analysis_data proc_desc
+  Analyzer.exec_pdesc ~do_narrowing:false ~initial:[SpecCheckerDomain.init proc_desc] analysis_data proc_desc
 
 
 let cached_compute_invariant_map =
@@ -510,7 +528,6 @@ let cached_compute_invariant_map =
 
 let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheckerSummary.t =
  fun proc_desc cfg inv_map ->
-  (* don't need to invalidate local information thanks to remove_temps and nullify *)
   let exit_node_id = CFG.exit_node cfg |> CFG.Node.id in
   match Analyzer.extract_post exit_node_id inv_map with
   | Some exit_state ->
