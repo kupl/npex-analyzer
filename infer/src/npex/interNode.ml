@@ -18,9 +18,7 @@ module InterNode = struct
 
   let pp fmt (pid, n) = F.fprintf fmt "(%a_%a)" Procname.pp pid Procdesc.Node.pp n
 
-  let get_proc_name (_, pnode) =
-    try Procdesc.Node.get_proc_name pnode with _ -> Procname.from_string_c_fun "__INVALID__"
-
+  let get_proc_name (proc_name, _) = proc_name
 
   let get_loc (_, pnode) = Procdesc.Node.get_loc pnode
 
@@ -38,7 +36,7 @@ module InterNode = struct
 
   let of_pnode pnode = (Procdesc.Node.get_proc_name pnode, pnode)
 
-  let dummy proc = (proc, Procdesc.Node.dummy Procname.empty_block)
+  let dummy proc : t = (proc, Procdesc.Node.dummy proc)
 end
 
 include InterNode

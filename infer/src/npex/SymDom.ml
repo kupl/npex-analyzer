@@ -25,13 +25,19 @@ module Allocsite = struct
   type t = InstrNode.t * int [@@deriving compare]
 
   let pp fmt (instr_node, cnt) =
-    if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc instr_node)
-    else F.fprintf fmt "%a_%d" Location.pp_line (InstrNode.get_loc instr_node) cnt
+    let loc = InstrNode.get_loc instr_node in
+    if Location.equal Location.dummy loc then
+      if Int.equal cnt 0 then F.fprintf fmt "%s" (InstrNode.get_proc_name instr_node |> Procname.get_method)
+      else F.fprintf fmt "%s_%d" (InstrNode.get_proc_name instr_node |> Procname.get_method) cnt
+    else if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line loc
+    else F.fprintf fmt "%a_%d" Location.pp_line loc cnt
 
 
   let increment (instr_node, cnt) offset = (instr_node, cnt + offset)
 
   let make node = (node, Counter.get node)
+
+  let from_constant node = (node, 0)
 end
 
 module Null = struct
@@ -140,9 +146,35 @@ module SymHeap = struct
 
   let equal = [%compare.equal: t]
 
+  let pp fmt = function
+    | Allocsite allocsite ->
+        F.fprintf fmt "Allocsite %a" Allocsite.pp allocsite
+    | Extern allocsite ->
+        F.fprintf fmt "Extern %a" Allocsite.pp allocsite
+    | Null null ->
+        F.fprintf fmt "Null %a" Null.pp null
+    | String str ->
+        F.fprintf fmt "String %s" str
+    | Symbol s ->
+        F.fprintf fmt "%a" Symbol.pp s
+    | Unknown ->
+        F.fprintf fmt "Unknown"
+
+
   let make_allocsite node = Allocsite (Allocsite.make node)
 
   let make_extern node = Extern (Allocsite.make node)
+
+  let make_const_extern = function
+    | Null Null.{node; is_model} when is_model ->
+        Extern Allocsite.(node, 1)
+    | Null Null.{node} ->
+        Extern Allocsite.(node, 0)
+    | String str ->
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_STRING_" ^ str), 0)
+    | _ as sh ->
+        L.(die InternalError) "%a is not a constant heap" pp sh
+
 
   let make_null ?(pos = 0) ?(is_model = false) node = Null (Null.make ~pos ~is_model node)
 
@@ -174,6 +206,8 @@ module SymHeap = struct
 
   let is_concrete = function Allocsite _ | String _ | Null _ -> true | _ -> false
 
+  let is_constant = function String _ | Null _ -> true | _ -> false
+
   let is_allocsite = function Allocsite _ -> true | _ -> false
 
   let append_ctx ~offset = function
@@ -183,21 +217,6 @@ module SymHeap = struct
         Extern (Allocsite.increment allocsite offset)
     | _ as s ->
         s
-
-
-  let pp fmt = function
-    | Allocsite allocsite ->
-        F.fprintf fmt "Allocsite %a" Allocsite.pp allocsite
-    | Extern allocsite ->
-        F.fprintf fmt "Extern %a" Allocsite.pp allocsite
-    | Null null ->
-        F.fprintf fmt "Null %a" Null.pp null
-    | String str ->
-        F.fprintf fmt "String %s" str
-    | Symbol s ->
-        F.fprintf fmt "%a" Symbol.pp s
-    | Unknown ->
-        F.fprintf fmt "Unknown"
 
 
   let to_null = function Null null -> null | _ as s -> L.(die InternalError) "%a is not null heap@." pp s
@@ -247,6 +266,15 @@ module SymExp = struct
   let of_symbol symbol : t = Symbol symbol
 
   let make_extern node = Extern (Allocsite.make node)
+
+  let make_const_extern = function
+    | IntLit i ->
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_INT_" ^ IntLit.to_string i), 0)
+    | FloatLit flit ->
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_FLOAT_" ^ F.asprintf "%f" flit), 0)
+    | _ as s ->
+        L.(die InternalError) "%a is not constant" pp s
+
 
   let intTop = IntTop
 
@@ -357,6 +385,8 @@ module Loc = struct
     | Index (l, _) ->
         is_concrete l
 
+
+  let is_symbolic = is_rec ~f:(function SymHeap h -> SymHeap.is_symbolic h | _ -> false)
 
   let is_var = function Var _ | TempVar _ | IllTempVar _ -> true | _ -> false
 
@@ -497,6 +527,15 @@ module ValCore = struct
 
   let make_string str = Vheap (SymHeap.make_string str)
 
+  let make_const_extern = function
+    | Vheap sheap ->
+        Vheap (SymHeap.make_const_extern sheap)
+    | Vint symexp ->
+        Vint (SymExp.make_const_extern symexp)
+    | _ as v ->
+        L.(die InternalError) "%a is not a constant" pp v
+
+
   let intTop = Vint SymExp.intTop
 
   let unknown = Vheap SymHeap.unknown
@@ -537,7 +576,7 @@ module ValCore = struct
     | Vint symexp ->
         SymExp.is_constant symexp
     | Vheap symheap ->
-        SymHeap.is_null symheap
+        SymHeap.is_constant symheap
     | Vextern (callee, _) when Procname.is_infer_undefined callee ->
         false
     | Vextern (_, args) ->
@@ -758,7 +797,8 @@ end
 module PC = struct
   include Constraint.MakePC (Val)
 
-  let[@warning "-57"] add pathcond pc =
+  let[@warning "-57"] add ?(is_branch = false) pathcond pc =
+    let add = add ~is_branch in
     let open PathCond in
     (* TODO: inequality solver *)
     match pathcond with

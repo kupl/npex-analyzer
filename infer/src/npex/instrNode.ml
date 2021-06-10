@@ -21,13 +21,15 @@ module InstrNode = struct
     {inode; instr}
 
 
-  let dummy = {inode= InterNode.dummy Procname.empty_block; instr= Sil.skip_instr}
+  let dummy = {inode= InterNode.dummy (Procname.from_string_c_fun "NPEX_DUMMY"); instr= Sil.skip_instr}
 
   let default = dummy
 
   let dummy_entry = {inode= InterNode.dummy (Procname.from_string_c_fun "NPEX_entry"); instr= Sil.skip_instr}
 
   let dummy_exit = {inode= InterNode.dummy (Procname.from_string_c_fun "NPEX_exit"); instr= Sil.skip_instr}
+
+  let dummy_of str = {dummy with inode= InterNode.dummy (Procname.from_string_c_fun str)}
 
   let inode_of {inode} = inode
 
