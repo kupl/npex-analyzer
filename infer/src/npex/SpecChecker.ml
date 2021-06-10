@@ -471,9 +471,9 @@ module DisjReady = struct
         let non_null_temps =
           List.filter real_temps ~f:(function
             | Var.LogicalVar id ->
-                Domain.is_fault_null astate (Domain.read_id astate id)
+                not (Domain.is_fault_null astate (Domain.read_id astate id))
             | Var.ProgramVar pv ->
-                Domain.is_fault_null astate (Domain.read_loc astate (Domain.Loc.of_pvar pv)))
+                not (Domain.is_fault_null astate (Domain.read_loc astate (Domain.Loc.of_pvar pv))))
         in
         [Domain.remove_temps astate ~line:(get_line node) non_null_temps]
     (* | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
