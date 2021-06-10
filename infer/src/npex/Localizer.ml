@@ -31,7 +31,7 @@ module ExecutedProcs = AbstractDomain.FiniteSet (Procname)
 module Domain = AbstractDomain.Pair (Faults) (ExecutedProcs)
 module Summary = Domain
 
-let check_instr proc_desc analysis_data post null_values node instr : Fault.t option =
+let check_instr proc_desc post null_values node instr : Fault.t option =
   let location = InstrNode.of_pnode node instr in
   let open SpecCheckerDomain in
   let is_target_null_exp exp ~pos =
@@ -89,10 +89,10 @@ let check_instr proc_desc analysis_data post null_values node instr : Fault.t op
   fault_opt
 
 
-let check_node proc_desc analysis_data post nullvalues node =
+let check_node proc_desc post nullvalues node =
   let faults =
     Instrs.fold (CFG.instrs node) ~init:Faults.empty ~f:(fun faults instr ->
-        let new_faults = check_instr proc_desc analysis_data post nullvalues node instr in
+        let new_faults = check_instr proc_desc post nullvalues node instr in
         match new_faults with Some fault -> Faults.add fault faults | _ -> faults)
   in
   faults
@@ -122,7 +122,7 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
     CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
         match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
         | Some {post} ->
-            Faults.union (check_node proc_desc analysis_data post nullvalues node) faults
+            Faults.union (check_node proc_desc post nullvalues node) faults
         | None ->
             faults)
   in
@@ -232,6 +232,7 @@ let result_to_json ~time ~target_procs ~executed_procs =
 
 
 let localize ~get_summary ~time program =
+  (* TODO: why is it slow??? *)
   let nullpoint = NullPoint.get_nullpoint_list program |> List.hd_exn in
   let target_procs = target_procs program nullpoint in
   let faults = Procname.Set.fold (Faults.union <<< fst <<< get_summary) target_procs Faults.empty in
