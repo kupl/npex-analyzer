@@ -148,19 +148,22 @@ let add_profile_to_pom_in_directory dir =
      this is unreliable and Maven pretty much always reads from "pom.xml" anyway. So, we replace
      "pom.xml" with a version holding a special profile for infer capture, then put the original
      back in place. *)
-  let maven_pom_path = if String.is_suffix dir ~suffix:"xml" then dir else dir ^/ "pom.xml" in
-  let infer_pom_path = maven_pom_path ^ ".infer" in
-  let saved_pom_path = maven_pom_path ^ ".infer-orig" in
-  add_infer_profile maven_pom_path infer_pom_path ;
-  Unix.rename ~src:maven_pom_path ~dst:saved_pom_path ;
-  Epilogues.register
-    ~f:(fun () -> Unix.rename ~src:saved_pom_path ~dst:maven_pom_path)
-    ~description:"restoring Maven's pom.xml to its original state" ;
-  Unix.rename ~src:infer_pom_path ~dst:maven_pom_path ;
-  if Config.debug_mode then
+  let _add_profile_to_pom_in_directory maven_pom_path =
+    let infer_pom_path = maven_pom_path ^ ".infer" in
+    let saved_pom_path = maven_pom_path ^ ".infer-orig" in
+    add_infer_profile maven_pom_path infer_pom_path ;
+    Unix.rename ~src:maven_pom_path ~dst:saved_pom_path ;
     Epilogues.register
-      ~f:(fun () -> Unix.rename ~src:maven_pom_path ~dst:infer_pom_path)
-      ~description:"saving infer's pom.xml"
+      ~f:(fun () -> Unix.rename ~src:saved_pom_path ~dst:maven_pom_path)
+      ~description:"restoring Maven's pom.xml to its original state" ;
+    Unix.rename ~src:infer_pom_path ~dst:maven_pom_path ;
+    if Config.debug_mode then
+      Epilogues.register
+        ~f:(fun () -> Unix.rename ~src:maven_pom_path ~dst:infer_pom_path)
+        ~description:"saving infer's pom.xml"
+  in
+  try _add_profile_to_pom_in_directory (dir ^/ "pom.xml")
+  with _ -> _add_profile_to_pom_in_directory dir
 
 
 let capture ~prog ~args =
