@@ -98,7 +98,7 @@ val set_nullptrs : t -> Val.Set.t -> t
 
 val add_executed_proc : t -> Procname.t -> t
 
-val add_pc : t -> PathCond.t -> t list
+val add_pc : ?is_branch:bool -> t -> PathCond.t -> t list
 
 val remove_unreachables : t -> t
 

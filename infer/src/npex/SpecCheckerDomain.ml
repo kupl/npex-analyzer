@@ -88,7 +88,10 @@ let is_valid_pc astate pathcond = PC.is_valid pathcond astate.pc
 let is_fault_null astate v = Val.Set.mem v astate.nullptrs
 
 (** Read & Write *)
-let read_loc {mem} l = Mem.find l mem
+let read_loc {mem; pc} l =
+  let v = Mem.find l mem in
+  match PC.equal_constant_opt pc v with Some const -> const | None -> v
+
 
 let read_id {reg} id = Reg.find id reg
 
@@ -138,7 +141,14 @@ let all_symbols astate =
     symvals_appered symvals_appered
 
 
-let store_loc astate l v : t = {astate with mem= Mem.strong_update l v astate.mem}
+let store_loc astate l v : t =
+  if Val.is_constant v then
+    let extern_symbol = Val.make_const_extern v in
+    let mem' = Mem.strong_update l extern_symbol astate.mem in
+    let pc' = PC.add (PathCond.make_physical_equals Binop.Eq extern_symbol v) astate.pc in
+    {astate with mem= mem'; pc= pc'}
+  else {astate with mem= Mem.strong_update l v astate.mem}
+
 
 let store_reg astate id v = {astate with reg= Reg.strong_update id v astate.reg}
 
@@ -186,7 +196,7 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
   {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'}
 
 
-let add_pc astate pathcond : t list =
+let add_pc ?(is_branch = false) astate pathcond : t list =
   let replace_extern astate pc_set =
     (* HEURISTICS: replace an extern variable ex by v if there exists ex1 = ex2 or exn(ex) = exn(ex2) *)
     PC.PCSet.fold
@@ -200,11 +210,10 @@ let add_pc astate pathcond : t list =
       pc_set astate
   in
   let pathcond_to_add = PathCond.normalize pathcond in
-  if PC.is_valid pathcond_to_add astate.pc then 
-    (* Avoid overwritting modelNull by normalNull *)
+  if PC.is_valid pathcond_to_add astate.pc then (* Avoid overwritting modelNull by normalNull *)
     [astate]
   else
-    let pc' = PC.add pathcond_to_add astate.pc in
+    let pc' = PC.add ~is_branch pathcond_to_add astate.pc in
     if PC.is_invalid pc' then [] else [replace_extern {astate with pc= pc'} (PC.to_pc_set pc')]
 
 
@@ -388,7 +397,7 @@ module SymResolvedMap = struct
             add s symval acc
         | None ->
             add s (Val.top_of_typ typ) acc
-      else add s (read_loc astate resolved_loc) acc
+      else add s (Mem.find resolved_loc astate.mem) acc
     in
     List.fold symvals ~init ~f:(fun acc v ->
         let typ, (base, accesses) =
