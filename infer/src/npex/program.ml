@@ -246,9 +246,15 @@ let callers_of_instr_node {callgraph} instr_node =
 
 
 let callees_of_instr_node {callgraph} instr_node =
-  let succs = try CallGraph.succ_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
-  List.filter_map succs ~f:(fun (_, instr_node', succ) ->
-      if InstrNode.equal instr_node instr_node' then Some succ else None)
+  match InstrNode.get_instr instr_node with
+  | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
+      let succs = try CallGraph.succ_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
+      List.filter_map succs ~f:(fun (_, instr_node', succ) ->
+          if InstrNode.equal instr_node instr_node' then Some succ else None)
+  | Sil.Call (_, Const (Cfun procname), _, _, _) ->
+      [procname]
+  | _ ->
+      []
 
 
 let callers_of_proc ({callgraph} as program) proc =
