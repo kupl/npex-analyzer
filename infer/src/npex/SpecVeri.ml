@@ -14,7 +14,7 @@ module Spec = struct
   type t = {pc: Formula.t; output: Formula.t; symbols: Val.Set.t} [@@deriving compare]
 
   let pp fmt {pc; output; symbols} =
-    F.fprintf fmt "(%a, %a, %a)" Formula.pp pc Formula.pp output Val.Set.pp symbols
+    F.fprintf fmt "(%a, %a, %a)" Formula.pp_set pc Formula.pp_set output Val.Set.pp symbols
 
 
   let check_sat ?(print_unsat = false) (infered : t) (patched : t) =
@@ -202,6 +202,10 @@ let verify proc_desc summary_inferenced summary_patched =
             compute_tuple specs_inferenced_rest' specs_patched_matched' ((spec_inferenced, sat_specs) :: acc)
     in
     let tuples = compute_tuple specs_inferenced Specs.empty [] in
+    if Config.debug_mode then
+      List.iter tuples ~f:(fun (infered, patched) ->
+          L.progress "-----------------------------------@.(%a, %a)@." Spec.pp infered Specs.pp
+            (Specs.of_list patched)) ;
     if List.is_empty tuples then false
     else
       List.for_all tuples ~f:(fun (spec_inferenced, satisfiable_specs) ->

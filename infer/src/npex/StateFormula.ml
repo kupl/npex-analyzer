@@ -10,7 +10,8 @@ module APSet = AbstractDomain.FiniteSet (AccessExpr)
 type t = Formula.t * Formula.t [@@deriving compare]
 
 let pp fmt (pc_formula, state_formula) =
-  F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.pp pc_formula Formula.pp state_formula
+  F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.PCSet.pp (Formula.to_pc_set pc_formula)
+    Formula.PCSet.pp (Formula.to_pc_set state_formula)
 
 
 let symbol_to_ap : Symbol.t -> AccessExpr.t = Symbol.to_ap
@@ -21,7 +22,9 @@ let rec symheap_to_ap astate : SymHeap.t -> APSet.t =
   let var_aps_of sh =
     Domain.Mem.fold
       (fun l v acc ->
-        if Loc.is_concrete l && Val.equal v (Val.of_symheap sh) then APSet.union (loc_to_ap astate l) acc else acc)
+        if (Loc.is_concrete l || Loc.is_symbolic l) && Val.equal v (Val.of_symheap sh) then
+          APSet.union (loc_to_ap astate l) acc
+        else acc)
       Domain.(astate.mem)
       APSet.empty
   in
@@ -55,7 +58,8 @@ and symexp_to_ap astate : SymExp.t -> APSet.t =
   let var_aps_of symexp =
     Domain.Mem.fold
       (fun l v acc ->
-        if Loc.is_concrete l && Val.equal v (Val.of_symexp symexp) then APSet.union (loc_to_ap astate l) acc
+        if (Loc.is_concrete l || Loc.is_symbolic l) && Val.equal v (Val.of_symexp symexp) then
+          APSet.union (loc_to_ap astate l) acc
         else acc)
       Domain.(astate.mem)
       APSet.empty
@@ -149,6 +153,7 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
     List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
         Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
   in
+  (* L.progress "=========================convert state ================@.%a@." Domain.pp astate ; *)
   let summary_formula =
     let astate' =
       List.fold (Domain.Mem.bindings mem) ~init:astate ~f:(fun acc (l, _) ->
@@ -163,9 +168,8 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
     Domain.Mem.fold
       (fun l v ->
         let aps_loc, aps_val = (loc_to_ap astate' l, val_to_ap astate' v) in
-        (* L.debug_dev "@. - make %a = %a@." APSet.pp aps_loc APSet.pp aps_val ; *)
+        (* L.debug_dev "from (%a -> %a) to (%a = %a)@." Loc.pp l Val.pp v APSet.pp aps_loc APSet.pp aps_val ; *)
         let formula = make_formula Binop.Eq aps_loc aps_val in
-        (* L.debug_dev " - formula : %a@." Formula.pp formula ; *)
         Formula.join formula)
       Domain.(astate'.mem)
       Formula.empty
@@ -174,6 +178,7 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
     let pathcond_to_formula = function
       | Domain.PathCond.PEquals (v1, v2) ->
           let ap_set1, ap_set2 = (val_to_ap astate v1, val_to_ap astate v2) in
+          (* L.debug_dev "from (%a = %a) to (%a = %a)@." Val.pp v1 Val.pp v2 APSet.pp ap_set1 APSet.pp ap_set2 ; *)
           make_formula Binop.Eq ap_set1 ap_set2
       | Domain.PathCond.Not (Domain.PathCond.PEquals (v1, v2)) ->
           let ap_set1, ap_set2 = (val_to_ap astate v1, val_to_ap astate v2) in
@@ -187,7 +192,9 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
       let is_true = if is_exceptional then AccessExpr.one else AccessExpr.zero in
       Predicate.make_physical_equals Binop.Eq (AccessExpr.of_pvar ab_ret_var) is_true
     in
-    Domain.PC.PCSet.fold (fun pc -> pathcond_to_formula pc |> Formula.join) (Domain.PC.to_pc_set pc) Formula.empty
+    Domain.PC.PCSet.fold
+      (fun pc -> pathcond_to_formula pc |> Formula.join)
+      (Domain.PC.get_branches pc) Formula.empty
     |> Formula.add exception_cond
   in
   let debug_msg =
