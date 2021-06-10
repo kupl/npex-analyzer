@@ -167,25 +167,33 @@ module Make (Val : S) = struct
 end
 
 module MakePC (Val : S) = struct
+  module ValSet = PrettyPrintable.MakePPSet (Val)
   module PathCond = Make (Val)
   module PCSet = PrettyPrintable.MakePPSet (PathCond)
   module ConstMap = PrettyPrintable.MakePPMonoMap (Val) (Val)
-  module ValSet = PrettyPrintable.MakePPSet (Val)
+  module InEqualMap = PrettyPrintable.MakePPMonoMap (Val) (ValSet)
 
-  type t = {pc_set: PCSet.t; const_map: ConstMap.t}
+  type t = {pc_set: PCSet.t; const_map: ConstMap.t; inequal_map: InEqualMap.t; branches: PCSet.t}
 
-  let to_pc_set {pc_set; const_map} =
+  let to_pc_set {pc_set; const_map; inequal_map} =
     (* TODO: it may have scalability issues *)
     ConstMap.fold (fun v const -> PCSet.add (PathCond.make_physical_equals Binop.Eq v const)) const_map pc_set
+    |> InEqualMap.fold
+         (fun v consts -> ValSet.fold (fun c -> PathCond.make_physical_equals Binop.Ne v c |> PCSet.add) consts)
+         inequal_map
 
 
-  let all_values {pc_set; const_map} =
-    let values_in_non_const = List.concat_map (PCSet.elements pc_set) ~f:PathCond.vals_of_path_cond in
-    let values_in_const = ConstMap.fold (fun v c acc -> v :: c :: acc) const_map [] in
-    values_in_const @ values_in_non_const
+  let all_values {pc_set; const_map; inequal_map} =
+    List.concat_map (PCSet.elements pc_set) ~f:PathCond.vals_of_path_cond
+    |> ValSet.of_list
+    |> ConstMap.fold (fun v c acc -> ValSet.add v acc |> ValSet.add c) const_map
+    |> InEqualMap.fold (fun v consts -> ValSet.add v consts |> ValSet.union) inequal_map
+    |> ValSet.elements
 
 
-  let empty = {pc_set= PCSet.empty; const_map= ConstMap.empty}
+  let get_branches {branches} = branches
+
+  let empty = {pc_set= PCSet.empty; const_map= ConstMap.empty; branches= PCSet.empty; inequal_map= InEqualMap.empty}
 
   let is_bottom {pc_set; const_map} = PCSet.is_empty pc_set && ConstMap.is_empty const_map
 
@@ -202,8 +210,15 @@ module MakePC (Val : S) = struct
       pc_set const_map_str
 
 
-  (* let pp fmt x = PCSet.pp fmt (to_pc_set x) *)
-  let pp fmt {const_map; pc_set} = F.fprintf fmt "(%a, %a)" ConstMap.pp const_map PCSet.pp pc_set
+  let pp_set fmt x = PCSet.pp fmt (to_pc_set x)
+
+  let pp fmt {const_map; pc_set; branches} = 
+  F.fprintf fmt
+    "@[<v 2> - ConstMap:@, %a@]@. 
+     @[<v 2> - PathConds:@, %a@]@. 
+     @[<v 2> - BranchConds:@, %a@]@."
+    ConstMap.pp const_map PCSet.pp pc_set PCSet.pp branches
+    [@@ocamlformat "disable"]
 
   let debug_if_invalid_pc transitives original_cond =
     if List.exists transitives ~f:PathCond.is_invalid then
@@ -211,6 +226,10 @@ module MakePC (Val : S) = struct
 
 
   let compute_transitives pathcond pc =
+    (* x = y *)
+    (* x = c *)
+    (* x != c *)
+    (* x != y *)
     let pc_set = to_pc_set pc in
     let replace_pathcond_by_equals =
       PCSet.fold
@@ -265,31 +284,37 @@ module MakePC (Val : S) = struct
         transitives
       |> PCSet.filter (not <<< PathCond.is_valid)
     in
-    {pc_set; const_map}
+    {pc with pc_set; const_map}
 
 
-  let add pathcond pc =
+  let add ?(is_branch = false) pathcond pc =
     if PathCond.contains_absval pathcond || PathCond.is_valid pathcond then pc
     else if PathCond.is_invalid pathcond then {pc with pc_set= PCSet.add pathcond pc.pc_set}
     else
       let transitives = compute_transitives pathcond pc in
-      update_const_map pc transitives
+      let pc' = if is_branch then {pc with branches= PCSet.add pathcond pc.branches} else pc in
+      update_const_map pc' transitives
 
 
-  let replace_by_map ~f {pc_set; const_map} =
+  let replace_by_map ~f {pc_set; const_map; branches; inequal_map} =
     let pc_set = PCSet.map (PathCond.replace_by_map ~f) pc_set in
     let const_map = ConstMap.fold (fun v const -> ConstMap.add (f v) (f const)) const_map ConstMap.empty in
-    {pc_set; const_map}
-
-
-  let replace_value {pc_set; const_map} ~(src : Val.t) ~(dst : Val.t) =
-    let pc_set = PCSet.map (PathCond.replace_value ~src ~dst) pc_set in
-    let const_map =
-      ConstMap.fold
-        (fun v const -> ConstMap.add (Val.replace_sub ~src ~dst v) (Val.replace_sub ~src ~dst const))
-        const_map ConstMap.empty
+    let branches = PCSet.map (PathCond.replace_by_map ~f) branches in
+    let inequal_map =
+      InEqualMap.fold (fun v consts -> InEqualMap.add (f v) (ValSet.map f consts)) inequal_map InEqualMap.empty
     in
-    {pc_set; const_map}
+    {pc_set; const_map; branches; inequal_map}
+
+
+  let replace_value {pc_set; const_map; branches; inequal_map} ~(src : Val.t) ~(dst : Val.t) =
+    let pc_set = PCSet.map (PathCond.replace_value ~src ~dst) pc_set in
+    let branches = PCSet.map (PathCond.replace_value ~src ~dst) branches in
+    let f = Val.replace_sub ~src ~dst in
+    let const_map = ConstMap.fold (fun v const -> ConstMap.add (f v) (f const)) const_map ConstMap.empty in
+    let inequal_map =
+      InEqualMap.fold (fun v consts -> InEqualMap.add v (ValSet.map f consts)) inequal_map InEqualMap.empty
+    in
+    {pc_set; const_map; branches; inequal_map}
 
 
   let join pc1 pc2 = PCSet.fold add (to_pc_set pc2) pc1
@@ -319,6 +344,8 @@ module MakePC (Val : S) = struct
     match ConstMap.find_opt v const_map with Some const -> [v; const] | None -> [v]
 
 
+  let equal_constant_opt {const_map} v = ConstMap.find_opt v const_map
+
   let inequal_values {pc_set} v =
     PCSet.fold
       (function
@@ -331,22 +358,78 @@ module MakePC (Val : S) = struct
       pc_set []
 
 
-  let filter_by_value ~f {pc_set; const_map} =
+  let filter_by_value ~f {pc_set; const_map; branches; inequal_map} =
     let pc_set = PCSet.filter (PathCond.contains_with_pred ~f) pc_set in
     let const_map = ConstMap.filter (fun v c -> f v || f c) const_map in
-    {pc_set; const_map}
+    let branches = PCSet.filter (PathCond.contains_with_pred ~f) branches in
+    let inequal_map = InEqualMap.filter (fun v consts -> f v || ValSet.exists f consts) inequal_map in
+    {pc_set; const_map; branches; inequal_map}
 
 
   let weak_join ~lhs ~rhs =
-    let pc_set = PCSet.inter lhs.pc_set rhs.pc_set in
-    let const_map =
-      ConstMap.merge
-        (fun _ c1_opt c2_opt ->
-          match (c1_opt, c2_opt) with Some c1, Some c2 when Val.equal c1 c2 -> Some c1 | _ -> None)
-        lhs.const_map rhs.const_map
-    in
-    {pc_set; const_map}
+    (* let all_symbolic_values =
+         (all_values lhs @ all_values rhs) |> List.filter ~f:(not <<< Val.is_concrete) |> ValSet.of_list
+       in
+       ValSet.fold (fun v ->
+         let v_lhs = equal_values lhs v in
+         let v_rhs = equal_values rhs v in
+         if List.exists v_lhs ~f:Val.is_constant then
 
+
+         else
+         ) all_symbolic_values empty *)
+    let pc_set = PCSet.inter lhs.pc_set rhs.pc_set in
+    let branches = PCSet.inter lhs.branches rhs.branches in
+    let all_symbolic_values =
+      all_values lhs @ all_values rhs |> List.filter ~f:(not <<< Val.is_concrete) |> ValSet.of_list
+    in
+    ValSet.fold
+      (fun v acc ->
+        match (ConstMap.find_opt v lhs.const_map, ConstMap.find_opt v rhs.const_map) with
+        | Some c1, Some c2 when Val.equal c1 c2 ->
+            {acc with const_map= ConstMap.add v c1 acc.const_map}
+        | Some _, Some _ ->
+            acc
+        | Some c1, None -> (
+          match List.find (inequal_values rhs v) ~f:Val.is_concrete with
+          | Some c2 when Val.equal c1 c2 ->
+              acc
+          | Some c2 ->
+              (* e.g., join (x = "", x != null) => x != null *)
+              {acc with pc_set= PCSet.add (PathCond.make_physical_equals Binop.Ne v c2) acc.pc_set}
+          | None ->
+              acc )
+        | None, Some c2 -> (
+          match List.find (inequal_values lhs v) ~f:Val.is_concrete with
+          | Some c1 when Val.equal c1 c2 ->
+              acc
+          | Some c1 ->
+              {acc with pc_set= PCSet.add (PathCond.make_physical_equals Binop.Ne v c1) acc.pc_set}
+          | None ->
+              acc )
+        | None, None ->
+            acc)
+      all_symbolic_values
+      {pc_set; const_map= ConstMap.empty; branches; inequal_map= (*TODO: do-it*) InEqualMap.empty}
+
+
+  (* ConstMap.merge
+         (fun v c1_opt c2_opt ->
+           match (c1_opt, c2_opt) with
+           | Some c1, Some c2 when Val.equal c1 c2 ->
+               Some c1
+           | Some _, Some _ ->
+               None
+           | Some c1, None when
+               List.exists (inequal_values rhs v) ~f:Val.equal c1 ->
+
+           | None, Some c2 ->
+               None
+           | None, None ->
+               None)
+         lhs.const_map rhs.const_map
+     in
+     {pc_set; const_map} *)
 
   let invalid = {empty with pc_set= PCSet.singleton PathCond.false_cond}
 
