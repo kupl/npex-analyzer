@@ -102,10 +102,13 @@ module BuiltIn = struct
 end
 
 let invoke : model =
+  let classes = ["java.lang.reflect.Method"] in
   let is_model callee instr =
     match instr with
-    | Sil.Call (_, _, arg_typs, _, _) ->
-        String.equal "invoke" (Procname.get_method callee) && Int.equal (List.length arg_typs) 3
+    | Sil.Call (_, Const (Cfun Java mthd), arg_typs, _, _) ->
+        String.equal "invoke" (Procname.get_method callee)
+        && Int.equal (List.length arg_typs) 3
+        && implements classes (Procname.Java.get_class_type_name mthd)
     | _ ->
         false
   in
