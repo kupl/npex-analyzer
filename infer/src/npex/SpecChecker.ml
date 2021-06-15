@@ -58,6 +58,7 @@ module DisjReady = struct
           in
           if Domain.Val.is_top nullvalue then (* This state cannot be applied to null-model *) [astate]
           else
+            (* set null condition as is_branch=true since patched program has explicit branch here *)
             let existing_nullvalues = Domain.equal_values astate nullvalue |> List.filter ~f:Domain.Val.is_null in
             let null = Domain.Val.make_null ~is_model:true (Node.of_pnode node instr) in
             L.d_printfln " - Existing null values (%a) are changed to %a" (Pp.seq Domain.Val.pp)
@@ -76,9 +77,9 @@ module DisjReady = struct
                 |> Domain.mark_npe_alternative
                 |> Domain.set_fault ~nullpoint:npe
               in
-              Domain.add_pc state_null_marked nullcond
+              Domain.add_pc ~is_branch:true state_null_marked nullcond
             in
-            let non_null_state = Domain.add_pc astate (Domain.PathCond.make_negation nullcond) in
+            let non_null_state = Domain.add_pc astate ~is_branch:true (Domain.PathCond.make_negation nullcond) in
             null_state @ non_null_state
       | _ ->
           [astate]
@@ -173,7 +174,10 @@ module DisjReady = struct
         let value = Domain.eval ~pos:0 astate node instr e in
         let null = Domain.Val.make_null ~pos:0 instr_node in
         let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
-        if Domain.PathCond.is_true non_null_cond then [astate] else Domain.add_pc astate non_null_cond
+        if Domain.PathCond.is_true non_null_cond then [astate]
+        else
+          (* HEURISTICS: distinguish nullability in verification *)
+          Domain.add_pc ~is_branch:true astate non_null_cond
     | _ ->
         [astate]
 
@@ -293,19 +297,15 @@ module DisjReady = struct
     let exn_value = Domain.Val.npe in
     let null = Domain.Val.make_null ~pos:0 (Node.of_pnode node instr) in
     let null_cond = Domain.PathCond.make_physical_equals Binop.Eq value null in
-    let states_with_nullcond = Domain.add_pc astate_exn null_cond in
+    let states_with_nullcond = Domain.add_pc ~is_branch:true astate_exn null_cond in
     (* Maintain astates with uncaught exception for patch validation and fault localization
      * * validation: to check if patch introduce uncaught exception (e.g., NPE)
      * * localization: to pass the target error to caller *)
-    (* Useless inference??? *)
     let store_return_exn states =
       List.map states ~f:(fun state_with_nullcond -> Domain.store_loc state_with_nullcond return_loc exn_value)
     in
-    if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
-      if List.exists (Domain.equal_values astate value) ~f:NullSpecModel.is_model_null then
-        List.map states_with_nullcond ~f:Domain.set_infer_failed |> store_return_exn
-      else store_return_exn states_with_nullcond
-    else store_return_exn states_with_nullcond
+    let values = Domain.equal_values astate value in
+    List.map states_with_nullcond ~f:(fun astate' -> Domain.set_uncaught_npes astate' values) |> store_return_exn
 
 
   let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
