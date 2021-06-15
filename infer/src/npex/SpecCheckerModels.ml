@@ -50,18 +50,24 @@ module BuiltIn = struct
       match arg_typs with
       | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
           let arg_value = Domain.eval astate node instr arg_exp in
-          let typ_value = Typ.to_string typ |> Domain.Val.make_string in
-          let null_cond op = Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node) in
-          let null_states =
-            Domain.add_pc astate (null_cond Binop.Eq)
-            |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
-          in
-          let non_null_states =
-            Domain.add_pc astate (null_cond Binop.Ne)
-            |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
-          in
-          null_states @ non_null_states
+          if Val.equal arg_value (Val.npe |> Val.unwrap_exn) then
+            (* HEURISTIC: uncaught NPE will never catched *)
+            [Domain.store_reg astate ret_id Val.zero]
+          else
+            let typ_value = Typ.to_string typ |> Domain.Val.make_string in
+            let null_cond op =
+              Domain.PathCond.make_physical_equals op arg_value (Domain.Val.make_null instr_node)
+            in
+            let null_states =
+              Domain.add_pc astate (null_cond Binop.Eq)
+              |> List.map ~f:(fun astate' -> Domain.store_reg astate' ret_id Domain.Val.zero)
+            in
+            let non_null_states =
+              Domain.add_pc astate (null_cond Binop.Ne)
+              |> List.concat_map ~f:(fun astate' ->
+                     Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+            in
+            null_states @ non_null_states
       | [(arg_exp, _); (typ_exp, _)] ->
           (* This case happens in lambda function, TODO: refactoring *)
           let arg_value = Domain.eval astate node instr arg_exp in
@@ -105,7 +111,7 @@ let invoke : model =
   let classes = ["java.lang.reflect.Method"] in
   let is_model callee instr =
     match instr with
-    | Sil.Call (_, Const (Cfun Java mthd), arg_typs, _, _) ->
+    | Sil.Call (_, Const (Cfun (Java mthd)), arg_typs, _, _) ->
         String.equal "invoke" (Procname.get_method callee)
         && Int.equal (List.length arg_typs) 3
         && implements classes (Procname.Java.get_class_type_name mthd)
