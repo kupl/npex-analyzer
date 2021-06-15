@@ -25,18 +25,19 @@ type t =
   ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
-  ; is_infer_failed: bool }
+  ; uncaught_npes: Val.t list }
 
-let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault} =
+let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault; uncaught_npes} = 
   F.fprintf fmt
     "@[<v 2> - Register:@, %a@]@. 
      @[<v 2> - Memory:@, %a@]@. 
      @[<v 2> - Path Conditions:@, %a@]@. 
      @[<v 2> - Is NPE Alternative? Is Exceptional?@, %b,%b@]@.
      @[<v 2> - Applied Null Models:@, (%f) %a@]@.
-     @[<v 2> - Fault and Null Values:@, %a, %a@]@." 
+     @[<v 2> - Fault and Null Values:@, %a, %a@]@.
+     @[<v 2> - Uncaughted NPEs:@, %a@]@." 
      Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp applied_models
-     (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs
+     (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes
     [@@ocamlformat "disable"]
 
 let cardinal x =
@@ -65,7 +66,7 @@ let bottom =
   ; nullptrs= Val.Set.empty
   ; fault= None
   ; executed_procs= Procname.Set.empty
-  ; is_infer_failed= false }
+  ; uncaught_npes= [] }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
@@ -77,7 +78,12 @@ let is_unknown_id {reg} id = Val.is_bottom (Reg.find id reg)
 
 let is_exceptional {is_exceptional} = is_exceptional
 
-let is_infer_failed {is_infer_failed} = is_infer_failed
+let has_uncaught_npes {uncaught_npes} = List.is_empty uncaught_npes
+
+let has_uncaught_model_npes {uncaught_npes} =
+  (* This indicate that NPEs are not fixed in inferenced or patched state *)
+  List.exists ~f:Val.is_model_null uncaught_npes
+
 
 let is_inferred {applied_models; fault} = (not (NullModel.is_empty applied_models)) || Option.is_some fault
 
@@ -99,7 +105,7 @@ let equal_values astate v = PC.equal_values astate.pc v
 
 let inequal_values astate v = PC.inequal_values astate.pc v
 
-let all_values {reg; pc; mem; nullptrs} =
+let all_values {reg; pc; mem; nullptrs; uncaught_npes} =
   let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
   let pc_values = PC.all_values pc |> Val.Set.of_list in
   let mem_values =
@@ -112,7 +118,11 @@ let all_values {reg; pc; mem; nullptrs} =
             Val.Set.add v)
       mem Val.Set.empty
   in
-  reg_values |> Val.Set.union pc_values |> Val.Set.union mem_values |> Val.Set.union nullptrs
+  reg_values
+  |> Val.Set.union pc_values
+  |> Val.Set.union mem_values
+  |> Val.Set.union nullptrs
+  |> Val.Set.union (Val.Set.of_list uncaught_npes)
 
 
 let all_symbols astate =
@@ -193,7 +203,8 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
   in
   let reg' = Reg.map (Val.replace_sub ~src ~dst) astate.reg in
   let nullptrs' = Val.Set.map (Val.replace_sub ~src ~dst) astate.nullptrs in
-  {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'}
+  let uncaught_npes' = List.map ~f:(Val.replace_sub ~src ~dst) astate.uncaught_npes in
+  {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'; uncaught_npes= uncaught_npes'}
 
 
 let add_pc ?(is_branch = false) astate pathcond : t list =
@@ -225,7 +236,12 @@ let unwrap_exception astate = {astate with is_exceptional= false}
 
 let set_fault astate ~nullpoint = {astate with fault= Some nullpoint}
 
-let set_infer_failed astate = {astate with is_infer_failed= true}
+let set_uncaught_npes astate nullptrs =
+  { astate with
+    uncaught_npes=
+      List.fold nullptrs ~init:astate.uncaught_npes ~f:(fun acc v ->
+          if List.mem astate.uncaught_npes v ~equal:phys_equal then acc else v :: acc) }
+
 
 let get_nullptrs astate = astate.nullptrs
 
@@ -441,6 +457,12 @@ module SymResolvedMap = struct
     Val.Set.fold
       (fun v acc -> Val.Set.add (resolve_val sym_resolved_map v) acc)
       nullptrs_to_resolve nullptrs_to_update
+
+
+  let resolve_uncaught_npes sym_resolved_map nullptrs_to_resolve nullptrs_to_update =
+    List.fold nullptrs_to_resolve ~init:nullptrs_to_update ~f:(fun acc v ->
+        let resolved = resolve_val sym_resolved_map v in
+        if List.mem acc resolved ~equal:phys_equal then acc else resolved :: acc)
 end
 
 let resolve_summary astate ~actual_values ~formals callee_summary =
@@ -470,6 +492,9 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
       (Mem.bottom, PC.invalid)
   in
   let nullptrs' = SymResolvedMap.resolve_nullptrs sym_resolved_map callee_summary.nullptrs astate.nullptrs in
+  let uncaught_npes' =
+    SymResolvedMap.resolve_uncaught_npes sym_resolved_map callee_summary.uncaught_npes astate.uncaught_npes
+  in
   let fault' : NullPoint.t option =
     match (astate.fault, callee_summary.fault) with
     | None, fault_opt ->
@@ -496,7 +521,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; applied_models= applied_models'
     ; probability= probability'
     ; executed_procs= executed_procs'
-    ; is_infer_failed= callee_summary.is_infer_failed }
+    ; uncaught_npes= uncaught_npes' }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated =====@." ;
@@ -650,7 +675,9 @@ let remove_unreachables ({mem; pc} as astate) =
   let pc' =
     PC.filter_by_value ~f:(fun v -> List.exists (Val.get_subvalues v) ~f:(not <<< is_unreachable_value)) pc
   in
-  {astate with mem= mem'; pc= pc'}
+  let nullptrs' = Val.Set.filter (not <<< is_unreachable_value) astate.nullptrs in
+  let uncaught_npes' = List.filter ~f:(not <<< is_unreachable_value) astate.uncaught_npes in
+  {astate with mem= mem'; pc= pc'; nullptrs= nullptrs'; uncaught_npes= uncaught_npes'}
 
 
 (** For Join *)
@@ -786,7 +813,7 @@ let joinable lhs rhs =
   in
   Bool.equal lhs.is_npe_alternative rhs.is_npe_alternative
   && Bool.equal lhs.is_exceptional rhs.is_exceptional
-  && Bool.equal lhs.is_infer_failed rhs.is_infer_failed
+  && Bool.equal (has_uncaught_npes lhs) (has_uncaught_npes rhs)
   && NullModel.joinable lhs.applied_models rhs.applied_models
   && Option.equal NullPoint.equal lhs.fault rhs.fault
   && has_no_significant_diff lhs rhs
@@ -813,7 +840,10 @@ let weak_join lhs rhs : t =
     let fault = lhs.fault (* since lhs.fault = rhs.fault *) in
     let nullptrs = Val.Set.union lhs.nullptrs rhs.nullptrs in
     let executed_procs = Procname.Set.union lhs.executed_procs rhs.executed_procs in
-    let is_infer_failed = lhs.is_infer_failed (* since lhs.is_infer_failed = rhs.is_infer_failed *) in
+    let uncaught_npes =
+      List.fold rhs.uncaught_npes ~init:lhs.uncaught_npes ~f:(fun acc null ->
+          if List.mem acc ~equal:phys_equal null then acc else null :: acc)
+    in
     let joined =
       { reg
       ; mem
@@ -825,19 +855,19 @@ let weak_join lhs rhs : t =
       ; fault
       ; nullptrs
       ; executed_procs
-      ; is_infer_failed }
+      ; uncaught_npes }
     in
     L.d_printfln " - Joined - @.%a@." pp joined ;
     joined )
 
 
 module Feature = struct
-  type t = {is_npe_alternative: bool; is_exceptional: bool; fault: NullPoint.t option; is_infer_failed: bool}
+  type t = {is_npe_alternative: bool; is_exceptional: bool; fault: NullPoint.t option; has_uncaught_exception: bool}
   [@@deriving compare]
 
   let pp fmt x =
     F.fprintf fmt "%b:%b:%a:%b" x.is_npe_alternative x.is_exceptional (Pp.option NullPoint.pp) x.fault
-      x.is_infer_failed
+      x.has_uncaught_exception
 end
 
 module FeatureMap = PrettyPrintable.MakePPMap (Feature)
@@ -849,7 +879,7 @@ let merge disjuncts =
         { is_npe_alternative= state.is_npe_alternative
         ; is_exceptional= state.is_exceptional
         ; fault= state.fault
-        ; is_infer_failed= state.is_infer_failed }
+        ; has_uncaught_exception= has_uncaught_npes state }
     in
     match FeatureMap.find_opt feature feature_map with
     | Some states ->

@@ -16,7 +16,7 @@ type t =
   ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t
-  ; is_infer_failed: bool }
+  ; uncaught_npes: Val.t list }
 
 val pp : Format.formatter -> t -> unit
 
@@ -38,7 +38,9 @@ val is_npe_alternative : t -> bool
 
 val is_exceptional : t -> bool
 
-val is_infer_failed : t -> bool
+val has_uncaught_npes : t -> bool
+
+val has_uncaught_model_npes : t -> bool
 
 val is_inferred : t -> bool
 
@@ -90,7 +92,7 @@ val set_exception : t -> t
 
 val set_fault : t -> nullpoint:NullPoint.t -> t
 
-val set_infer_failed : t -> t
+val set_uncaught_npes : t -> Val.t list -> t
 
 val get_nullptrs : t -> Val.Set.t
 
