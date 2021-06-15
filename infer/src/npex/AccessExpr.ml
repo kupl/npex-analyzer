@@ -43,6 +43,18 @@ module S = struct
 
   let equal_access = [%compare.equal: access]
 
+  let equal_base_wo_formal lhs rhs =
+    match (lhs, rhs) with
+    | Formal pv, Formal pv' | Formal pv, Variable pv' | Variable pv, Formal pv' | Variable pv, Variable pv' ->
+        Pvar.equal pv pv'
+    | _ ->
+        equal_base lhs rhs
+
+
+  let equal_wo_formal (lhs_base, lhs_accs) (rhs_base, rhs_accs) =
+    equal_base_wo_formal lhs_base rhs_base && List.equal equal_access lhs_accs rhs_accs
+
+
   let rec pp fmt = function
     | base, accesses when equal_base base dummy_base ->
         (Pp.seq pp_access) fmt accesses
@@ -281,3 +293,5 @@ let rec is_concrete (base, accesses) = is_concrete_base base && List.is_empty ac
 and is_concrete_base = function Primitive _ -> true | _ -> false
 
 let is_different_type _ _ = false
+
+let is_recursive _ = false

@@ -13,6 +13,8 @@ val compare : t -> t -> int
 
 val equal : t -> t -> bool
 
+val equal_wo_formal : t -> t -> bool
+
 val pp : F.formatter -> t -> unit
 
 val of_pvar : Pvar.t -> t
@@ -60,3 +62,5 @@ val is_abstract : t -> bool
 val is_concrete : t -> bool
 
 val is_different_type : t -> t -> bool
+
+val is_recursive : t -> bool
