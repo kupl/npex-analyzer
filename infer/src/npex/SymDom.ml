@@ -864,7 +864,20 @@ module Mem = struct
     (* TODO: what if 
      * l -> v   | l -> bot
      * l -> bot | l -> bot *)
-    mapi (fun l v -> Val.weak_join v (find l rhs)) lhs
+    merge
+      (fun l v_lhs_opt v_rhs_opt ->
+        match (v_lhs_opt, v_rhs_opt) with
+        | Some v_lhs, Some v_rhs ->
+            Some (Val.weak_join v_lhs v_rhs)
+        | Some v_lhs, None ->
+            (* Since values in memory are symbol except allocsite, it would be ok to just add *)
+            Some v_lhs
+        | None, Some v_rhs ->
+            (* Since values in memory are symbol except allocsite, it would be ok to just add *)
+            Some v_rhs
+        | None, None ->
+            None)
+      lhs rhs
 
   (* union (fun _ v1 v2 -> if Val.equal v1 v2 then Some v1 else Some (Val.weak_join v1 v2)) lhs rhs *)
 end
