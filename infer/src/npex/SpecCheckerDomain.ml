@@ -702,26 +702,41 @@ let unify lhs rhs : t * t =
           if Mem.mem l rhs.mem then
             let v_lhs = Mem.find l lhs.mem in
             let v_rhs = Mem.find l rhs.mem in
-            match v_lhs with
-            | _ when Val.equal v_lhs v_rhs ->
+            match (v_lhs, v_rhs) with
+            | _, _ when Val.equal v_lhs v_rhs ->
                 (Val.Set.add v_lhs vals, lhs, rhs)
-            | Val.Vint _ ->
+            | Val.Vint _, _ ->
                 let new_value = Val.make_extern Node.dummy Typ.int in
                 (vals, replace_value lhs ~src:v_lhs ~dst:new_value, replace_value rhs ~src:v_rhs ~dst:new_value)
-            | Val.Vheap _ ->
+            | Val.Vheap sh_lhs, Val.Vheap sh_rhs ->
+                let new_value = Val.make_extern Node.dummy Typ.void_star in
+                let new_lhs =
+                  if SymHeap.is_allocsite sh_lhs then
+                    add_pc lhs (PathCond.make_physical_equals Binop.Ne new_value Val.default_null) |> List.hd_exn
+                  else lhs
+                in
+                let new_rhs =
+                  if SymHeap.is_allocsite sh_rhs then
+                    add_pc rhs (PathCond.make_physical_equals Binop.Ne new_value Val.default_null) |> List.hd_exn
+                  else rhs
+                in
+                ( Val.Set.add new_value vals
+                , replace_value new_lhs ~src:v_lhs ~dst:new_value
+                , replace_value new_rhs ~src:v_rhs ~dst:new_value )
+            | Val.Vheap _, _ ->
                 let new_value = Val.make_extern Node.dummy Typ.void_star in
                 ( Val.Set.add new_value vals
                 , replace_value lhs ~src:v_lhs ~dst:new_value
                 , replace_value rhs ~src:v_rhs ~dst:new_value )
-            | Vexn v_lhs' ->
+            | Vexn v_lhs', _ ->
                 let new_value = Val.make_extern Node.dummy Typ.void_star in
                 let v_rhs' = Val.unwrap_exn v_rhs in
                 (* exception heap cannot points-to something *)
                 (vals, replace_value lhs ~src:v_lhs' ~dst:new_value, replace_value rhs ~src:v_rhs' ~dst:new_value)
-            | Vextern _ ->
+            | Vextern _, _ ->
                 (* uninterpretted function term is not in memory *)
                 (vals, lhs, rhs)
-            | Bot | Top ->
+            | _, _ ->
                 (vals, lhs, rhs)
           else (vals, lhs, rhs))
       (* let v_lhs = Mem.find l lhs.mem in
@@ -774,22 +789,21 @@ let joinable lhs rhs =
            && *)
         (* let equal_values_lhs, inequal_values_lhs = equal_values lhs v, inequal_values lhs v in
            let equal_values_rhs, inequal_values_rhs = equal_values rhs v, inequal_values rhs v in *)
-        (* TODO: lhs may have inequal values *)
-        match List.find (equal_values lhs v) ~f:Val.is_constant with
+        match List.find (equal_values lhs v) ~f:Val.is_concrete with
         | Some v -> (
-          match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+          match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
           | Some v' ->
               not (Val.equal v v')
           | None -> (
-            match List.find (inequal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+            match List.find (inequal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
             | Some v' ->
                 Val.equal v v'
             | None ->
                 false ) )
         | None -> (
-          match List.find (inequal_values lhs v) ~f:Val.is_constant with
+          match List.find (inequal_values lhs v) ~f:Val.is_concrete with
           | Some v -> (
-            match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_constant with
+            match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
             | Some v' ->
                 Val.equal v v'
             | None ->
