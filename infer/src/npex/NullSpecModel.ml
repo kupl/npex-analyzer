@@ -9,8 +9,7 @@ module Node = InstrNode
 module MValue = NullModel.MValue
 module Pos = NullModel.Pos
 
-
-let is_model_null = function Val.Vheap (Null {is_model}) -> is_model | _ -> false
+let is_model_null = Val.is_model_null
 
 let find_model_index astate node instr arg_values =
   List.find_mapi arg_values ~f:(fun i v ->

@@ -204,6 +204,8 @@ module SymHeap = struct
 
   let is_null = function Null _ -> true | _ -> false
 
+  let is_model_null = function Null {is_model} -> is_model | _ -> false
+
   let is_concrete = function Allocsite _ | String _ | Null _ -> true | _ -> false
 
   let is_constant = function String _ | Null _ -> true | _ -> false
@@ -544,6 +546,8 @@ module ValCore = struct
 
   let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
+  let is_model_null = function Vheap symheap -> SymHeap.is_model_null symheap | _ -> false
+
   let rec is_abstract = function
     | Vint symexp ->
         SymExp.is_top symexp
@@ -584,6 +588,8 @@ module ValCore = struct
     | _ ->
         false
 
+
+  let is_recursive = function Vextern _ | Vexn _ -> true | _ -> false
 
   let of_intlit intlit = Vint (SymExp.of_intlit intlit)
 
@@ -747,7 +753,7 @@ module ValCore = struct
       | Vextern (mthd, args) ->
           Vextern (mthd, List.map args ~f:(replace_by_map ~f))
       | Vexn v ->
-          f v
+          Vexn (f v)
       | _ ->
           x
     else applied
