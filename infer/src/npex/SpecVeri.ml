@@ -9,13 +9,19 @@ module MValue = NullModel.MValue
 module Model = PrettyPrintable.MakePPMonoMap (ModelKey) (MValue)
 module Models = PrettyPrintable.MakePPMonoMap (ModelKey) (MValues)
 module Val = Domain.Val
+module APSet = AbstractDomain.FiniteSet (AccessExpr)
 
 module Spec = struct
-  type t = {pc: Formula.t; output: Formula.t; symbols: Val.Set.t} [@@deriving compare]
+  type t = {pc: Formula.t; output: Formula.t; symbols: Val.Set.t; uncaught_npes: APSet.t} [@@deriving compare]
 
-  let pp fmt {pc; output; symbols} =
-    F.fprintf fmt "(%a, %a, %a)" Formula.pp_set pc Formula.pp_set output Val.Set.pp symbols
-
+  let pp fmt {pc; output; symbols; uncaught_npes} =
+    F.fprintf fmt 
+      "@[<v 2> - Formula:@, %a@]@. 
+       @[<v 2> - Output:@, %a@]@. 
+       @[<v 2> - Symbol used:@, %a@]@. 
+       @[<v 2> - Uncaughted NPEs:@, %a@]@."
+    Formula.pp_set pc Formula.pp_set output Val.Set.pp symbols APSet.pp uncaught_npes
+    [@@ocamlformat "disable"]
 
   let check_sat ?(print_unsat = false) (infered : t) (patched : t) =
     let result = Formula.check_sat ~print_unsat infered.pc patched.pc in
@@ -26,6 +32,7 @@ module Spec = struct
     let result =
       Formula.check_valid ~print_invalid infered.output patched.output
       && Val.Set.equal infered.symbols patched.symbols
+      && APSet.subset patched.uncaught_npes infered.uncaught_npes
     in
     result
 
@@ -34,7 +41,8 @@ module Spec = struct
     let pc = Formula.merge lhs.pc rhs.pc in
     let output = Formula.merge lhs.output rhs.output in
     let symbols = Val.Set.union lhs.symbols rhs.symbols in
-    {pc; output; symbols}
+    let uncaught_npes = APSet.union lhs.uncaught_npes rhs.uncaught_npes in
+    {pc; output; symbols; uncaught_npes}
 
 
   let joinable lhs rhs = Formula.check_sat lhs.pc rhs.pc
@@ -42,7 +50,11 @@ module Spec = struct
   let from_state proc_desc astate =
     let pc, output = StateFormula.from_state proc_desc astate in
     let symbols = Domain.collect_summary_symbols astate in
-    {pc; output; symbols}
+    let uncaught_npes =
+      let null_values = Domain.(astate.uncaught_npes) in
+      Val.Set.fold (APSet.union <<< StateFormula.val_to_ap astate) (Val.Set.of_list null_values) APSet.empty
+    in
+    {pc; output; symbols; uncaught_npes}
 end
 
 module Specs = struct
@@ -98,9 +110,10 @@ let rec add_mergeable_model acc worklist : Domain.t list list =
 
 
 let select_most_probable_spec model_cands =
-  let has_uncaught_exceptions model_cand = List.exists model_cand ~f:Domain.is_infer_failed in
-  let model_cands = List.filter model_cands ~f:(not <<< has_uncaught_exceptions) in
-  let model_cands = List.filter model_cands ~f:(not <<< List.is_empty) in
+  let has_uncaught_exceptions model_cand = List.exists model_cand ~f:Domain.has_uncaught_model_npes in
+  let model_cands =
+    List.filter model_cands ~f:(not <<< has_uncaught_exceptions) |> List.filter ~f:(not <<< List.is_empty)
+  in
   let max_opt =
     List.max_elt model_cands ~compare:(fun lhs rhs ->
         Int.of_float (score lhs *. 100.) - Int.of_float (score rhs *. 100.))
@@ -196,7 +209,10 @@ let verify proc_desc summary_inferenced summary_patched =
             L.progress "%a@." Spec.pp spec_inferenced ;
             L.progress "--------------------patched specs----------------------" ;
             L.progress "%a@." (Pp.seq ~sep:"\n" Spec.pp) specs_patched ;
-            [] )
+            if Formula.is_valid (StateFormula.exception_cond proc_desc true) Spec.(spec_inferenced.pc) then
+              (* IGNORE IT: inferenced state may have more errors than patched *)
+              compute_tuple specs_inferenced_rest' specs_patched_matched acc
+            else [] )
           else
             let specs_patched_matched' = Specs.union specs_patched_matched (Specs.of_list sat_specs) in
             compute_tuple specs_inferenced_rest' specs_patched_matched' ((spec_inferenced, sat_specs) :: acc)
