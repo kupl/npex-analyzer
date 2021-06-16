@@ -158,20 +158,15 @@ let invoke : model =
 module Collection = struct
   let mIsEmptyField = Fieldname.make (Typ.Name.Java.from_string "Collection") "mIsEmpty"
 
-  let classes =
-    [ "java.util.AbstractList"
-    ; "java.util.ArrayList"
-    ; "java.util.LinkedList"
-    ; "java.util.List"
-    ; "java.util.Iterator"
-    ; "java.util.Collection" ]
+  let classes = ["java.util.Iterator"; "java.util.Collection"]
 
+  let is_model_class classname = implements_interfaces classes classname
 
   let init : model =
     let is_model callee instr =
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when Procname.Java.is_constructor mthd ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -199,7 +194,7 @@ module Collection = struct
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
         when String.equal (Procname.get_method callee) "isEmpty" ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -218,7 +213,7 @@ module Collection = struct
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
         when String.equal (Procname.get_method callee) "iterator" ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -240,7 +235,7 @@ module Collection = struct
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
         when String.equal (Procname.get_method callee) "hasNext" ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -262,7 +257,7 @@ module Collection = struct
     let is_model callee _ =
       match callee with
       | Procname.Java mthd when String.is_prefix (Procname.get_method callee) ~prefix:"add" ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -284,7 +279,7 @@ module Collection = struct
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when String.equal (Procname.get_method callee) "next"
         ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
