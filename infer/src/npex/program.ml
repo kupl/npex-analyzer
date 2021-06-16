@@ -406,6 +406,10 @@ let succ_instr_node program x = IntraCfg.succ_instr_node (cfgof program (InstrNo
     in
     do_worklist init init *)
 
+let _tenv = ref (Tenv.create ())
+
+let tenv () = !_tenv
+
 let build () : t =
   let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
   let procnames = List.concat_map source_files ~f:(fun src -> SourceFiles.proc_names_of_source src) in
@@ -522,6 +526,7 @@ let cache : t option ref = ref None
 let from_marshal () : t =
   match !cache with
   | Some program ->
+      _tenv := program.tenv ;
       program
   | None ->
       let program =
@@ -531,6 +536,7 @@ let from_marshal () : t =
           to_marshal program ; program
       in
       cache := Some program ;
+      _tenv := program.tenv ;
       program
 
 

@@ -15,6 +15,8 @@ type t
 
 val build : unit -> t
 
+val tenv : unit -> Tenv.t
+
 val to_marshal : t -> unit
 
 val from_marshal : unit -> t
