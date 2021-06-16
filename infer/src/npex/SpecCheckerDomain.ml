@@ -695,50 +695,56 @@ let unify lhs rhs : t * t =
   let extern_locs, concrete_locs =
     List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
   in
+  let replace_astate astate l v new_value introduced =
+    match v with
+    | Val.Vexn v' ->
+        if Val.Set.mem v' introduced then
+          add_pc_simple (store_loc astate l (Val.to_exn new_value)) (PathCond.make_physical_equals Binop.Eq v' new_value)
+        else replace_value astate ~src:v' ~dst:new_value
+    | _ ->
+        if Val.Set.mem v introduced then
+          add_pc_simple (store_loc astate l new_value) (PathCond.make_physical_equals Binop.Eq v new_value) 
+        else if Val.is_allocsite v then
+          add_pc_simple
+            (replace_value astate ~src:v ~dst:new_value)
+            (PathCond.make_physical_equals Binop.Ne new_value Val.default_null)
+        else replace_value astate ~src:v ~dst:new_value
+  in
   let rec _unify worklist rest (lhs, rhs) =
     (* TODO: fix scalability issues *)
-    let next_vals, next_lhs, next_rhs =
-      List.fold worklist ~init:(Val.Set.empty, lhs, rhs) ~f:(fun (vals, lhs, rhs) l ->
+    let next_vals, next_lhs, next_rhs, _ =
+      List.fold worklist ~init:(Val.Set.empty, lhs, rhs, Val.Set.empty) ~f:(fun (vals, lhs, rhs, introduced) l ->
           if Mem.mem l rhs.mem then
             let v_lhs = Mem.find l lhs.mem in
             let v_rhs = Mem.find l rhs.mem in
             match (v_lhs, v_rhs) with
             | _, _ when Val.equal v_lhs v_rhs ->
-                (Val.Set.add v_lhs vals, lhs, rhs)
+                (Val.Set.add v_lhs vals, lhs, rhs, Val.Set.add v_lhs introduced)
             | Val.Vint _, _ ->
                 let new_value = Val.make_extern Node.dummy Typ.int in
-                (vals, replace_value lhs ~src:v_lhs ~dst:new_value, replace_value rhs ~src:v_rhs ~dst:new_value)
-            | Val.Vheap sh_lhs, Val.Vheap sh_rhs ->
-                let new_value = Val.make_extern Node.dummy Typ.void_star in
-                let new_lhs =
-                  if SymHeap.is_allocsite sh_lhs then
-                    add_pc lhs (PathCond.make_physical_equals Binop.Ne new_value Val.default_null) |> List.hd_exn
-                  else lhs
-                in
-                let new_rhs =
-                  if SymHeap.is_allocsite sh_rhs then
-                    add_pc rhs (PathCond.make_physical_equals Binop.Ne new_value Val.default_null) |> List.hd_exn
-                  else rhs
-                in
-                ( Val.Set.add new_value vals
-                , replace_value new_lhs ~src:v_lhs ~dst:new_value
-                , replace_value new_rhs ~src:v_rhs ~dst:new_value )
-            | Val.Vheap _, _ ->
+                ( vals
+                , replace_astate lhs l v_lhs new_value introduced
+                , replace_astate rhs l v_rhs new_value introduced
+                , Val.Set.add new_value introduced )
+            | Val.Vheap _, Val.Vheap _ ->
                 let new_value = Val.make_extern Node.dummy Typ.void_star in
                 ( Val.Set.add new_value vals
-                , replace_value lhs ~src:v_lhs ~dst:new_value
-                , replace_value rhs ~src:v_rhs ~dst:new_value )
-            | Vexn v_lhs', _ ->
+                , replace_astate lhs l v_lhs new_value introduced
+                , replace_astate rhs l v_rhs new_value introduced
+                , Val.Set.add new_value introduced )
+            | Vexn _, Vexn _ ->
                 let new_value = Val.make_extern Node.dummy Typ.void_star in
-                let v_rhs' = Val.unwrap_exn v_rhs in
                 (* exception heap cannot points-to something *)
-                (vals, replace_value lhs ~src:v_lhs' ~dst:new_value, replace_value rhs ~src:v_rhs' ~dst:new_value)
+                ( vals
+                , replace_astate lhs l v_lhs new_value introduced
+                , replace_astate rhs l v_rhs new_value introduced
+                , Val.Set.add new_value introduced )
             | Vextern _, _ ->
                 (* uninterpretted function term is not in memory *)
-                (vals, lhs, rhs)
+                (vals, lhs, rhs, introduced)
             | _, _ ->
-                (vals, lhs, rhs)
-          else (vals, lhs, rhs))
+                (vals, lhs, rhs, introduced)
+          else (vals, lhs, rhs, introduced))
       (* let v_lhs = Mem.find l lhs.mem in
          if is_node_value (Mem.find l lhs.mem) then
            let v_rhs = Mem.find l rhs.mem in
