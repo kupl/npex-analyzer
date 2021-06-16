@@ -138,10 +138,11 @@ class Bug:
 
     def inference(self, manual_model):
         start_time = time.time()
+        inference_option = f"--spec-checker-only --spec-inference {self.error_reports_arg} -j 40 --scheduler restart"
         if manual_model:
-            spec_inference_cmd = f"{INFER_PATH} npex --spec-checker-only --spec-inference {self.error_reports_arg} --manual-model -j 40"
+            spec_inference_cmd = f"{INFER_PATH} npex {inference_option} --manual-model "
         else:
-            spec_inference_cmd = f"{INFER_PATH} npex --spec-checker-only --spec-inference {self.error_reports_arg} -j 40"
+            spec_inference_cmd = f"{INFER_PATH} npex {inference_option}"
             
         ret = subprocess.run(spec_inference_cmd, shell=True, cwd=self.project_root_dir)
         if ret.returncode == 1:
@@ -173,7 +174,7 @@ class Bug:
         apply_patch(self.project_root_dir, patch_dir)
         self.capture_incremental(patch_dir)
 
-        launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg}"
+        launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --scheduler restart"
         print(f" - npex-verifier command: {launch_spec_veri_cmd}")
         return (subprocess.run(launch_spec_veri_cmd,
                                shell=True,
