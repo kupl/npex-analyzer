@@ -207,6 +207,14 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
   {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'; uncaught_npes= uncaught_npes'}
 
 
+let add_pc_simple ?(is_branch = false) astate pathcond : t =
+  let pathcond_to_add = PathCond.normalize pathcond in
+  if PC.is_valid pathcond_to_add astate.pc then astate
+  else
+    let pc' = PC.add ~is_branch pathcond_to_add astate.pc in
+    {astate with pc= pc'}
+
+
 let add_pc ?(is_branch = false) astate pathcond : t list =
   let replace_extern astate pc_set =
     (* HEURISTICS: replace an extern variable ex by v if there exists ex1 = ex2 or exn(ex) = exn(ex2) *)

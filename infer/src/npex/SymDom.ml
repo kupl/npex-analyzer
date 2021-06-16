@@ -650,6 +650,8 @@ module ValCore = struct
         false
 
 
+  let is_allocsite = function Vheap sheap -> SymHeap.is_allocsite sheap | _ -> false
+
   let weak_join lhs rhs =
     match (lhs, rhs) with
     | _, _ when equal lhs rhs ->
