@@ -670,6 +670,8 @@ module ValCore = struct
 
   let npe = to_exn (make_string "java.lang.NullPointerException")
 
+  let exn = to_exn (make_string "java.lang.Exception")
+
   let symbol_from_loc_opt typ loc =
     let open IOption.Let_syntax in
     let+ symbol =
@@ -733,17 +735,19 @@ module ValCore = struct
 
 
   let rec replace_sub (x : t) ~(src : t) ~(dst : t) =
-    if phys_equal x src then dst
-    else
-      match (x, dst) with
-      | Vextern _, Vextern _ ->
-          (* TODO: support only single function *) x
-      | Vextern (mthd, args), _ ->
-          Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst))
-      | Vexn x, Vheap _ ->
-          Vexn (replace_sub x ~src ~dst)
-      | _ ->
-          x
+    match (x, dst) with
+    | Vheap (Null _), _ when phys_equal x src ->
+        dst
+    | _ when equal x src ->
+        dst
+    | Vextern _, Vextern _ ->
+        (* TODO: support only single function *) x
+    | Vextern (mthd, args), _ ->
+        Vextern (mthd, List.map args ~f:(replace_sub ~src ~dst))
+    | Vexn x, Vheap _ ->
+        Vexn (replace_sub x ~src ~dst)
+    | _ ->
+        x
 
 
   let rec replace_by_map x ~f =
@@ -837,7 +841,7 @@ module Mem = struct
 
   let find k t =
     match k with
-    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite (node, cnt)), _) when not (mem k t) ->
+    | Loc.Index (Loc.SymHeap (SymHeap.Allocsite _), _) when not (mem k t) ->
         Val.top
         (* Newly allocated array has default value *)
         (* TODO: find typ by node (new_array type) *)
@@ -865,7 +869,7 @@ module Mem = struct
      * l -> v   | l -> bot
      * l -> bot | l -> bot *)
     merge
-      (fun l v_lhs_opt v_rhs_opt ->
+      (fun _ v_lhs_opt v_rhs_opt ->
         match (v_lhs_opt, v_rhs_opt) with
         | Some v_lhs, Some v_rhs ->
             Some (Val.weak_join v_lhs v_rhs)
