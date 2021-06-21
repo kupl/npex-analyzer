@@ -48,6 +48,9 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
           let null = Domain.Val.make_null ~pos:0 ~is_model:true instr_node in
           let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
           Domain.add_pc (Domain.store_reg astate ret_id value) non_null_cond
+      | [], _ ->
+          (* No apply *)
+          []
       | _ ->
           (* TODO: define model execution *)
           raise (TODO (F.asprintf "undefined model execution: %a at %a" MValue.pp mval Pos.pp pos)) )

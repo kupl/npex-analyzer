@@ -186,11 +186,15 @@ module ManualModel = struct
     let open IOption.Let_syntax in
     let+ key = key in
     match key with
+    | Key.{method_name} when String.equal method_name "__cast" ->
+        NullModel.MValue.no_apply
     | Key.{ret_type= Aint} ->
         NullModel.MValue.make_const ~prob:1.0 (Const.Cint IntLit.zero)
     | Key.{ret_type= Afloat} ->
         NullModel.MValue.make_const ~prob:1.0 (Const.Cfloat 0.0)
     | Key.{ret_type= Aobject} ->
+        NullModel.MValue.make_null ~prob:1.0
+    | Key.{ret_type= Avoid; method_kind= Constructor} ->
         NullModel.MValue.make_null ~prob:1.0
     | Key.{ret_type= Avoid} ->
         NullModel.MValue.make_skip ~prob:1.0
