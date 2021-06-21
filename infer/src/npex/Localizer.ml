@@ -145,8 +145,9 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
       nullvalues Faults.empty
   in
   let executed_procs =
-    List.fold specchecker_summaries ~init:ExecutedProcs.empty ~f:(fun acc astate ->
-        Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
+    List.filter specchecker_summaries ~f:SpecCheckerDomain.is_npe_alternative
+    |> List.fold ~init:ExecutedProcs.empty ~f:(fun acc astate ->
+           Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
   in
   Some (Faults.union faults param_faults, executed_procs)
 
@@ -189,8 +190,8 @@ let generate_npe_list faults =
     faults
 
 
-let target_procs program nullpoint =
-  Program.slice_virtual_calls program ;
+let target_procs program nullpoint executed_procs =
+  Program.slice_virtual_calls program executed_procs ;
   let rec single_caller program proc =
     match Program.callers_of_proc program proc with [pred] -> single_caller program pred | _ -> proc
   in
@@ -234,7 +235,14 @@ let result_to_json ~time ~target_procs ~executed_procs =
 let localize ~get_summary ~time program =
   (* TODO: why is it slow??? *)
   let nullpoint = NullPoint.get_nullpoint_list program |> List.hd_exn in
-  let target_procs = target_procs program nullpoint in
+  let all_executed_procs =
+    Procname.Set.fold
+      (fun proc ->
+        let executed_procs = snd (get_summary proc) in
+        ExecutedProcs.fold Procname.Set.add executed_procs)
+      (Program.all_procs program) Procname.Set.empty
+  in
+  let target_procs = target_procs program nullpoint all_executed_procs in
   let faults = Procname.Set.fold (Faults.union <<< fst <<< get_summary) target_procs Faults.empty in
   let executed_procs =
     Procname.Set.fold (ExecutedProcs.union <<< snd <<< get_summary) target_procs ExecutedProcs.empty

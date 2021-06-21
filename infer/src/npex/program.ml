@@ -277,6 +277,10 @@ let cfgof {cfgs} pid = Procname.Map.find pid cfgs
 
 let pdesc_of {cfgs} pid = (Procname.Map.find pid cfgs).IntraCfg.pdesc
 
+let pdesc_of_opt {cfgs} pid =
+  match Procname.Map.find_opt pid cfgs with Some IntraCfg.{pdesc} -> Some pdesc | None -> None
+
+
 let all_procs {cfgs} = Procname.Map.fold (fun p _ -> Procname.Set.add p) cfgs Procname.Set.empty
 
 let all_nodes {cfgs} =
@@ -291,12 +295,21 @@ let all_instr_nodes {cfgs} =
     cfgs []
 
 
-let slice_virtual_calls program =
-  List.iter (all_instr_nodes program) ~f:(fun instr_node ->
-      let proc = InstrNode.get_proc_name instr_node in
-      let callees = callees_of_instr_node program instr_node in
-      if List.length callees > 1 then
-        List.iter callees ~f:(fun callee -> CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
+let slice_virtual_calls program executed_procs =
+  Procname.Set.iter
+    (fun proc ->
+      match pdesc_of_opt program proc with
+      | Some pdesc ->
+          let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
+          List.iter instr_nodes ~f:(fun instr_node ->
+              let proc = InstrNode.get_proc_name instr_node in
+              let callees = callees_of_instr_node program instr_node in
+              if List.length callees > 1 then
+                List.iter callees ~f:(fun callee ->
+                    CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
+      | None ->
+          ())
+    executed_procs
 
 
 let slice_procs_except {callgraph} procs =

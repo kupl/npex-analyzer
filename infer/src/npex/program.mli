@@ -95,6 +95,6 @@ val has_annot : t -> string -> Procname.t -> bool
 
 val print_callgraph : t -> string -> unit
 
-val slice_virtual_calls : t -> unit
+val slice_virtual_calls : t -> Procname.Set.t -> unit
 
 val slice_procs_except : t -> Procname.Set.t -> unit
