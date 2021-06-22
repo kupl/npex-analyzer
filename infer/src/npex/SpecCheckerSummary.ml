@@ -22,6 +22,9 @@ type get_summary = Procname.t -> t option
 let empty : t = []
 
 let to_summary proc_desc disjuncts =
+  L.(debug Analysis Quiet)
+    "@.---- Analysis time result of %a ----@." Procname.pp (Procdesc.get_proc_name proc_desc) ;
+  debug_time_finalize () ;
   let disjuncts = join_list disjuncts ~joinable:Domain.joinable ~join:Domain.weak_join ~pp:Domain.pp in
   let summary = List.map ~f:(StateWithFeature.from_state proc_desc) disjuncts |> StateWithFeature.merge in
   (* L.progress "State pruning : %d -> %d of %a@." (List.length disjuncts_local_removed) (List.length summary)

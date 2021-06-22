@@ -253,3 +253,24 @@ let proc_to_json_opt proc =
         None
   in
   result
+
+
+let time_debugger = ref String.Map.empty
+
+let debug_time process_name ~f ~arg =
+  let start_time = Unix.gettimeofday () in
+  let result = f arg in
+  let time = Unix.gettimeofday () -. start_time in
+  time_debugger :=
+    String.Map.change !time_debugger process_name ~f:(function
+      | Some (num_iter, time') ->
+          Some (num_iter + 1, time +. time')
+      | None ->
+          Some (1, time)) ;
+  result
+
+
+let debug_time_finalize () =
+  String.Map.iteri !time_debugger ~f:(fun ~key ~data:(num_iter, time) ->
+      L.(debug Analysis Quiet) " - %s : %d, %f@." key num_iter time) ;
+  time_debugger := String.Map.empty
