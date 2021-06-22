@@ -396,7 +396,7 @@ module MakePC (Val : S) = struct
     let f = Val.replace_sub ~src ~dst in
     let const_map = ConstMap.fold (fun v const -> ConstMap.add (f v) (f const)) const_map ConstMap.empty in
     let inequal_map =
-      InEqualMap.fold (fun v consts -> InEqualMap.add v (ValSet.map f consts)) inequal_map InEqualMap.empty
+      InEqualMap.fold (fun v consts -> InEqualMap.add (f v) (ValSet.map f consts)) inequal_map InEqualMap.empty
     in
     {pc_set; const_map; branches; inequal_map}
 
