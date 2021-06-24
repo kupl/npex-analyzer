@@ -465,21 +465,12 @@ module DisjReady = struct
             | Var.ProgramVar pv when Pvar.is_frontend_tmp pv ->
                 Domain.Loc.of_pvar pv |> Domain.Loc.is_temp (* Pvar.is_frontend_tmp pv *)
             | Var.ProgramVar _ ->
+                (* In Java7, some temp variables ares unsoundly translated. So do not remove it *)
                 false)
         in
-        (* For localization, do not remove temps that pointsto given null *)
-        let non_null_temps =
-          List.filter real_temps ~f:(function
-            | Var.LogicalVar id ->
-                not (Domain.is_fault_null astate (Domain.read_id astate id))
-            | Var.ProgramVar pv ->
-                not (Domain.is_fault_null astate (Domain.read_loc astate (Domain.Loc.of_pvar pv))))
-        in
-        [Domain.remove_temps astate ~line:(get_line node) non_null_temps]
-    (* | Sil.Metadata (Nullify (pv, _)) when Pvar.is_frontend_tmp pv ->
-        [Domain.remove_pvar astate ~line:(get_line node) ~pv] *)
+        [Domain.remove_temps astate ~line:(get_line node) real_temps]
     | Sil.Metadata (Nullify (pv, _)) when Domain.Loc.of_pvar pv |> Domain.Loc.is_temp ->
-        [Domain.remove_pvar astate ~line:(get_line node) ~pv]
+        [Domain.remove_temps astate ~line:(get_line node) [Var.of_pvar pv]]
     | Sil.Metadata (Nullify (_, _)) ->
         [astate]
     | Sil.Metadata (Abstract _) | Sil.Metadata Skip | Sil.Metadata (VariableLifetimeBegins _) ->
@@ -513,6 +504,10 @@ module DisjReady = struct
         List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
       in
       List.concat_map post_states ~f:(check_npe_alternative analysis_data node instr)
+
+
+  let exec_instr astate analysis_data node instr =
+    debug_time "exec_instr" ~f:(exec_instr astate analysis_data node) ~arg:instr
 
 
   let pp_session_name node fmt =
@@ -600,6 +595,7 @@ let is_executed procname =
              L.progress "[Class] %s and %s : %b@." class_name class_name' (String.equal class_name class_name') ; *)
           String.equal name name' && String.equal class_name class_name')
   | None ->
+      L.(debug Analysis Medium) "[WARNING]: %a has no classname" Procname.pp procname ;
       List.exists !_executed_procs ~f:(fun (name', _) -> String.equal name name')
 
 
@@ -620,8 +616,10 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
   let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
   let procname = Procdesc.get_proc_name proc_desc in
-  if List.exists formals ~f:Pvar.is_frontend_tmp then (* In this case, IR might be incomplete *)
-    None
+  if List.exists formals ~f:Pvar.is_frontend_tmp then (
+    (* In this case, IR might be incomplete *)
+    L.(debug Analysis Quiet) "%a has incompletely translated IR" Procname.pp procname ;
+    None )
   else if (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier) && not (is_executed procname)
   then None (* && is_all_target_funs_analyzed analysis_data then None *)
   else
