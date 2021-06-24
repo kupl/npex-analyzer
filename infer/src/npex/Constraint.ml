@@ -220,12 +220,13 @@ module MakePC (Val : S) = struct
 
   let pp_set fmt x = PCSet.pp fmt (to_pc_set x)
 
-  let pp fmt {const_map; pc_set; branches} = 
+  let pp fmt {const_map; pc_set; branches; inequal_map} = 
   F.fprintf fmt
     "@[<v 2> - ConstMap:@, %a@]@. 
+     @[<v 2> - InequalMap:@, %a@]@. 
      @[<v 2> - PathConds:@, %a@]@. 
      @[<v 2> - BranchConds:@, %a@]@."
-    ConstMap.pp const_map PCSet.pp pc_set PCSet.pp branches
+    ConstMap.pp const_map InEqualMap.pp inequal_map PCSet.pp pc_set PCSet.pp branches
     [@@ocamlformat "disable"]
 
   let debug_if_invalid_pc transitives original_cond =
@@ -243,9 +244,9 @@ module MakePC (Val : S) = struct
               (ConstMap.add v2 v1 const_acc, inequal_acc)
           | PathCond.PEquals (v1, v2) when Val.is_concrete v2 && not (Val.is_concrete v1) ->
               (ConstMap.add v1 v2 const_acc, inequal_acc)
-          | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v1 && not (Val.is_concrete v1) ->
+          | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v1 && not (Val.is_concrete v2) ->
               (const_acc, InEqualMap.add_elt v2 v1 inequal_acc)
-          | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v2 && not (Val.is_concrete v2) ->
+          | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v2 && not (Val.is_concrete v1) ->
               (const_acc, InEqualMap.add_elt v1 v2 inequal_acc)
           | _ ->
               (const_acc, inequal_acc))
@@ -253,10 +254,20 @@ module MakePC (Val : S) = struct
     in
     let pc_set =
       PCSet.map
+        (* v -> c, v2 = v => v2 = c *)
         (PathCond.replace_by_map ~f:(fun v ->
              match ConstMap.find_opt v const_map with Some const -> const | None -> v))
         transitives
+      (* remove trivial condition (e.g., c = c) *)
       |> PCSet.filter (not <<< PathCond.is_valid)
+      (* remove constant inequal condition (e.g., v != c) *)
+      |> PCSet.filter (function
+           | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v1 && not (Val.is_concrete v2) ->
+               false
+           | PathCond.Not (PathCond.PEquals (v1, v2)) when Val.is_concrete v2 && not (Val.is_concrete v1) ->
+               false
+           | _ ->
+               true)
     in
     {pc with pc_set; const_map; inequal_map}
 
@@ -460,28 +471,29 @@ module MakePC (Val : S) = struct
 
 
   let weak_join ~lhs ~rhs =
-    (* let all_symbolic_values =
-         (all_values lhs @ all_values rhs) |> List.filter ~f:(not <<< Val.is_concrete) |> ValSet.of_list
-       in
-       ValSet.fold (fun v ->
-         let v_lhs = equal_values lhs v in
-         let v_rhs = equal_values rhs v in
-         if List.exists v_lhs ~f:Val.is_constant then
-
-
-         else
-         ) all_symbolic_values empty *)
     let pc_set = PCSet.inter lhs.pc_set rhs.pc_set in
     let branches = PCSet.inter lhs.branches rhs.branches in
     let all_symbolic_values =
       all_values lhs @ all_values rhs |> List.filter ~f:(not <<< Val.is_concrete) |> ValSet.of_list
     in
+    let inequal_map =
+      InEqualMap.merge
+        (fun _ c1_opt c2_opt ->
+          match (c1_opt, c2_opt) with
+          | Some consts1, Some consts2 ->
+              Some (ValSet.inter consts1 consts2)
+          | _ ->
+              None)
+        lhs.inequal_map rhs.inequal_map
+    in
     ValSet.fold
       (fun v acc ->
         match (ConstMap.find_opt v lhs.const_map, ConstMap.find_opt v rhs.const_map) with
         | Some c1, Some c2 when Val.equal c1 c2 ->
+            (* v -> c, v -> c => v -> c *)
             {acc with const_map= ConstMap.add v c1 acc.const_map}
         | Some _, Some _ ->
+            (* v -> c1, v -> c2 => merge v != c1s, v != c2s to v != c1s inter c2s *)
             acc
         | Some c1, None -> (
           match List.find (inequal_values rhs v) ~f:Val.is_concrete with
@@ -489,7 +501,7 @@ module MakePC (Val : S) = struct
               acc
           | Some c2 ->
               (* e.g., join (x = "", x != null) => x != null *)
-              {acc with pc_set= PCSet.add (PathCond.make_physical_equals Binop.Ne v c2) acc.pc_set}
+              {acc with inequal_map= InEqualMap.add_elt v c2 acc.inequal_map}
           | None ->
               acc )
         | None, Some c2 -> (
@@ -497,13 +509,14 @@ module MakePC (Val : S) = struct
           | Some c1 when Val.equal c1 c2 ->
               acc
           | Some c1 ->
-              {acc with pc_set= PCSet.add (PathCond.make_physical_equals Binop.Ne v c1) acc.pc_set}
+              (* e.g., join (x = "", x != null) => x != null *)
+              {acc with inequal_map= InEqualMap.add_elt v c1 acc.inequal_map}
           | None ->
               acc )
         | None, None ->
             acc)
       all_symbolic_values
-      {pc_set; const_map= ConstMap.empty; branches; inequal_map= (*TODO: do-it*) InEqualMap.empty}
+      {pc_set; const_map= ConstMap.empty; branches; inequal_map}
 
 
   (* ConstMap.merge
