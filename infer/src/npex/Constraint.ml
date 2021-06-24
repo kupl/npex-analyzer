@@ -220,14 +220,10 @@ module MakePC (Val : S) = struct
 
   let pp_set fmt x = PCSet.pp fmt (to_pc_set x)
 
-  let pp fmt {const_map; pc_set; branches; inequal_map} = 
-  F.fprintf fmt
-    "@[<v 2> - ConstMap:@, %a@]@. 
-     @[<v 2> - InequalMap:@, %a@]@. 
-     @[<v 2> - PathConds:@, %a@]@. 
-     @[<v 2> - BranchConds:@, %a@]@."
-    ConstMap.pp const_map InEqualMap.pp inequal_map PCSet.pp pc_set PCSet.pp branches
-    [@@ocamlformat "disable"]
+  let pp fmt {const_map; pc_set; branches; inequal_map} =
+    F.fprintf fmt "@[<v 3>   * ConstMap:@,  %a@,* InequalMap:@,  %a@,* PathConds:@,  %a@,* BranchConds:@,  %a@]"
+      ConstMap.pp const_map InEqualMap.pp inequal_map PCSet.pp pc_set PCSet.pp branches
+
 
   let debug_if_invalid_pc transitives original_cond =
     if List.exists transitives ~f:PathCond.is_invalid then

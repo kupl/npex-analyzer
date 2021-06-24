@@ -12,6 +12,7 @@ module SymExp = SymDom.SymExp
 module SymHeap = SymDom.SymHeap
 module Reg = SymDom.Reg
 module Mem = SymDom.Mem
+module Vars = PrettyPrintable.MakePPSet (Var)
 
 (* TODO: add counter for each state *)
 type t =
@@ -25,20 +26,29 @@ type t =
   ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
-  ; uncaught_npes: Val.t list }
+  ; uncaught_npes: Val.t list
+  ; temps_to_remove: Vars.t }
 
-let pp fmt {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault; uncaught_npes} = 
+let pp fmt
+    {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault; uncaught_npes}
+    =
   F.fprintf fmt
-    "@[<v 2> - Register:@, %a@]@. 
-     @[<v 2> - Memory:@, %a@]@. 
-     @[<v 2> - Path Conditions:@, %a@]@. 
-     @[<v 2> - Is NPE Alternative? Is Exceptional?@, %b,%b@]@.
-     @[<v 2> - Applied Null Models:@, (%f) %a@]@.
-     @[<v 2> - Fault and Null Values:@, %a, %a@]@.
-     @[<v 2> - Uncaughted NPEs:@, %a@]@." 
-     Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp applied_models
-     (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes
-    [@@ocamlformat "disable"]
+    "@[<v 2>  - Register:@,\
+    \   %a@,\
+    \ - Memory:@,\
+    \   %a@,\
+    \ - Path Conditions:@,\
+    \   %a@,\
+    \ - Is NPE Alternative? Is Exceptional?@,\
+    \   %b,%b@,\
+    \ - Applied Null Models:@,\
+    \   (%f) %a@,\
+    \ - Fault and Null Values:@,\
+    \   %a, %a@,\
+    \ - Uncaughted NPEs:@,\
+    \   %a@]" Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
+    applied_models (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes
+
 
 let cardinal x =
   (* To minimize randomness in fixed-point iteration *)
@@ -66,7 +76,8 @@ let bottom =
   ; nullptrs= Val.Set.empty
   ; fault= None
   ; executed_procs= Procname.Set.empty
-  ; uncaught_npes= [] }
+  ; uncaught_npes= []
+  ; temps_to_remove= Vars.empty }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
@@ -171,6 +182,25 @@ let remove_pvar astate ~line ~pv =
   let pvar_loc = Loc.of_pvar pv ~line in
   if Mem.mem pvar_loc astate.mem then {astate with mem= Mem.remove pvar_loc astate.mem}
   else (* OPTIMIZATION: to enable physical equality *) astate
+
+
+let remove_temps astate ~line vars =
+  match vars with
+  | [(Var.ProgramVar _ as var)] ->
+      {astate with temps_to_remove= Vars.add var astate.temps_to_remove}
+  | _ ->
+      (* remove temps at next EXIT_SCORE to maintain register information at node level *)
+      let astate_temps_removed =
+        Vars.fold
+          (fun var astate' ->
+            match var with
+            | Var.LogicalVar id ->
+                remove_id astate' id
+            | Var.ProgramVar pv ->
+                remove_pvar astate' ~line ~pv)
+          astate.temps_to_remove astate
+      in
+      {astate_temps_removed with temps_to_remove= Vars.of_list vars}
 
 
 let remove_locals astate ~pdesc =
@@ -529,7 +559,8 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; applied_models= applied_models'
     ; probability= probability'
     ; executed_procs= executed_procs'
-    ; uncaught_npes= uncaught_npes' }
+    ; uncaught_npes= uncaught_npes'
+    ; temps_to_remove= astate.temps_to_remove }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated =====@." ;
@@ -872,6 +903,7 @@ let weak_join lhs rhs : t =
       List.fold rhs.uncaught_npes ~init:lhs.uncaught_npes ~f:(fun acc null ->
           if List.mem acc ~equal:phys_equal null then acc else null :: acc)
     in
+    let temps_to_remove = Vars.union lhs.temps_to_remove rhs.temps_to_remove in
     let joined =
       { reg
       ; mem
@@ -883,7 +915,8 @@ let weak_join lhs rhs : t =
       ; fault
       ; nullptrs
       ; executed_procs
-      ; uncaught_npes }
+      ; uncaught_npes
+      ; temps_to_remove }
     in
     L.d_printfln " - Joined - @.%a@." pp joined ;
     joined )

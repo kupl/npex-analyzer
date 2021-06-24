@@ -5,6 +5,8 @@ module PC = SymDom.PC
 module Reg = SymDom.Reg
 module Mem = SymDom.Mem
 
+module Vars : PrettyPrintable.PPSet with type elt = Var.t
+
 type t =
   { reg: Reg.t
   ; mem: Mem.t
@@ -16,7 +18,8 @@ type t =
   ; fault: NullPoint.t option
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t
-  ; uncaught_npes: Val.t list }
+  ; uncaught_npes: Val.t list
+  ; temps_to_remove: Vars.t }
 
 val pp : Format.formatter -> t -> unit
 
@@ -70,9 +73,9 @@ val eval : ?pos:int -> t -> Procdesc.Node.t -> Sil.instr -> Exp.t -> Val.t
 
 val eval_lv : t -> Procdesc.Node.t -> Sil.instr -> Exp.t -> Loc.t
 
-val remove_temps : t -> line:int -> Var.t list -> t
-
 val remove_pvar : t -> line:int -> pv:Pvar.t -> t
+
+val remove_temps : t -> line:int -> Var.t list -> t
 
 val remove_locals : t -> pdesc:Procdesc.t -> t
 
