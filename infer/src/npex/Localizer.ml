@@ -53,12 +53,19 @@ let check_instr proc_desc post null_values node instr : Fault.t option =
       else true
     in
     (* use phys_equal to is_target not to collect other null sources *)
-    let is_target value = List.mem (Val.Set.elements null_values) value ~equal:phys_equal in
+    let is_target value =
+      let result = List.mem (Val.Set.elements null_values) value ~equal:phys_equal in
+      L.(debug Analysis Verbose) "@.[CheckInstr %a]@.  %a is target values? %b (%a)@." InstrNode.pp location Val.pp value result
+        Val.Set.pp null_values ;
+      result
+    in
     List.exists post ~f:(fun astate ->
         try
           let value = eval astate ~pos node instr exp in
           is_target value && is_nullable value astate
-        with _ -> false)
+        with _ ->
+          L.(debug Analysis Verbose) "@.[CheckInstr %a]@.  failed to evaluate %a@." InstrNode.pp location Exp.pp exp ;
+          false)
   in
   let check_exp exp ~pos =
     match AccessExpr.from_IR_exp_opt proc_desc exp with
@@ -79,8 +86,8 @@ let check_instr proc_desc post null_values node instr : Fault.t option =
   in
   let fault_opt =
     match instr with
-    | Sil.Call (_, _, arg_typs, _, _) ->
-        List.find_mapi arg_typs ~f:(fun pos (arg_exp, _) -> check_exp arg_exp ~pos)
+    | Sil.Call ((ret_id, ret_typ), _, arg_typs, _, _) ->
+        List.find_mapi ((Exp.Var ret_id, ret_typ) :: arg_typs) ~f:(fun pos (arg_exp, _) -> check_exp arg_exp ~pos)
     | Sil.Store {e2} ->
         check_exp e2 ~pos:0
     | _ ->
@@ -118,38 +125,40 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
         | None ->
             acc)
   in
-  let faults =
-    CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
-        match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
-        | Some {post} ->
-            Faults.union (check_node proc_desc post nullvalues node) faults
-        | None ->
-            faults)
-  in
-  if Config.debug_level_analysis > 0 && not (Val.Set.is_empty nullvalues) then
-    L.progress " - find null value assigns@.   - null_values: %a@.   - method: %a   - faults: %a@." Val.Set.pp
-      nullvalues Procname.pp proc_name Faults.pp faults ;
-  let param_faults =
-    Val.Set.fold
-      (fun v acc ->
-        match v with
-        | Val.Vheap (SymDom.SymHeap.Symbol s) | Val.Vint (SymDom.SymExp.Symbol s) ->
-            let nullexp = SymDom.Symbol.to_ap s in
-            if AccessExpr.is_var nullexp then
-              let location = InstrNode.of_pnode (Procdesc.get_start_node proc_desc) Sil.skip_instr in
-              Faults.add Fault.{location; nullexp; fault_type= Parameter} acc
-            else (* TODO: is it necessary? *)
-              acc
-        | _ ->
-            acc)
-      nullvalues Faults.empty
-  in
-  let executed_procs =
-    List.filter specchecker_summaries ~f:SpecCheckerDomain.is_npe_alternative
-    |> List.fold ~init:ExecutedProcs.empty ~f:(fun acc astate ->
-           Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
-  in
-  Some (Faults.union faults param_faults, executed_procs)
+  if Val.Set.is_empty nullvalues then Some (Faults.empty, ExecutedProcs.empty)
+  else
+    let faults =
+      CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
+          match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
+          | Some {post} ->
+              Faults.union (check_node proc_desc post nullvalues node) faults
+          | None ->
+              faults)
+    in
+    if Config.debug_level_analysis > 0 && not (Val.Set.is_empty nullvalues) then
+      L.progress " - find null value assigns@.   - null_values: %a@.   - method: %a   - faults: %a@." Val.Set.pp
+        nullvalues Procname.pp proc_name Faults.pp faults ;
+    let param_faults =
+      Val.Set.fold
+        (fun v acc ->
+          match v with
+          | Val.Vheap (SymDom.SymHeap.Symbol s) | Val.Vint (SymDom.SymExp.Symbol s) ->
+              let nullexp = SymDom.Symbol.to_ap s in
+              if AccessExpr.is_var nullexp then
+                let location = InstrNode.of_pnode (Procdesc.get_start_node proc_desc) Sil.skip_instr in
+                Faults.add Fault.{location; nullexp; fault_type= Parameter} acc
+              else (* TODO: is it necessary? *)
+                acc
+          | _ ->
+              acc)
+        nullvalues Faults.empty
+    in
+    let executed_procs =
+      List.filter specchecker_summaries ~f:SpecCheckerDomain.is_npe_alternative
+      |> List.fold ~init:ExecutedProcs.empty ~f:(fun acc astate ->
+             Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
+    in
+    Some (Faults.union faults param_faults, executed_procs)
 
 
 let collect_faults ~get_summary proc acc =
