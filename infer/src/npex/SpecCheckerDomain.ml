@@ -247,9 +247,18 @@ let add_pc ?(is_branch = false) astate pathcond : t list =
     PC.PCSet.fold
       (fun cond astate_acc ->
         match cond with
-        | PathCond.PEquals (Val.Vheap (SymHeap.Extern a), Val.Vheap (SymHeap.Extern b))
-        | PathCond.PEquals (Val.Vexn (Val.Vheap (SymHeap.Extern a)), Val.Vexn (Val.Vheap (SymHeap.Extern b))) ->
-            replace_value astate_acc ~src:(Val.Vheap (SymHeap.Extern a)) ~dst:(Val.Vheap (SymHeap.Extern b))
+        | PathCond.PEquals (x, y) when Val.is_extern x && (not (Val.is_const_extern x)) && Val.is_constant y ->
+            replace_value astate_acc ~src:x ~dst:(Val.make_const_extern y)
+        | PathCond.PEquals (x, y) when Val.is_extern y && (not (Val.is_const_extern y)) && Val.is_constant x ->
+            replace_value astate_acc ~src:y ~dst:(Val.make_const_extern x)
+        | PathCond.PEquals ((Val.Vint (SymExp.Extern _) as x), (Val.Vint (SymExp.Extern _) as y)) ->
+            if Val.is_const_extern x then replace_value astate_acc ~src:y ~dst:x
+            else replace_value astate_acc ~src:x ~dst:y
+        | PathCond.PEquals ((Val.Vheap (SymHeap.Extern _) as x), (Val.Vheap (SymHeap.Extern _) as y))
+        | PathCond.PEquals
+            (Val.Vexn (Val.Vheap (SymHeap.Extern _) as x), Val.Vexn (Val.Vheap (SymHeap.Extern _) as y)) ->
+            if Val.is_const_extern x then replace_value astate_acc ~src:y ~dst:x
+            else replace_value astate_acc ~src:x ~dst:y
         | _ ->
             astate_acc)
       pc_set astate
