@@ -310,7 +310,7 @@ module SymExp = struct
     | IntLit x, IntLit y ->
         IntLit (IntLit.add x y)
     | Extern _, _ | _, Extern _ ->
-        make_extern Node.dummy
+        IntTop
     | _ ->
         IntTop
 
@@ -320,7 +320,7 @@ module SymExp = struct
     | IntLit x, IntLit y ->
         IntLit (IntLit.sub x y)
     | Extern _, _ | _, Extern _ ->
-        make_extern Node.dummy
+        IntTop
     | _ ->
         IntTop
 
@@ -685,11 +685,11 @@ module ValCore = struct
     | _, _ when equal lhs rhs ->
         lhs
     | Vint _, _ | _, Vint _ ->
-        make_extern Node.dummy Typ.int
+        intTop
     | Vheap _, _ | _, Vheap _ ->
-        make_extern Node.dummy Typ.void_star
+        unknown
     | Vexn _, _ | _, Vexn _ ->
-        Vexn (make_extern Node.dummy Typ.void_star)
+        exn
     | _ ->
         top
 
