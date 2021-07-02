@@ -1,5 +1,9 @@
 module Domain = SpecCheckerDomain
 
+module Collection : sig
+  val setIsEmpty : Domain.t -> Procdesc.Node.t -> Sil.instr -> Domain.Loc.t -> Domain.t list
+end
+
 type exec =
      Domain.t
   -> Procdesc.t
