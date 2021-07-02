@@ -885,6 +885,7 @@ let collect_summary_symbols astate =
 
 let joinable lhs rhs =
   let has_const_diff_value lhs rhs =
+    let is_important = Val.is_null in
     Mem.exists
       (fun l v ->
         (not (Loc.is_extern l))
@@ -893,21 +894,21 @@ let joinable lhs rhs =
            && *)
         (* let equal_values_lhs, inequal_values_lhs = equal_values lhs v, inequal_values lhs v in
            let equal_values_rhs, inequal_values_rhs = equal_values rhs v, inequal_values rhs v in *)
-        match List.find (equal_values lhs v) ~f:Val.is_concrete with
+        match List.find (equal_values lhs v) ~f:is_important with
         | Some v -> (
-          match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
+          match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:is_important with
           | Some v' ->
               not (Val.equal v v')
           | None -> (
-            match List.find (inequal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
+            match List.find (inequal_values rhs (Mem.find l rhs.mem)) ~f:is_important with
             | Some v' ->
                 Val.equal v v'
             | None ->
                 false ) )
         | None -> (
-          match List.find (inequal_values lhs v) ~f:Val.is_concrete with
+          match List.find (inequal_values lhs v) ~f:is_important with
           | Some v -> (
-            match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:Val.is_concrete with
+            match List.find (equal_values rhs (Mem.find l rhs.mem)) ~f:is_important with
             | Some v' ->
                 Val.equal v v'
             | None ->
