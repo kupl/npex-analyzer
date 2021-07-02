@@ -628,10 +628,10 @@ module ValCore = struct
         SymExp.is_constant symexp
     | Vheap symheap ->
         SymHeap.is_constant symheap
-    | Vextern (callee, _) when Procname.is_infer_undefined callee ->
-        false
-    | Vextern (_, args) ->
-        List.for_all args ~f:is_constant
+    (* | Vextern (callee, _) when Procname.is_infer_undefined callee ->
+           false
+       | Vextern (_, args) ->
+           List.for_all args ~f:is_constant *)
     | _ ->
         false
 
