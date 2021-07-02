@@ -6,6 +6,14 @@ module L = Logging
 type t = {deref_field: string; node: InterNode.t; instr: Sil.instr; null_exp: Exp.t; null_access_expr: AccessExpr.t}
 [@@deriving compare]
 
+let dummy =
+  { deref_field= ""
+  ; node= InterNode.dummy (Procname.from_string_c_fun "NPEX_normal")
+  ; instr= Sil.skip_instr
+  ; null_exp= Const (Cint IntLit.zero)
+  ; null_access_expr= AccessExpr.dummy }
+
+
 let equal = [%compare.equal: t]
 
 let pp fmt {node; instr; null_exp; null_access_expr} =
@@ -14,14 +22,14 @@ let pp fmt {node; instr; null_exp; null_access_expr} =
   F.fprintf fmt "SIL instruction: %a@," (Sil.pp_instr ~print_types:true Pp.text) instr ;
   F.fprintf fmt "IR null-expr: %a@," Exp.pp null_exp ;
   F.fprintf fmt "AccessExpr of null-expr: %a@," AccessExpr.pp null_access_expr ;
-  F.fprintf fmt "Entry Method of null-expr: %a@," AccessExpr.pp null_access_expr
+  F.fprintf fmt "Entry Method of null-expr: %a }@]" AccessExpr.pp null_access_expr
 
 
 let pp_IR_nullpoint fmt (node, instr, null_exp) =
   F.fprintf fmt "@[<v2>{ " ;
   F.fprintf fmt "IR node: %a@," InterNode.pp (InterNode.of_pnode node) ;
   F.fprintf fmt "SIL instruction: %a@," (Sil.pp_instr ~print_types:true Pp.text) instr ;
-  F.fprintf fmt "IR null-expr: %a@," Exp.pp null_exp
+  F.fprintf fmt "IR null-expr: %a }@]" Exp.pp null_exp
 
 
 let find_npe program loc deref_field =
@@ -45,7 +53,7 @@ let find_npe program loc deref_field =
             (InstrNode.of_pnode node instr) ;
           None
     in
-    L.progress "find null point in %a@." (Pp.seq ~sep:"\n" InstrNode.pp) instr_nodes ;
+    L.progress "find null point in @[%a@]@." (Pp.seq ~sep:"\n" InstrNode.pp) instr_nodes ;
     List.find_map_exn instr_nodes ~f:(fun instr_node ->
         let node = InstrNode.inode_of instr_node |> InterNode.pnode_of in
         let instr = InstrNode.get_instr instr_node in
