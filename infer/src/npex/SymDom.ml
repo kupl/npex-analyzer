@@ -436,6 +436,21 @@ module Loc = struct
         l
 
 
+  let to_symbol_opt : t -> Symbol.t option = function
+    | Var pv ->
+        Some (Symbol.of_pvar pv)
+    | Field (Var pv, fn) when Pvar.is_global pv ->
+        Some (Symbol.make_global pv fn)
+    | Field (Var pv, fn) when Pvar.is_global pv ->
+        Some (Symbol.make_global pv fn)
+    | Field (SymHeap (Symbol s), fn) ->
+        Some (Symbol.append_field s ~fn)
+    | Index (SymHeap (Symbol s), SymExp.IntLit index) ->
+        Some (Symbol.append_index s ~index)
+    | _ ->
+        None
+
+
   let to_symheap = function SymHeap s -> s | _ as l -> L.(die InternalError) "%a is not heap location" pp l
 
   let rec replace_heap ~src ~dst = function
@@ -572,6 +587,10 @@ module ValCore = struct
 
   let default_null = make_null Node.dummy
 
+  let npe = to_exn (make_string "java.lang.NullPointerException")
+
+  let exn = to_exn (make_string "java.lang.Exception")
+
   let is_null = function Vheap symheap -> SymHeap.is_null symheap | _ -> false
 
   let is_model_null = function Vheap symheap -> SymHeap.is_model_null symheap | _ -> false
@@ -698,27 +717,11 @@ module ValCore = struct
 
   let widen ~prev ~next ~num_iters:_ = join prev next
 
-  let npe = to_exn (make_string "java.lang.NullPointerException")
-
-  let exn = to_exn (make_string "java.lang.Exception")
+  let get_symbol_opt = function Vheap (Symbol s) | Vint (Symbol s) -> Some s | _ -> None
 
   let symbol_from_loc_opt typ loc =
     let open IOption.Let_syntax in
-    let+ symbol =
-      match loc with
-      | Loc.Var pv ->
-          Some (Symbol.of_pvar pv)
-      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
-          Some (Symbol.make_global pv fn)
-      | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
-          Some (Symbol.make_global pv fn)
-      | Loc.Field (Loc.SymHeap (Symbol s), fn) ->
-          Some (Symbol.append_field s ~fn)
-      | Loc.Index (Loc.SymHeap (Symbol s), SymExp.IntLit index) ->
-          Some (Symbol.append_index s ~index)
-      | _ ->
-          None
-    in
+    let+ symbol = Loc.to_symbol_opt loc in
     if Typ.is_pointer typ then Vheap (SymHeap.of_symbol symbol)
     else if Typ.is_int typ then Vint (SymExp.of_symbol symbol)
     else top_of_typ typ
