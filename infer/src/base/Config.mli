@@ -98,6 +98,8 @@ val npex_patch_json_name : string
 
 val npex_summary_dir : string
 
+val npex_result_dir : string
+
 val nsnotification_center_checker_backend : bool
 
 val os_type : os_type
@@ -592,6 +594,8 @@ val npex_localizer_result : string
 val npex_model_json : string
 
 val npex_test_method : string option
+
+val npex_patch_id : string option
 
 val npex_launch_localize : bool
 

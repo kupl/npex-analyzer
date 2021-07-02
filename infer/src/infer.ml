@@ -77,6 +77,19 @@ let setup () =
           Utils.create_dir Config.npex_summary_dir
       | `Unknown ->
           Utils.create_dir Config.npex_summary_dir ) ;
+      ( match Sys.is_directory Config.npex_result_dir with
+      | `Yes when Config.npex_launch_spec_inference ->
+          Utils.rmtree Config.npex_result_dir ;
+          Utils.create_dir Config.npex_result_dir
+      | `Yes when Config.npex_launch_spec_verifier ->
+          ()
+      | `Yes ->
+          ()
+      | `No ->
+          Utils.rmtree Config.npex_result_dir ;
+          Utils.create_dir Config.npex_result_dir
+      | `Unknown ->
+          Utils.create_dir Config.npex_result_dir ) ;
       ResultsDir.assert_results_dir "please run an infer analysis or capture first"
   | Help ->
       () ) ;
@@ -345,7 +358,22 @@ let () =
           let target_procs =
             List.map nullpoints ~f:(fun NullPoint.{node} -> InterNode.get_proc_name node)
           in
-          if List.exists target_procs ~f:is_analyzed then L.exit 0
+          if List.exists target_procs ~f:is_analyzed then (
+            let procs_to_analyze =
+              List.fold nullpoints ~init:Procname.Set.empty ~f:(fun acc NullPoint.{node} ->
+                  Procname.Set.add (InterNode.get_proc_name node) acc)
+            in
+            Procname.Set.iter
+              (fun proc ->
+                let disjuncts = SpecCheckerSummary.get_disjuncts (get_summary proc) in
+                let msg =
+                  if Config.debug_mode then Format.asprintf "%a" SpecVeri.pp_states disjuncts
+                  else Format.asprintf "%a" SpecVeri.pp_max disjuncts
+                in
+                Vocab.print_to_file ~msg
+                  ~filename:(Format.asprintf "%s/inferenced_states_%s" Config.npex_result_dir (Procname.get_method proc)))
+              procs_to_analyze ;
+            L.exit 0 )
           else (
             L.progress "[FAIL]: to analyze error proc@." ;
             L.exit 1 ) )

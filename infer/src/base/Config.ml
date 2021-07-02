@@ -176,6 +176,7 @@ let npex_localizer_result = "localizer_result.json"
 let npex_model_json = "model.json"
 
 let npex_summary_dir = "npex-summaries"
+let npex_result_dir = "npex-results"
 
 let npex_patch_json_name = "patch.json"
 
@@ -2277,6 +2278,10 @@ and npex_test_method =
     ~in_help:InferCommand.[(NPEX, manual_generic)]
     "Specify the test-method triggering NPE"
 
+and npex_patch_id =
+  CLOpt.mk_string_opt ~long:"patch-id"
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Specify patch id to verify"
 
 and npex_launch_localize =
   CLOpt.mk_bool ~default:false ~long:"localize"
@@ -3229,6 +3234,7 @@ and export_changed_functions = !export_changed_functions
 and npex_specifications_directory = !npex_specifications_directory
 
 and npex_test_method = !npex_test_method
+and npex_patch_id = !npex_patch_id
 
 and npex_launch_localize = !npex_launch_localize
 
