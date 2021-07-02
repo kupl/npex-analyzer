@@ -116,9 +116,11 @@ and val_to_ap astate : Val.t -> APSet.t = function
       symexp_to_ap astate symexp
   | Val.Vheap sh ->
       symheap_to_ap astate sh
-  | Val.Vexn (Val.Vheap (SymHeap.String str)) ->
+  | Val.Vexn (Val.Vheap (SymHeap.String _)) ->
       (* Modeled exception (e.g., uncaught NPE) *)
-      AccessExpr.of_const (Const.Cstr (F.asprintf "Exn:%s" str)) |> APSet.singleton
+      (* FIXME: this is redudant information, so no need to convert it currently. *)
+      APSet.empty
+      (* AccessExpr.of_const (Const.Cstr (F.asprintf "Exn:%s" str)) |> APSet.singleton *)
   | Val.Vexn _ ->
       (* TODO: modeling exn heap by type *)
       AccessExpr.of_const (Const.Cstr "Exn") |> APSet.singleton
@@ -192,7 +194,8 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
   in
   let summary_formula =
     let astate' =
-      List.fold (Domain.Mem.bindings mem) ~init:astate ~f:(fun acc (l, v) ->
+      List.fold (Domain.Mem.bindings mem) ~init:astate ~f:(fun acc (l, _) ->
+          (* remove all local-variable assignment *)
           match l with
           | Loc.Var pv when Pvar.is_return pv ->
               acc
@@ -210,6 +213,8 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
             make_formula Binop.Eq aps_loc aps_val
             |> Formula.filter ~f:(function
                  | Predicate.PEquals (v1, v2) ->
+                     (* prestate information could be different whether a pointer is used or not. 
+                      * e.g., local-variable = param just instroduces param = $param *)
                      not (AccessExpr.equal_wo_formal v1 v2)
                  | _ ->
                      true)
@@ -218,13 +223,6 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
         Domain.(astate'.mem)
         Formula.empty
     in
-    Formula.diff result pc_formula
+    result
   in
-  let debug_msg =
-    F.asprintf
-      "===== State to pc * output =====@. - Original state: %a@. - Summary Formula: %a@. - PC Formula: %a@. \
-       ==============================@."
-      Domain.pp astate Formula.pp summary_formula Formula.pp pc_formula
-  in
-  if Config.debug_mode then L.progress "%s" debug_msg ;
   (pc_formula, summary_formula)
