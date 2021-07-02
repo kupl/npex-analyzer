@@ -91,6 +91,8 @@ module SymbolCore = struct
     if Int.equal len1 len2 then compare (base1, accs1) (base2, accs2) else if len1 < len2 then -1 else 1
 
 
+  let equal = [%compare.equal: t]
+
   let sub_symbols (base, accesses) : t list =
     match List.rev accesses with
     | [] ->
@@ -167,13 +169,22 @@ module SymHeap = struct
 
   let make_const_extern = function
     | Null Null.{node; is_model} when is_model ->
+        (* Extern Allocsite.(InstrNode.dummy_of "NPEX_CONST_MODEL_NULL", 1) *)
         Extern Allocsite.(node, 1)
     | Null Null.{node} ->
         Extern Allocsite.(node, 0)
     | String str ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_STRING_" ^ str), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_STRING_" ^ str), 0)
     | _ as sh ->
         L.(die InternalError) "%a is not a constant heap" pp sh
+
+
+  let is_const_extern = function
+    | Extern Allocsite.(node, _)
+      when String.is_prefix (Node.get_proc_name node |> Procname.get_method) ~prefix:"NPEX_CONST" ->
+        true
+    | _ ->
+        false
 
 
   let make_null ?(pos = 0) ?(is_model = false) node = Null (Null.make ~pos ~is_model node)
@@ -271,11 +282,19 @@ module SymExp = struct
 
   let make_const_extern = function
     | IntLit i ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_INT_" ^ IntLit.to_string i), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_INT_" ^ IntLit.to_string i), 0)
     | FloatLit flit ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_FLOAT_" ^ F.asprintf "%f" flit), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_FLOAT_" ^ F.asprintf "%f" flit), 0)
     | _ as s ->
         L.(die InternalError) "%a is not constant" pp s
+
+
+  let is_const_extern = function
+    | Extern Allocsite.(node, _)
+      when String.is_prefix (Node.get_proc_name node |> Procname.get_method) ~prefix:"NPEX_CONST" ->
+        true
+    | _ ->
+        false
 
 
   let intTop = IntTop
@@ -530,12 +549,21 @@ module ValCore = struct
   let make_string str = Vheap (SymHeap.make_string str)
 
   let make_const_extern = function
-    | Vheap sheap ->
+    | Vheap sheap when SymHeap.is_constant sheap ->
         Vheap (SymHeap.make_const_extern sheap)
-    | Vint symexp ->
+    | Vint symexp when SymExp.is_constant symexp ->
         Vint (SymExp.make_const_extern symexp)
     | _ as v ->
-        L.(die InternalError) "%a is not a constant" pp v
+        v
+
+
+  let is_const_extern = function
+    | Vheap sheap ->
+        SymHeap.is_const_extern sheap
+    | Vint symexp ->
+        SymExp.is_const_extern symexp
+    | _ ->
+        false
 
 
   let intTop = Vint SymExp.intTop
