@@ -29,7 +29,7 @@ module MValue = struct
     | Const of Const.t
     | Param of int
     | Assign of model_exp * model_exp
-    | Call of Procname.t * model_exp list
+    | Call of string * model_exp list
     | Skip
     | Exn of string
     | NonNull
@@ -50,7 +50,7 @@ module MValue = struct
     | Assign (lhs, rhs) ->
         F.fprintf fmt "%a := %a" pp_model_exp lhs pp_model_exp rhs
     | Call (proc, args) ->
-        F.fprintf fmt "%s(%a)" (Procname.get_method proc) (Pp.seq ~sep:"," pp_model_exp) args
+        F.fprintf fmt "%s(%a)" proc (Pp.seq ~sep:"," pp_model_exp) args
     | Skip ->
         F.fprintf fmt "SKIP"
     | Exn exn_type ->
@@ -75,7 +75,7 @@ module MValue = struct
         Some (make_const ~prob (Const.Cint IntLit.zero))
     | "1" | "true" ->
         Some (make_const ~prob (Const.Cint IntLit.one))
-    | "0.0" ->
+    | "0.0F" ->
         Some (make_const ~prob (Const.Cfloat 0.0))
     | "null" ->
         Some (make_null ~prob)
@@ -87,6 +87,12 @@ module MValue = struct
         Some (make_const ~prob (Const.Cstr ""))
     | "\"null\"" ->
         Some (make_const ~prob (Const.Cstr "null"))
+    | "NPEXThrowable" ->
+        Some (make_exn ~prob "java.lang.Exception")
+    | "java.lang.Object.class" ->
+        Some (make_const ~prob (Const.Cstr "java.lang.Object"))
+    | "NPEXEmptyCollections" ->
+        Some ([Call ("newCollection", [])], prob)
     | _ ->
         (* TODO: *)
         L.progress "[WARNING]: model value %s is not resolved@." mval_str ;
