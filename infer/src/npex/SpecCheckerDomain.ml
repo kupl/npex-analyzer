@@ -211,26 +211,22 @@ let remove_locals astate ~pdesc =
   List.fold ((ret_var :: formal_pvars) @ locals) ~init:astate ~f:(fun acc pv -> remove_pvar acc ~line:0 ~pv)
 
 
-let remove_temps astate ~line vars =
-  List.fold vars ~init:astate ~f:(fun astate' var ->
-      match var with
-      | Var.LogicalVar id ->
-          remove_id astate' id
-      | Var.ProgramVar pv ->
-          remove_pvar astate' ~line ~pv)
-
-
 let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
-  let pc' = PC.replace_value astate.pc ~src ~dst in
-  let mem' =
-    match (src, dst) with
-    | Vheap a, Vheap b ->
-        Mem.fold
-          (fun l v -> Mem.add (Loc.replace_heap l ~src:a ~dst:b) (Val.replace_sub v ~src ~dst))
-          astate.mem Mem.empty
-    | _ ->
-        Mem.map (Val.replace_sub ~src ~dst) astate.mem
+  let pc_replace_value pc ~src ~dst = debug_time "pc_replace" ~f:(PC.replace_value ~src ~dst) ~arg:pc in
+  let mem_replace_value mem =
+    debug_time "mem_replace"
+      ~f:(fun mem ->
+        match (src, dst) with
+        | Vheap a, Vheap b ->
+            Mem.fold
+              (fun l v -> Mem.strong_update (Loc.replace_heap l ~src:a ~dst:b) (Val.replace_sub v ~src ~dst))
+              mem Mem.empty
+        | _ ->
+            Mem.map (Val.replace_sub ~src ~dst) mem)
+      ~arg:mem
   in
+  let pc' = pc_replace_value astate.pc ~src ~dst in
+  let mem' = mem_replace_value astate.mem in
   let reg' = Reg.map (Val.replace_sub ~src ~dst) astate.reg in
   let nullptrs' = Val.Set.map (Val.replace_sub ~src ~dst) astate.nullptrs in
   let uncaught_npes' = List.map ~f:(Val.replace_sub ~src ~dst) astate.uncaught_npes in
@@ -734,56 +730,81 @@ let unify lhs rhs : t * t =
   let extern_locs, concrete_locs =
     List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
   in
+  let add_pc_simple astate pathcond = debug_time "add_pc_simple" ~f:(add_pc_simple astate) ~arg:pathcond in
+  let replace_value astate ~src ~dst = debug_time "replace_value" ~f:(replace_value ~src ~dst) ~arg:astate in
   let replace_astate astate l v new_value introduced =
     match v with
     | Val.Vexn v' ->
         if Val.Set.mem v' introduced then
-          add_pc_simple (store_loc astate l (Val.to_exn new_value)) (PathCond.make_physical_equals Binop.Eq v' new_value)
+          add_pc_simple
+            (store_loc astate l (Val.to_exn new_value))
+            (PathCond.make_physical_equals Binop.Eq v' new_value)
         else replace_value astate ~src:v' ~dst:new_value
     | _ ->
         if Val.Set.mem v introduced then
-          add_pc_simple (store_loc astate l new_value) (PathCond.make_physical_equals Binop.Eq v new_value) 
+          add_pc_simple (store_loc astate l new_value) (PathCond.make_physical_equals Binop.Eq v new_value)
         else if Val.is_allocsite v then
           add_pc_simple
             (replace_value astate ~src:v ~dst:new_value)
             (PathCond.make_physical_equals Binop.Ne new_value Val.default_null)
         else replace_value astate ~src:v ~dst:new_value
   in
+  let replace_astate astate l v new_value introduced =
+    debug_time "replace_astate" ~f:(replace_astate astate l v new_value) ~arg:introduced
+  in
   let rec _unify worklist rest (lhs, rhs) =
+    let add v vals = debug_time "Set" ~f:(Val.Set.add v) ~arg:vals in
+    let mem v vals = debug_time "Set" ~f:(Val.Set.mem v) ~arg:vals in
+    let mem_mem l mem = debug_time "Mem" ~f:(Mem.mem l) ~arg:mem in
+    let equal v1 v2 = debug_time "Equal" ~f:(Val.equal v1) ~arg:v2 in
+    let find l mem = debug_time "find" ~f:(Mem.find l) ~arg:mem in
+    (* let add = Val.Set.add in
+       let mem = Val.Set.mem in
+       let mem_mem = Mem.mem in
+       let equal = Val.equal in
+       let find = Mem.find in *)
+    let f (vals, lhs, rhs, introduced) l =
+      if mem_mem l rhs.mem then
+        let v_lhs, v_rhs = (find l lhs.mem, find l rhs.mem) in
+        match (v_lhs, v_rhs) with
+        | _, _ when equal v_lhs v_rhs ->
+            (add v_lhs vals, lhs, rhs, add v_lhs introduced)
+        (* | _, _ when Val.is_const_extern v_lhs && Val.is_const_extern v_rhs ->
+           (vals, lhs, rhs, introduced) *)
+        | Val.Vint x, Val.Vint y when SymExp.is_top x || SymExp.is_top y ->
+            (vals, lhs, rhs, introduced)
+        | Val.Vheap x, Val.Vheap y when SymHeap.is_unknown x || SymHeap.is_unknown y ->
+            (vals, lhs, rhs, introduced)
+        | Val.Vint _, Val.Vint _ ->
+            let new_value = Val.make_extern Node.dummy Typ.int in
+            ( vals
+            , replace_astate lhs l v_lhs new_value introduced
+            , replace_astate rhs l v_rhs new_value introduced
+            , add new_value introduced )
+        | Val.Vheap _, Val.Vheap _ ->
+            let new_value = Val.make_extern Node.dummy Typ.void_star in
+            ( add new_value vals
+            , replace_astate lhs l v_lhs new_value introduced
+            , replace_astate rhs l v_rhs new_value introduced
+            , add new_value introduced )
+        | Vexn _, Vexn _ ->
+            let new_value = Val.make_extern Node.dummy Typ.void_star in
+            (* exception heap cannot points-to something *)
+            ( vals
+            , replace_astate lhs l v_lhs new_value introduced
+            , replace_astate rhs l v_rhs new_value introduced
+            , add new_value introduced )
+        | Vextern _, _ ->
+            (* uninterpretted function term is not in memory *)
+            (vals, lhs, rhs, introduced)
+        | _, _ ->
+            (vals, lhs, rhs, introduced)
+      else (vals, lhs, rhs, introduced)
+    in
     (* TODO: fix scalability issues *)
     let next_vals, next_lhs, next_rhs, _ =
-      List.fold worklist ~init:(Val.Set.empty, lhs, rhs, Val.Set.empty) ~f:(fun (vals, lhs, rhs, introduced) l ->
-          if Mem.mem l rhs.mem then
-            let v_lhs = Mem.find l lhs.mem in
-            let v_rhs = Mem.find l rhs.mem in
-            match (v_lhs, v_rhs) with
-            | _, _ when Val.equal v_lhs v_rhs ->
-                (Val.Set.add v_lhs vals, lhs, rhs, Val.Set.add v_lhs introduced)
-            | Val.Vint _, _ ->
-                let new_value = Val.make_extern Node.dummy Typ.int in
-                ( vals
-                , replace_astate lhs l v_lhs new_value introduced
-                , replace_astate rhs l v_rhs new_value introduced
-                , Val.Set.add new_value introduced )
-            | Val.Vheap _, Val.Vheap _ ->
-                let new_value = Val.make_extern Node.dummy Typ.void_star in
-                ( Val.Set.add new_value vals
-                , replace_astate lhs l v_lhs new_value introduced
-                , replace_astate rhs l v_rhs new_value introduced
-                , Val.Set.add new_value introduced )
-            | Vexn _, Vexn _ ->
-                let new_value = Val.make_extern Node.dummy Typ.void_star in
-                (* exception heap cannot points-to something *)
-                ( vals
-                , replace_astate lhs l v_lhs new_value introduced
-                , replace_astate rhs l v_rhs new_value introduced
-                , Val.Set.add new_value introduced )
-            | Vextern _, _ ->
-                (* uninterpretted function term is not in memory *)
-                (vals, lhs, rhs, introduced)
-            | _, _ ->
-                (vals, lhs, rhs, introduced)
-          else (vals, lhs, rhs, introduced))
+      List.fold worklist ~init:(Val.Set.empty, lhs, rhs, Val.Set.empty) ~f:(fun acc l ->
+          debug_time "loop_f" ~f:(f acc) ~arg:l)
       (* let v_lhs = Mem.find l lhs.mem in
          if is_node_value (Mem.find l lhs.mem) then
            let v_rhs = Mem.find l rhs.mem in
@@ -792,16 +813,21 @@ let unify lhs rhs : t * t =
            else (nexts, rhs)
          else (nexts, rhs)) *)
     in
+    let partition_tf lst ~f = debug_time "partition" ~f:(List.partition_tf ~f) ~arg:lst in
     let next_worklist, next_rest =
-      List.partition_tf rest
-        ~f:(Loc.is_rec ~f:(function Loc.SymHeap sh -> Val.Set.mem (Val.Vheap sh) next_vals | _ -> false))
+      partition_tf rest ~f:(Loc.is_rec ~f:(function Loc.SymHeap sh -> mem (Val.Vheap sh) next_vals | _ -> false))
     in
     if List.is_empty next_worklist then (next_lhs, next_rhs)
     else _unify next_worklist next_rest (next_lhs, next_rhs)
   in
+  let _unify concrete_locs extern_locs (lhs, rhs) =
+    debug_time "_unify" ~f:(_unify concrete_locs extern_locs) ~arg:(lhs, rhs)
+  in
   (* TODO: replace variable first *)
   _unify concrete_locs extern_locs (lhs, rhs)
 
+
+let unify lhs rhs = debug_time "Unify" ~f:(unify lhs) ~arg:rhs
 
 let get_null_locs astate =
   Mem.fold
@@ -877,6 +903,8 @@ let joinable lhs rhs =
   && Option.equal NullPoint.equal lhs.fault rhs.fault
   && has_no_significant_diff lhs rhs
 
+
+let joinable lhs rhs = debug_time "Joinable" ~f:(joinable lhs) ~arg:rhs
 
 let weak_join lhs rhs : t =
   (* Assumption: lhs and rhs are joinable *)
@@ -961,3 +989,6 @@ let merge disjuncts =
           _merge (joinable' @ unjoinable) acc
   in
   FeatureMap.fold (fun _ disjuncts -> _merge disjuncts) feature_partitioned []
+
+
+let merge disjuncts = debug_time "Merge" ~f:merge ~arg:disjuncts

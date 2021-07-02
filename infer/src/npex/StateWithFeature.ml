@@ -27,7 +27,8 @@ module S = struct
         (fun l _ acc -> match l with Loc.TempVar _ | Loc.IllTempVar _ -> Loc.Set.add l acc | _ -> acc)
         mem Loc.Set.empty
     in
-    Domain.{astate with reg= Reg.empty; mem= Loc.Set.fold Mem.remove local_locs mem}
+    Domain.
+      {astate with reg= Reg.empty; mem= Loc.Set.fold Mem.remove local_locs mem; temps_to_remove= Domain.Vars.empty}
 
 
   let from_state proc_desc astate =
