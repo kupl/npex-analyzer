@@ -168,13 +168,14 @@ class Bug:
         self.time_to_capture_patches += time.time() - start_time
 
     def verify(self, patch_dir):
+        patch_id = os.path.basename(patch_dir)
         print(f"[Progress]: Verifying patch in directory {patch_dir}")
         print(f" - NPE-lists: {error_reports}")
 
         apply_patch(self.project_root_dir, patch_dir)
         self.capture_incremental(patch_dir)
 
-        launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --scheduler restart"
+        launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --scheduler restart --patch-id {patch_id}"
         print(f" - npex-verifier command: {launch_spec_veri_cmd}")
         return (subprocess.run(launch_spec_veri_cmd,
                                shell=True,
