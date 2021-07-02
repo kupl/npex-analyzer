@@ -204,6 +204,10 @@ module S = struct
           Cache.add_id pdesc id (Cache.find pdesc e)
       | Sil.Store {e1= Lvar pv; e2} when Pvar.is_frontend_tmp pv ->
           Cache.add_pv pdesc pv (Cache.find pdesc e2)
+      | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: _, _, _)
+        when Procname.equal BuiltinDecl.__cast mthd ->
+          (* ret = __cast(this, _) => ap(ret) = ap(this) *)
+          Cache.add_id pdesc ret (Cache.find pdesc (Var this))
       | Sil.Call ((ret, _), Const (Cfun mthd), (Var this, _) :: args, _, CallFlags.{cf_virtual= true}) ->
           let arg_exprs = List.map args ~f:(fun (arg, _) -> Cache.find pdesc arg) in
           let ae = append_access (Cache.find pdesc (Var this)) (MethodCallAccess (mthd, arg_exprs)) in
