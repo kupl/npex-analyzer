@@ -729,7 +729,23 @@ let remove_unreachables ({mem; pc} as astate) =
     | _ ->
         true
   in
-  let mem' = Mem.filter (fun l v -> is_reachable_loc l && not (is_unreachable_value v)) mem in
+  let mem' =
+    Mem.filter
+      (fun l v ->
+        if (not (is_reachable_loc l)) || is_unreachable_value v then false
+        else
+          match (Loc.to_symbol_opt l, Val.get_symbol_opt v) with
+          | Some s, Some s' when SymDom.Symbol.equal s s' ->
+              (* L.progress "is equal %a, %a? %b@." Symbol.pp s Symbol.pp s' (Symbol.equal s s') ; *)
+              false
+          | Some _, None ->
+              true
+          | None, _ when Val.is_top v ->
+              false
+          | _ ->
+              true)
+      mem
+  in
   let pc' =
     PC.filter_by_value ~f:(fun v -> List.exists (Val.get_subvalues v) ~f:(not <<< is_unreachable_value)) pc
   in
