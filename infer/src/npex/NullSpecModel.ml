@@ -48,6 +48,10 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
           let null = Domain.Val.make_null ~pos:0 ~is_model:true instr_node in
           let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
           Domain.add_pc (Domain.store_reg astate ret_id value) non_null_cond
+      | [MValue.Call ("newCollection", [])], _ ->
+          let value = Domain.Val.make_allocsite instr_node in
+          let astate' = Domain.store_reg astate ret_id value in
+          SpecCheckerModels.Collection.setIsEmpty astate' node instr (Domain.Val.to_loc value)
       | [], _ ->
           (* No apply *)
           []

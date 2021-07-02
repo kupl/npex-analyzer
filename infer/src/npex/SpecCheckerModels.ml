@@ -162,6 +162,13 @@ module Collection = struct
 
   let is_model_class classname = implements_interfaces classes classname
 
+  let setIsEmpty astate node instr loc =
+    let is_empty_field_loc = Domain.Loc.append_field loc ~fn:mIsEmptyField in
+    let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
+    let astate_stored = Domain.store_loc astate is_empty_field_loc is_empty_value in
+    Domain.add_pc astate_stored (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.one)
+
+
   let init : model =
     let is_model callee instr =
       match (callee, instr) with
@@ -173,10 +180,7 @@ module Collection = struct
     let exec astate _ node instr _ _ arg_typs =
       let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
       let this_loc = Domain.eval_lv astate node instr this_exp in
-      let is_empty_field_loc = Domain.Loc.append_field this_loc ~fn:mIsEmptyField in
-      let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
-      let astate_stored = Domain.store_loc astate is_empty_field_loc is_empty_value in
-      Domain.add_pc astate_stored (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.one)
+      setIsEmpty astate node instr this_loc
     in
     (is_model, exec)
 
