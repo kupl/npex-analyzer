@@ -55,7 +55,8 @@ module BuiltIn = struct
       let instr_node = Node.of_pnode node instr in
       (* TODO: add type checking by using sizeof_exp and get_class_name_opt *)
       match arg_typs with
-      | [(arg_exp, _); (Exp.Sizeof {typ= {desc= Typ.Tstruct name}}, _)] when implements_interfaces exception_classes name ->
+      | [(arg_exp, _); (Exp.Sizeof {typ= {desc= Typ.Tstruct name}}, _)]
+        when implements_interfaces exception_classes name ->
           (* Exception catch *)
           let arg_value = Domain.eval astate node instr arg_exp in
           if Val.equal arg_value (Val.npe |> Val.unwrap_exn) then
@@ -281,8 +282,8 @@ module Collection = struct
   let next : model =
     let is_model callee instr =
       match (callee, instr) with
-      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when String.equal (Procname.get_method callee) "next"
-        ->
+      | Procname.Java mthd, Sil.Call (_, _, [(_, Typ.{desc= Tptr _})], _, _)
+        when String.equal (Procname.get_method callee) "next" ->
           is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
@@ -391,6 +392,8 @@ end
 module String = struct
   let classes = ["java.lang.String"]
 
+  let builder_classes = ["java.lang.StringBuilder"]
+
   let valueField = Fieldname.make (Typ.Name.Java.from_string "String") "value"
 
   let read_value astate node instr str_exp =
@@ -422,6 +425,25 @@ module String = struct
       let this_loc = Domain.eval_lv astate node instr this_exp in
       let value_field_loc = Domain.Loc.append_field this_loc ~fn:valueField in
       let astate, str_value = read_value astate node instr str_exp in
+      [Domain.store_loc astate value_field_loc str_value]
+    in
+    (is_model, exec)
+
+
+  let init_default : model =
+    let is_model callee instr =
+      (* new StringBuilder(), new String() -> new object with empty string *)
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _) when Procname.Java.is_constructor mthd ->
+          implements (classes @ builder_classes) (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let this_loc = Domain.eval_lv astate node instr this_exp in
+      let value_field_loc = Domain.Loc.append_field this_loc ~fn:valueField in
+      let astate, str_value = read_value astate node instr (Exp.Const (Cstr "")) in
       [Domain.store_loc astate value_field_loc str_value]
     in
     (is_model, exec)
@@ -504,6 +526,35 @@ module String = struct
           [Domain.store_reg astate ret_id length_value]
       | _ ->
           Domain.bind_extern_value astate (Node.of_pnode node instr) (ret_id, ret_typ) callee [str_value]
+    in
+    (is_model, exec)
+
+
+  let append : model =
+    (* StringBuilder.append(String) *)
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _); (_, _)], _, _)
+        when String.equal (Procname.get_method callee) "append" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: (str_exp, _) :: _) = arg_typs in
+      let this_loc_field = Domain.Loc.append_field (Domain.eval_lv astate node instr this_exp) ~fn:valueField in
+      let this_value = Domain.eval astate node instr this_exp in
+      let astate, str_to_append = read_value astate node instr str_exp in
+      let astate, this_str = read_value astate node instr this_exp in
+      match (this_str, str_to_append) with
+      | Val.Vheap (String str1), Val.Vheap (String str2) ->
+          let str = String.concat [str1; str2] in
+          let astate' = Domain.store_loc astate this_loc_field (Val.Vheap (String str)) in
+          [Domain.store_reg astate' ret_id this_value]
+      | _ ->
+          let str_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.void_star in
+          let astate' = Domain.store_loc astate this_loc_field str_value in
+          [Domain.store_reg astate' ret_id this_value]
     in
     (is_model, exec)
 
