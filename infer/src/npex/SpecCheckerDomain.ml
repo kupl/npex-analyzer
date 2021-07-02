@@ -580,6 +580,9 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   else if not (NullModel.joinable astate.applied_models callee_summary.applied_models) then
     (* e.g., p = null; foo(null); foo(null); but apply unjoinable model in foo *)
     None
+  else if List.exists uncaught_npes' ~f:(fun v -> List.exists (inequal_values astate' v) ~f:Val.is_null) then
+    (* e.g., v is one of uncaughted NPEs, but v != null in caller state *)
+    None
   else Some astate'
 
 
