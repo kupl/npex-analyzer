@@ -297,9 +297,10 @@ let resolve_unknown_loc astate typ loc : t =
   if is_unknown_loc astate loc then
     match Val.symbol_from_loc_opt typ loc with
     | Some symval ->
-        let mem' = Mem.add loc symval astate.mem in
+        let mem' = Mem.strong_update loc symval astate.mem in
         {astate with mem= mem'}
     | None ->
+        (* too complex symbol *)
         store_loc astate loc (Val.make_extern Node.dummy typ)
   else astate
 
@@ -354,7 +355,9 @@ let init proc_desc : t =
 let append_ctx astate offset =
   let reg = Reg.map (Val.append_ctx ~offset) astate.reg in
   let mem =
-    Mem.fold (fun l v -> Mem.add (Loc.append_ctx ~offset l) (Val.append_ctx ~offset v)) astate.mem Mem.empty
+    Mem.fold
+      (fun l v -> Mem.strong_update (Loc.append_ctx ~offset l) (Val.append_ctx ~offset v))
+      astate.mem Mem.empty
   in
   let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
   {astate with reg; mem; pc}
@@ -455,7 +458,8 @@ module SymResolvedMap = struct
         | Some symval ->
             add s symval acc
         | None ->
-            add s (Val.top_of_typ typ) acc
+            (* Unknown may introduced here *)
+            add s (Val.make_extern Node.dummy typ) acc
       else add s (Mem.find resolved_loc astate.mem) acc
     in
     List.fold symvals ~init ~f:(fun acc v ->
@@ -488,7 +492,7 @@ module SymResolvedMap = struct
   let replace_mem sym_resolved_map mem_to_resolve mem_to_update =
     (* replace memory l |-> v by resolved_map (s |-> v) *)
     Mem.fold
-      (fun l v -> Mem.add (resolve_loc sym_resolved_map l) (resolve_val sym_resolved_map v))
+      (fun l v -> Mem.strong_update (resolve_loc sym_resolved_map l) (resolve_val sym_resolved_map v))
       mem_to_resolve mem_to_update
 
 
@@ -620,8 +624,13 @@ let rec eval ?(pos = 0) astate node instr exp =
       let v1 = eval astate node instr e1 ~pos in
       let v2 = eval astate node instr e2 ~pos in
       eval_binop binop v1 v2
-  | Exp.Exn e ->
-      eval astate node instr e |> Val.to_exn
+  | Exp.Exn e -> (
+    try eval astate node instr e |> Val.to_exn with
+    | _ when List.is_empty astate.uncaught_npes ->
+        (* HEURISTICS: abstract all exn values to exn*)
+        Val.exn
+    | _ ->
+        Val.npe )
   | Exp.Const (Cstr str) ->
       Val.make_string str
   | Exp.Const (Cint intlit) when IntLit.isnull intlit ->
@@ -630,8 +639,8 @@ let rec eval ?(pos = 0) astate node instr exp =
       Val.of_intlit intlit
   | Exp.Const (Cfloat flit) ->
       Val.of_float flit
-  | Exp.Const (Cclass _) ->
-      Val.unknown
+  | Exp.Const (Cclass name) ->
+      Val.make_string (Ident.name_to_string name)
   | Exp.Cast (_, e) ->
       eval astate node instr e
   | Exp.Lvar _ | Exp.Lfield _ | Exp.Lindex _ ->
@@ -650,7 +659,9 @@ let rec eval_lv astate node instr exp =
         L.progress "[WARNING]: lvalue expression %a is evaluated to top" Exp.pp exp ;
         Loc.unknown
     | _ as v ->
-        L.(die InternalError) "lvalue expression %a cannot be evaluated to %a" Exp.pp exp Val.pp v )
+        L.progress "[WARNING]: lvalue expression %a is evaluated to %a" Exp.pp exp Val.pp v ;
+        Loc.unknown
+        (* L.(die InternalError) "lvalue expression %a cannot be evaluated to %a" Exp.pp exp Val.pp v ) *) )
   | Exp.Var id ->
       L.(die InternalError) "%a is not loaded to reg" Ident.pp id
   | Exp.Const (Cstr str) ->
@@ -664,9 +675,9 @@ let rec eval_lv astate node instr exp =
       Loc.of_pvar pv ~line:(get_line node)
   | Exp.Lfield (e, fn, _) ->
       eval_lv astate node instr e |> Loc.append_field ~fn
-  | Exp.Const (Cclass _) ->
+  | Exp.Const (Cclass name) ->
       (* value of the class variable is unknown, so init by global *)
-      Loc.unknown
+      Loc.make_string (Ident.name_to_string name)
       (* let cls_name = Ident.name_to_string cls in
          let cls_var = Pvar.mk_global (Mangled.from_string cls_name) in
          Loc.of_pvar cls_var *)
@@ -726,12 +737,6 @@ let remove_unreachables ({mem; pc} as astate) =
 
 (** For Join *)
 let unify lhs rhs : t * t =
-  (* let is_node_value = function
-       | Val.Vheap (SymHeap.Allocsite _) | Val.Vheap (SymHeap.Extern _) | Val.Vint (SymExp.Extern _) ->
-           true
-       | _ ->
-           false
-     in *)
   let all_locs =
     (* TODO: unify non-memory symbols? or guarantee all symbols are in memory *)
     Mem.fold (fun l _ acc -> l :: acc) lhs.mem []
