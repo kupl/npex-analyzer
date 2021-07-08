@@ -53,6 +53,8 @@ val zero : t
 
 val one : t
 
+val has_duplicates : t -> bool
+
 module Set : PrettyPrintable.PPSet with type elt = t
 
 module Map : PrettyPrintable.PPMap with type key = t

@@ -65,12 +65,8 @@ module Spec = struct
   let joinable lhs rhs = check_sat lhs rhs
 
   let from_state proc_desc astate =
-    let pc, output = StateFormula.from_state proc_desc astate in
+    let pc, output, uncaught_npes = StateFormula.from_state proc_desc astate in
     let symbols = Domain.collect_summary_symbols astate in
-    let uncaught_npes =
-      let null_values = Domain.(astate.uncaught_npes) in
-      Val.Set.fold (APSet.union <<< StateFormula.val_to_ap astate) (Val.Set.of_list null_values) APSet.empty
-    in
     let result = {pc; output; symbols; uncaught_npes} in
     L.progress "@.========= State to Spec ===========@." ;
     L.progress "%a@.------------------------------Specification-------------------@." Domain.pp astate ;

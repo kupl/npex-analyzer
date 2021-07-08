@@ -24,6 +24,7 @@ module S = struct
   type t = base * access list [@@deriving compare]
 
   and access = FieldAccess of Fieldname.t | MethodCallAccess of method_call | ArrayAccess of t
+  [@@deriving compare]
 
   and method_call = Procname.t * t list
 
@@ -299,3 +300,5 @@ and is_concrete_base = function Primitive _ -> true | _ -> false
 let is_different_type _ _ = false
 
 let is_recursive _ = false
+
+let has_duplicates (_, accesses) = List.contains_dup accesses ~compare:compare_access
