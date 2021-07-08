@@ -155,10 +155,14 @@ module InferedStates = struct
 
 
   let select_most_probable_spec model_cands =
-    let has_uncaught_exceptions model_cand = List.exists model_cand ~f:Domain.has_uncaught_model_npes in
-    let model_cands =
-      List.filter model_cands ~f:(not <<< has_uncaught_exceptions) |> List.filter ~f:(not <<< List.is_empty)
+    let is_valid_model disjuncts =
+      let no_uncaught_model_npe = not (List.exists disjuncts ~f:Domain.has_uncaught_model_npes) in
+      let exists_no_uncaught_npe = List.exists disjuncts ~f:(not <<< Domain.has_uncaught_npes) in
+      (* if (not no_uncaught_model_npe) || not exists_no_uncaught_npe then
+         L.progress "%a has invalid state@." NullModel.pp (List.hd_exn disjuncts).Domain.applied_models ; *)
+      no_uncaught_model_npe && exists_no_uncaught_npe
     in
+    let model_cands = List.filter model_cands ~f:is_valid_model in
     let max_opt =
       List.max_elt model_cands ~compare:(fun lhs rhs ->
           Int.of_float (score lhs *. 100.) - Int.of_float (score rhs *. 100.))
@@ -203,6 +207,13 @@ module InferedStates = struct
     List.iter max_spec ~f:(fun astate -> F.fprintf fmt "  @[%a@]@," Domain.pp astate) ;
     F.fprintf fmt "@]"
 end
+
+let has_feasible_model disjuncts =
+  try
+    ignore (InferedStates.normal_and_max_from_disjuncts disjuncts) ;
+    true
+  with _ -> false
+
 
 let pp_states fmt x = InferedStates.pp fmt (InferedStates.from_disjuncts x)
 

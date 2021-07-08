@@ -89,7 +89,7 @@ let is_unknown_id {reg} id = Val.is_bottom (Reg.find id reg)
 
 let is_exceptional {is_exceptional} = is_exceptional
 
-let has_uncaught_npes {uncaught_npes} = List.is_empty uncaught_npes
+let has_uncaught_npes {uncaught_npes} = not (List.is_empty uncaught_npes)
 
 let has_uncaught_model_npes {uncaught_npes} =
   (* This indicate that NPEs are not fixed in inferenced or patched state *)

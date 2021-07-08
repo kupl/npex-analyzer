@@ -8,3 +8,5 @@ val launch :
      get_summary:(Procname.t -> SpecCheckerSummary.t)
   -> get_original_summary:(Procname.t -> SpecCheckerSummary.t)
   -> unit
+
+val has_feasible_model : SpecCheckerDomain.t list -> bool
