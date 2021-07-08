@@ -46,7 +46,10 @@ module DisjReady = struct
     in
     if Domain.is_exceptional astate then [astate]
     else if Config.npex_launch_spec_inference || Config.npex_launch_localize then
-      let is_npe_instr nullpoint = Sil.equal_instr instr nullpoint.NullPoint.instr in
+      let is_npe_instr nullpoint =
+        Sil.equal_instr instr nullpoint.NullPoint.instr
+        && InterNode.equal (InterNode.of_pnode node) nullpoint.NullPoint.node
+      in
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
       | Some (NullPoint.{null_exp; instr} as npe) when not (has_different_npe astate null_exp) ->
           let nullvalue =
