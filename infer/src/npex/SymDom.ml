@@ -22,22 +22,34 @@ end
 module Allocsite = struct
   module Counter = Counter (Node)
 
-  type t = InstrNode.t * int [@@deriving compare]
+  (* to distinguish callee symbol from caller, introduce call counter *)
+  type t = InstrNode.t * int * int [@@deriving compare]
 
-  let pp fmt (instr_node, cnt) =
+  let pp fmt (instr_node, call_cnt, cnt) =
     let loc = InstrNode.get_loc instr_node in
     if Location.equal Location.dummy loc then
-      if Int.equal cnt 0 then F.fprintf fmt "%s" (InstrNode.get_proc_name instr_node |> Procname.get_method)
-      else F.fprintf fmt "%s_%d" (InstrNode.get_proc_name instr_node |> Procname.get_method) cnt
-    else if Int.equal cnt 0 then F.fprintf fmt "%a" Location.pp_line loc
-    else F.fprintf fmt "%a_%d" Location.pp_line loc cnt
+      match InstrNode.get_proc_name instr_node with
+      | Procname.Java mthd when Procname.Java.is_constructor mthd ->
+          F.fprintf fmt "%s_%d_%d" (Procname.Java.get_simple_class_name mthd) call_cnt cnt
+      | proc_name ->
+          F.fprintf fmt "%s_%d_%d" (Procname.get_method proc_name) call_cnt cnt
+    else F.fprintf fmt "%a_%d_%d" Location.pp_line loc call_cnt cnt
 
 
-  let increment (instr_node, cnt) offset = (instr_node, cnt + offset)
+  let is_const_extern (node, _, _) =
+    String.is_prefix (Node.get_proc_name node |> Procname.get_method) ~prefix:"NPEX_CONST"
 
-  let make node = (node, Counter.get node)
 
-  let from_constant node = (node, 0)
+  let increment x offset =
+    if is_const_extern x then x
+    else
+      let instr_node, call_cnt, cnt = x in
+      (instr_node, call_cnt + offset, cnt)
+
+
+  let make node = (node, 0, Counter.get node)
+
+  let from_constant node = (node, 0, 0)
 end
 
 module Null = struct
@@ -170,22 +182,16 @@ module SymHeap = struct
   let make_const_extern = function
     | Null Null.{node; is_model} when is_model ->
         (* Extern Allocsite.(InstrNode.dummy_of "NPEX_CONST_MODEL_NULL", 1) *)
-        Extern Allocsite.(node, 1)
+        Extern Allocsite.(node, 0, 1)
     | Null Null.{node} ->
-        Extern Allocsite.(node, 0)
+        Extern Allocsite.(node, 0, 0)
     | String str ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_STRING_" ^ str), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_STRING_" ^ str), 0, 0)
     | _ as sh ->
         L.(die InternalError) "%a is not a constant heap" pp sh
 
 
-  let is_const_extern = function
-    | Extern Allocsite.(node, _)
-      when String.is_prefix (Node.get_proc_name node |> Procname.get_method) ~prefix:"NPEX_CONST" ->
-        true
-    | _ ->
-        false
-
+  let is_const_extern = function Extern allocsite -> Allocsite.is_const_extern allocsite | _ -> false
 
   let make_null ?(pos = 0) ?(is_model = false) node = Null (Null.make ~pos ~is_model node)
 
@@ -196,7 +202,7 @@ module SymHeap = struct
   let unknown = Unknown
 
   let get_class_name_opt = function
-    | Allocsite (node, _) -> (
+    | Allocsite (node, _, _) -> (
       match Node.get_instr node with
       | Sil.Call (_, Exp.Const (Const.Cfun procname), [(Exp.Sizeof {typ}, _)], _, _) when Models.is_new procname
         -> (
@@ -282,20 +288,14 @@ module SymExp = struct
 
   let make_const_extern = function
     | IntLit i ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_INT_" ^ IntLit.to_string i), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_INT_" ^ IntLit.to_string i), 0, 0)
     | FloatLit flit ->
-        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_FLOAT_" ^ F.asprintf "%f" flit), 0)
+        Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_FLOAT_" ^ F.asprintf "%f" flit), 0, 0)
     | _ as s ->
         L.(die InternalError) "%a is not constant" pp s
 
 
-  let is_const_extern = function
-    | Extern Allocsite.(node, _)
-      when String.is_prefix (Node.get_proc_name node |> Procname.get_method) ~prefix:"NPEX_CONST" ->
-        true
-    | _ ->
-        false
-
+  let is_const_extern = function Extern allocsite -> Allocsite.is_const_extern allocsite | _ -> false
 
   let intTop = IntTop
 
@@ -908,9 +908,11 @@ module Mem = struct
             Some (Val.weak_join v_lhs v_rhs)
         | Some v_lhs, None ->
             (* Since values in memory are symbol except allocsite, it would be ok to just add *)
+            (* FIXME: adding l.f -> v means l is nonnull *)
             Some v_lhs
         | None, Some v_rhs ->
             (* Since values in memory are symbol except allocsite, it would be ok to just add *)
+            (* FIXME: adding l.f -> v means l is nonnull *)
             Some v_rhs
         | None, None ->
             None)

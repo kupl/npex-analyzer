@@ -19,7 +19,8 @@ type t =
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t
   ; uncaught_npes: Val.t list
-  ; temps_to_remove: Vars.t }
+  ; temps_to_remove: Vars.t
+  ; current_proc: Procname.t }
 
 val pp : Format.formatter -> t -> unit
 

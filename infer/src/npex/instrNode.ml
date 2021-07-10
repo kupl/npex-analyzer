@@ -31,6 +31,8 @@ module InstrNode = struct
 
   let dummy_of str = {dummy with inode= InterNode.dummy (Procname.from_string_c_fun str)}
 
+  let dummy_of_proc proc = {inode= InterNode.dummy proc; instr= Sil.skip_instr}
+
   let inode_of {inode} = inode
 
   let get_proc_name {inode} = InterNode.get_proc_name inode

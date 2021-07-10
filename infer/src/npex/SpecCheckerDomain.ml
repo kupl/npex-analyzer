@@ -27,7 +27,8 @@ type t =
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
   ; uncaught_npes: Val.t list
-  ; temps_to_remove: Vars.t }
+  ; temps_to_remove: Vars.t
+  ; current_proc: Procname.t }
 
 let pp fmt
     {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault; uncaught_npes}
@@ -77,7 +78,8 @@ let bottom =
   ; fault= None
   ; executed_procs= Procname.Set.empty
   ; uncaught_npes= []
-  ; temps_to_remove= Vars.empty }
+  ; temps_to_remove= Vars.empty
+  ; current_proc= Procname.empty_block }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
@@ -301,7 +303,7 @@ let resolve_unknown_loc astate typ loc : t =
         {astate with mem= mem'}
     | None ->
         (* too complex symbol *)
-        store_loc astate loc (Val.make_extern Node.dummy typ)
+        store_loc astate loc (Val.make_extern (Node.dummy_of_proc astate.current_proc) typ)
   else astate
 
 
@@ -337,11 +339,12 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
 
 let init proc_desc : t =
   let formals = Procdesc.get_pvar_formals proc_desc in
+  let proc_name = Procdesc.get_proc_name proc_desc in
   let init_with_formals =
     List.fold formals ~init:bottom ~f:(fun astate (pv, typ) -> resolve_unknown_loc astate typ (Loc.of_pvar pv))
   in
   let init_with_executed_procs =
-    {init_with_formals with executed_procs= Procname.Set.singleton (Procdesc.get_proc_name proc_desc)}
+    {init_with_formals with executed_procs= Procname.Set.singleton proc_name; current_proc= proc_name}
   in
   match List.find formals ~f:(fun (pv, _) -> Pvar.is_this pv) with
   | Some (this_pvar, _) ->
@@ -360,7 +363,9 @@ let append_ctx astate offset =
       astate.mem Mem.empty
   in
   let pc = PC.replace_by_map ~f:(Val.append_ctx ~offset) astate.pc in
-  {astate with reg; mem; pc}
+  let nullptrs = Val.Set.map (Val.append_ctx ~offset) astate.nullptrs in
+  let uncaught_npes = List.map ~f:(Val.append_ctx ~offset) astate.uncaught_npes in
+  {astate with reg; mem; pc; nullptrs; uncaught_npes}
 
 
 let add_model astate pos mval =
@@ -435,6 +440,8 @@ module SymResolvedMap = struct
         raise (Unexpected (F.asprintf "%a is not resolved" SymDom.Symbol.pp s))
     | SymExp.Symbol s ->
         find s sym_resolved_map
+    | SymExp.Extern _ as symexp ->
+        Val.Vint symexp
     | _ as x ->
         (* TODO: s1 + s2 -> resolve(s1) + resolve(s2) *)
         Val.Vint x
@@ -459,7 +466,7 @@ module SymResolvedMap = struct
             add s symval acc
         | None ->
             (* Unknown may introduced here *)
-            add s (Val.make_extern Node.dummy typ) acc
+            add s (Val.make_extern (Node.dummy_of_proc astate.current_proc) typ) acc
       else add s (Mem.find resolved_loc astate.mem) acc
     in
     List.fold symvals ~init ~f:(fun acc v ->
@@ -569,7 +576,8 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; probability= probability'
     ; executed_procs= executed_procs'
     ; uncaught_npes= uncaught_npes'
-    ; temps_to_remove= astate.temps_to_remove }
+    ; temps_to_remove= astate.temps_to_remove
+    ; current_proc= astate.current_proc }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated =====@." ;
@@ -785,6 +793,7 @@ let unify lhs rhs : t * t =
   let replace_astate astate l v new_value introduced =
     debug_time "replace_astate" ~f:(replace_astate astate l v new_value) ~arg:introduced
   in
+  let make_extern = Val.make_extern (Node.dummy_of_proc lhs.current_proc) in
   let rec _unify worklist rest (lhs, rhs) =
     let add v vals = debug_time "Set" ~f:(Val.Set.add v) ~arg:vals in
     let mem v vals = debug_time "Set" ~f:(Val.Set.mem v) ~arg:vals in
@@ -809,19 +818,19 @@ let unify lhs rhs : t * t =
         | Val.Vheap x, Val.Vheap y when SymHeap.is_unknown x || SymHeap.is_unknown y ->
             (vals, lhs, rhs, introduced)
         | Val.Vint _, Val.Vint _ ->
-            let new_value = Val.make_extern Node.dummy Typ.int in
+            let new_value = make_extern Typ.int in
             ( vals
             , replace_astate lhs l v_lhs new_value introduced
             , replace_astate rhs l v_rhs new_value introduced
             , add new_value introduced )
         | Val.Vheap _, Val.Vheap _ ->
-            let new_value = Val.make_extern Node.dummy Typ.void_star in
+            let new_value = make_extern Typ.void_star in
             ( add new_value vals
             , replace_astate lhs l v_lhs new_value introduced
             , replace_astate rhs l v_rhs new_value introduced
             , add new_value introduced )
         | Vexn _, Vexn _ ->
-            let new_value = Val.make_extern Node.dummy Typ.void_star in
+            let new_value = make_extern Typ.void_star in
             (* exception heap cannot points-to something *)
             ( vals
             , replace_astate lhs l v_lhs new_value introduced
@@ -978,7 +987,8 @@ let weak_join lhs rhs : t =
       ; nullptrs
       ; executed_procs
       ; uncaught_npes
-      ; temps_to_remove }
+      ; temps_to_remove
+      ; current_proc= lhs.current_proc }
     in
     L.d_printfln " - Joined - @.%a@." pp joined ;
     joined )
