@@ -43,8 +43,15 @@ let append_ctx callee astate =
 
 let resolve_summary astate ~actual_values ~callee_pdesc callee_summaries =
   let formals = Procdesc.get_pvar_formals callee_pdesc in
-  List.map ~f:StateWithFeature.get_astate callee_summaries
-  |> join_list ~joinable:Domain.joinable ~join:Domain.weak_join ~pp:Domain.pp
-  |> List.map ~f:(append_ctx (Procdesc.get_proc_name callee_pdesc))
-  |> List.filter_map ~f:(fun callee_summary ->
-         Domain.resolve_summary astate ~actual_values ~formals callee_summary)
+  let callee_unreachable_removed =
+    List.map ~f:StateWithFeature.get_astate callee_summaries
+    (* FIXME: bottom state implys identity function, it would be better not to remove it *)
+    |> Domain.merge
+    (* |> join_list ~joinable:Domain.joinable ~join:Domain.weak_join ~pp:Domain.pp *)
+    |> List.map ~f:(append_ctx (Procdesc.get_proc_name callee_pdesc))
+  in
+  L.d_printfln "Join callee summaries before resolution: got %d from %d"
+    (List.length callee_unreachable_removed)
+    (List.length callee_summaries) ;
+  List.filter_map callee_unreachable_removed ~f:(fun callee_summary ->
+      Domain.resolve_summary astate ~actual_values ~formals callee_summary)

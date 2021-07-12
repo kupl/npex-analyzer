@@ -580,17 +580,25 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; current_proc= astate.current_proc }
   in
   if PC.is_invalid pc' then (
-    L.d_printfln "@.===== Summary is invalidated =====@." ;
+    L.d_printfln "@.===== Summary is invalidated by pathcond =====@." ;
     L.d_printfln " - resolved state: %a@." pp astate' ;
     L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
       sym_resolved_map ;
     None )
-  else if not (NullModel.joinable astate.applied_models callee_summary.applied_models) then
+  else if not (NullModel.joinable astate.applied_models callee_summary.applied_models) then (
     (* e.g., p = null; foo(null); foo(null); but apply unjoinable model in foo *)
-    None
-  else if List.exists uncaught_npes' ~f:(fun v -> List.exists (inequal_values astate' v) ~f:Val.is_null) then
+    L.d_printfln "@.===== Summary is invalidated by applied models =====@." ;
+    L.d_printfln " - resolved state: %a@." pp astate' ;
+    L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
+      sym_resolved_map ;
+    None (* None *) )
+  else if List.exists uncaught_npes' ~f:(fun v -> List.exists (inequal_values astate' v) ~f:Val.is_null) then (
     (* e.g., v is one of uncaughted NPEs, but v != null in caller state *)
-    None
+    L.d_printfln "@.===== Summary is invalidated by uncaughted npes =====@." ;
+    L.d_printfln " - resolved state: %a@." pp astate' ;
+    L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
+      sym_resolved_map ;
+    None (* None *) )
   else Some astate'
 
 
@@ -951,9 +959,11 @@ let joinable lhs rhs = debug_time "Joinable" ~f:(joinable lhs) ~arg:rhs
 
 let weak_join lhs rhs : t =
   (* Assumption: lhs and rhs are joinable *)
-  if phys_equal lhs rhs then lhs
-  else if is_bottom lhs then rhs
-  else if is_bottom rhs then lhs
+  if phys_equal lhs rhs then (
+    L.d_printfln "Two state are pyhsical equal" ;
+    lhs )
+  else if is_bottom lhs then (L.d_printfln "Right state is bottom" ; rhs)
+  else if is_bottom rhs then (L.d_printfln "Left state is bottom" ; lhs)
   else (
     L.d_printfln " - Before Join - " ;
     L.d_printfln "Left@.%a@.Right@.%a@." pp lhs pp rhs ;
