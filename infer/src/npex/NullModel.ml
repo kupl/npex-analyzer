@@ -81,8 +81,9 @@ module MValue = struct
         Some (make_null ~prob)
     | "NPEX_SKIP_VALUE" | "\"NPEX_SKIP_VALUE\"" ->
         Some (make_skip ~prob)
-    | "NPEXNonLiteral" ->
-        Some (make_nonnull ~prob)
+    (* TODO: use nonLiteral to invalidate unconfident model *)
+    (* | "NPEXNonLiteral" ->
+        Some (make_nonnull ~prob) *)
     | "\"\"" ->
         Some (make_const ~prob (Const.Cstr ""))
     | "\"null\"" ->
@@ -93,6 +94,9 @@ module MValue = struct
         Some (make_const ~prob (Const.Cstr "java.lang.Object"))
     | "NPEXEmptyCollections" ->
         Some ([Call ("newCollection", [])], prob)
+    | "EQ, $(0), null" ->
+        L.progress "equals models@." ;
+        Some ([Call ("equals", [Param 0; NULL])], prob)
     | _ ->
         (* TODO: *)
         L.progress "[WARNING]: model value %s is not resolved@." mval_str ;
@@ -211,8 +215,10 @@ module LocFieldMValueMap = struct
           (* HEURISTICS for state explosion *)
           (* TODO: or remove it by pruning states with too low probability *)
           let compare_prob (_, l_prob) (_, r_prob) = (r_prob -. l_prob) *. 100.0 |> Int.of_float in
-          list_top_n mvalues ~compare:compare_prob ~n:3
+          (* remove model value with less than 1% *)
+          list_top_n mvalues ~compare:compare_prob ~n:3 |> List.filter ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
         in
+        L.(debug Analysis Verbose) "Top 3 values: %a@." (Pp.seq MValue.pp) mvalues_top3 ;
         List.fold mvalues_top3 ~init:acc ~f:(fun acc mval ->
             add_elt (LocField.make loc invoked_field model_index) mval acc)
       with Unexpected _ ->
@@ -262,7 +268,7 @@ let construct pdesc : t =
   let loc_field_mvalue_map = LocFieldMValueMap.from_marshal () in
   LocFieldNodeMap.fold
     (fun loc_field instr_node acc ->
-      let possible_indice = [0; 1; 2] in
+      let possible_indice = [0; 1; 2; 3] in
       List.fold possible_indice ~init:acc ~f:(fun acc index ->
           (* For null.toString(),
              * index = 0

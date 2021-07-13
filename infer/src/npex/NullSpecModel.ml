@@ -36,8 +36,12 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
       | [MValue.Const const], _ ->
           let value = Domain.eval astate node instr (Exp.Const const) in
           [Domain.store_reg astate ret_id value]
+      | [MValue.Skip], _ when Typ.is_void ret_typ ->
+          (* Simple skip would invalidate the state since ret_id is undefined *)
+          [Domain.store_reg astate ret_id Domain.Val.top]
       | [MValue.Skip], _ ->
-          [astate]
+          (* Do not apply skip to non-void invocation*)
+          []
       | [MValue.Exn _], _ ->
           let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
           let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
@@ -52,6 +56,22 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
           let value = Domain.Val.make_allocsite instr_node in
           let astate' = Domain.store_reg astate ret_id value in
           SpecCheckerModels.Collection.setIsEmpty astate' node instr (Domain.Val.to_loc value)
+      | [MValue.Call ("equals", model_args)], _ when List.length arg_typs < List.length model_args ->
+          (* Inapplicable model *)
+          []
+      | [MValue.Call ("equals", [Param 0; NULL])], _ ->
+          let arg_exp, _ = List.nth_exn arg_typs 1 in
+          let arg_value = Domain.eval astate node instr arg_exp in
+          let null = Domain.Val.make_null ~pos:0 instr_node in
+          let true_states =
+            let true_state' = Domain.store_reg astate ret_id Domain.Val.one in
+            Domain.add_pc true_state' (Domain.PathCond.make_physical_equals Binop.Eq arg_value null)
+          in
+          let false_states =
+            let true_state' = Domain.store_reg astate ret_id Domain.Val.one in
+            Domain.add_pc true_state' (Domain.PathCond.make_physical_equals Binop.Ne arg_value null)
+          in
+          true_states @ false_states
       | [], _ ->
           (* No apply *)
           []
@@ -72,10 +92,16 @@ let exec astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs calle
           L.d_printfln "[SUCC] to find model: %a" NullModel.MValueSet.pp mvalues ;
           List.concat_map (NullModel.MValueSet.elements mvalues)
             ~f:(exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee model_pos)
-      | None ->
-          L.d_printfln "[FAIL] to find model, the state will be invalidated" ;
-          L.progress "[FAIL]: no model for %a@." Pos.pp model_pos ;
-          [] )
+      | None -> (
+        (* HEURISTICS: find default value if no model found *)
+        match ManualNullModel.ManualModel.find_opt (ManualNullModel.Key.from_instr instr (snd model_pos)) with
+        | Some mval ->
+            L.d_printfln "[FAIL] to find model, use default value as model" ;
+            exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee model_pos mval
+        | None ->
+            L.d_printfln "[FAIL] to find model, the state will be invalidated" ;
+            L.progress "[FAIL]: no model for %a@." Pos.pp model_pos ;
+            [] ) )
   | None ->
       L.d_printfln "(* No model index in %a *)" (Pp.seq Domain.Val.pp) arg_values ;
       []
