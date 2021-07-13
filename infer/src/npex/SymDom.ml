@@ -56,6 +56,10 @@ module Null = struct
   type t = {node: InstrNode.t [@compare.ignore]; pos: int [@compare.ignore]; is_model: bool [@compare.ignore]}
   [@@deriving compare]
 
+  let equal_up_to_source x y =
+    InstrNode.equal x.node y.node && Int.equal x.pos y.pos && Bool.equal x.is_model y.is_model
+
+
   let pp_node fmt node = F.fprintf fmt "%a" Location.pp_line (InstrNode.get_loc node)
 
   let pp_node_model fmt (node, is_model) =
@@ -490,6 +494,10 @@ module ValCore = struct
 
 
   let equal = [%compare.equal: t]
+
+  let equal_up_to_source x y =
+    match (x, y) with Vheap (Null x'), Vheap (Null y') -> Null.equal_up_to_source x' y' | _ -> equal x y
+
 
   let lt v1 v2 = match (v1, v2) with Vint s1, Vint s2 -> Vint (SymExp.lt s1 s2) | _ -> Vint IntTop
 

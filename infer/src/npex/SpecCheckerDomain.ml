@@ -285,7 +285,7 @@ let set_uncaught_npes astate nullptrs =
   { astate with
     uncaught_npes=
       List.fold nullptrs ~init:astate.uncaught_npes ~f:(fun acc v ->
-          if List.mem astate.uncaught_npes v ~equal:phys_equal then acc else v :: acc) }
+          if List.mem astate.uncaught_npes v ~equal:Val.equal_up_to_source then acc else v :: acc) }
 
 
 let get_nullptrs astate = astate.nullptrs
@@ -516,7 +516,7 @@ module SymResolvedMap = struct
   let resolve_uncaught_npes sym_resolved_map nullptrs_to_resolve nullptrs_to_update =
     List.fold nullptrs_to_resolve ~init:nullptrs_to_update ~f:(fun acc v ->
         let resolved = resolve_val sym_resolved_map v in
-        if List.mem acc resolved ~equal:phys_equal then acc else resolved :: acc)
+        if List.mem acc resolved ~equal:Val.equal_up_to_source then acc else resolved :: acc)
 end
 
 let resolve_summary astate ~actual_values ~formals callee_summary =
@@ -994,7 +994,7 @@ let weak_join lhs rhs : t =
     let executed_procs = Procname.Set.union lhs.executed_procs rhs.executed_procs in
     let uncaught_npes =
       List.fold rhs.uncaught_npes ~init:lhs.uncaught_npes ~f:(fun acc null ->
-          if List.mem acc ~equal:phys_equal null then acc else null :: acc)
+          if List.mem acc ~equal:Val.equal_up_to_source null then acc else null :: acc)
     in
     let temps_to_remove = Vars.union lhs.temps_to_remove rhs.temps_to_remove in
     let joined =
