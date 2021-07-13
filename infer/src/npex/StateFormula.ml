@@ -11,46 +11,49 @@ module ValToAP = struct
   include WeakMap.Make (Val) (APSet)
 
   let find v t =
-    let sub_aps =
-      match v with
-      | Val.Vheap (Null _) ->
-          AccessExpr.null |> APSet.singleton
-      | Val.Vheap (String str) ->
-          AccessExpr.of_const (Const.Cstr str) |> APSet.singleton
-      | Val.Vheap (Symbol s) ->
-          Symbol.to_ap s |> APSet.singleton
-      | Val.Vint (IntLit intlit) ->
-          AccessExpr.of_const (Const.Cint intlit) |> APSet.singleton
-      | Val.Vint (FloatLit flit) ->
-          AccessExpr.of_const (Const.Cfloat flit) |> APSet.singleton
-      | Val.Vint (Symbol s) ->
-          APSet.singleton (Symbol.to_ap s)
-      | Val.Vextern (callee, args) ->
-          let make_ap_call callee arg_aps =
-            let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
-            AccessExpr.append_access AccessExpr.dummy method_call_access
-          in
-          let aps_args_list =
-            List.map args ~f:(fun arg_value ->
-                (* this recursive is ok because function value does not contain function value *)
-                let arg_aps = find arg_value t in
-                APSet.elements arg_aps)
-          in
-          let arg_aps_list =
-            (* [v1, v2]: args
-             * [[ap11, ap12], [ap21, ap22]]: aps_args_list
-             * [ap11, ap21], [ap11, ap22], [ap12, ap21], [ap12, ap22]: arg_aps_list *)
-            List.fold aps_args_list ~init:[[]]
-              ~f:(fun (acc : AccessExpr.t list list) (aps : AccessExpr.t list) : AccessExpr.t list list ->
-                List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])))
-            (* [ap11], [ap12] 
-             * [ap11, ap21], [ap11, ap21] | [ap12, ap21], [ap12, ap22] *)
-          in
-          List.map arg_aps_list ~f:(make_ap_call callee) |> APSet.of_list
-      | _ ->
-          APSet.empty
+    let rec resolve v =
+      let sub_aps =
+        match v with
+        | Val.Vheap (Null _) ->
+            AccessExpr.null |> APSet.singleton
+        | Val.Vheap (String str) ->
+            AccessExpr.of_const (Const.Cstr str) |> APSet.singleton
+        | Val.Vheap (Symbol s) ->
+            Symbol.to_ap s |> APSet.singleton
+        | Val.Vint (IntLit intlit) ->
+            AccessExpr.of_const (Const.Cint intlit) |> APSet.singleton
+        | Val.Vint (FloatLit flit) ->
+            AccessExpr.of_const (Const.Cfloat flit) |> APSet.singleton
+        | Val.Vint (Symbol s) ->
+            APSet.singleton (Symbol.to_ap s)
+        | Val.Vextern (callee, args) ->
+            let make_ap_call callee arg_aps =
+              let method_call_access = AccessExpr.MethodCallAccess (callee, arg_aps) in
+              AccessExpr.append_access AccessExpr.dummy method_call_access
+            in
+            let aps_args_list =
+              List.map args ~f:(fun arg_value ->
+                  (* this recursive is ok because function value does not contain function value *)
+                  let arg_aps = resolve arg_value in
+                  APSet.elements arg_aps)
+            in
+            let arg_aps_list =
+              (* [v1, v2]: args
+               * [[ap11, ap12], [ap21, ap22]]: aps_args_list
+               * [ap11, ap21], [ap11, ap22], [ap12, ap21], [ap12, ap22]: arg_aps_list *)
+              List.fold aps_args_list ~init:[[]]
+                ~f:(fun (acc : AccessExpr.t list list) (aps : AccessExpr.t list) : AccessExpr.t list list ->
+                  List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])))
+              (* [ap11], [ap12] 
+               * [ap11, ap21], [ap11, ap21] | [ap12, ap21], [ap12, ap22] *)
+            in
+            List.map arg_aps_list ~f:(make_ap_call callee) |> APSet.of_list
+        | _ ->
+            APSet.empty
+      in
+      APSet.union sub_aps (find v t)
     in
-    APSet.union sub_aps (find v t)
+    resolve v
 
 
   let find_loc l t =
@@ -97,7 +100,8 @@ type t = Formula.t * Formula.t * APSet.t [@@deriving compare]
 
 let do_work Domain.{mem; pc= Domain.PC.{const_map; pc_set}} val_to_ap : ValToAP.t =
   Domain.Mem.fold
-    (fun l v -> if Val.is_top v then function x -> x else ValToAP.weak_update v (ValToAP.find_loc l val_to_ap))
+    (fun l v ->
+      if Val.is_abstract v then function x -> x else ValToAP.weak_update v (ValToAP.find_loc l val_to_ap))
     mem val_to_ap
   |> Domain.PC.ConstMap.fold (fun v c -> ValToAP.weak_update v (ValToAP.find c val_to_ap)) const_map
   |> Domain.PC.PCSet.fold
