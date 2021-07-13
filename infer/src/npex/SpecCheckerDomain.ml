@@ -802,7 +802,7 @@ let unify lhs rhs : t * t =
             (PathCond.make_physical_equals Binop.Eq v' new_value)
         else replace_value astate ~src:v' ~dst:new_value
     | _ ->
-        if Val.Set.mem v introduced then
+        if Val.Set.mem v introduced || Val.is_symbolic v then
           add_pc_simple (store_loc astate l new_value) (PathCond.make_physical_equals Binop.Eq v new_value)
         else if Val.is_allocsite v then
           add_pc_simple
