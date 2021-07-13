@@ -627,6 +627,18 @@ let eval_binop binop v1 v2 =
       Val.lte v1 v2
   | Binop.Ge ->
       Val.lte v2 v1
+  | Binop.BAnd when Val.is_true v1 && Val.is_true v2 ->
+      Val.one
+  | Binop.BAnd when Val.is_false v1 || Val.is_false v2 ->
+      Val.zero
+  | Binop.BOr when Val.is_true v1 || Val.is_true v2 ->
+      Val.one
+  | Binop.BOr when Val.is_false v1 && Val.is_false v2 ->
+      Val.zero
+  | Binop.BXor when (Val.is_true v1 && Val.is_true v2) || (Val.is_false v1 && Val.is_false v2) ->
+      Val.one
+  | Binop.BXor when (Val.is_true v1 && Val.is_false v2) || (Val.is_false v1 && Val.is_true v2) ->
+      Val.zero
   | _ ->
       Val.top
 
