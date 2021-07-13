@@ -159,7 +159,7 @@ let invoke : model =
 module Collection = struct
   let mIsEmptyField = Fieldname.make (Typ.Name.Java.from_string "Collection") "mIsEmpty"
 
-  let classes = ["java.util.Iterator"; "java.util.Collection"]
+  let classes = ["java.util.Iterator"; "java.util.Collection"; "java.util.Enumeration"; "java.util.Collections"]
 
   let is_model_class classname = implements_interfaces classes classname
 
@@ -168,6 +168,40 @@ module Collection = struct
     let is_empty_value = Domain.Val.make_extern (Node.of_pnode node instr) Typ.int in
     let astate_stored = Domain.store_loc astate is_empty_field_loc is_empty_value in
     Domain.add_pc astate_stored (Domain.PathCond.make_physical_equals Binop.Eq is_empty_value Domain.Val.one)
+
+
+  let enumeration_of : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal "enumeration" (Procname.get_method callee) ->
+          is_model_class (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let value = Domain.eval astate node instr this_exp in
+      [Domain.store_reg astate ret_id value]
+    in
+    (is_model, exec)
+
+
+  let empty_enumeration : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [], _, _)
+        when String.equal "emptyEnumeration" (Procname.get_method callee) ->
+          is_model_class (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) _ =
+      let value = Domain.Val.make_allocsite (Node.of_pnode node instr) in
+      let astate' = Domain.store_reg astate ret_id value in
+      setIsEmpty astate' node instr (Domain.Val.to_loc value)
+    in
+    (is_model, exec)
 
 
   let init : model =
@@ -309,7 +343,7 @@ module Collection = struct
     (is_model, exec)
 
 
-  let models = [init; isEmpty; iterator; next; hasNext; add]
+  let models = [init; isEmpty; iterator; next; hasNext; add; enumeration_of; empty_enumeration]
 end
 
 module IO = struct
@@ -559,7 +593,7 @@ module String = struct
     (is_model, exec)
 
 
-  let models = [init; isEmpty; length; equals]
+  let models = [init; isEmpty; length; equals; append]
 end
 
 let models : model list = BuiltIn.models @ [invoke] @ Collection.models @ IO.models @ String.models
