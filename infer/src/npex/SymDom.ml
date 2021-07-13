@@ -914,14 +914,11 @@ module Mem = struct
         match (v_lhs_opt, v_rhs_opt) with
         | Some v_lhs, Some v_rhs ->
             Some (Val.weak_join v_lhs v_rhs)
-        | Some v_lhs, None ->
-            (* Since values in memory are symbol except allocsite, it would be ok to just add *)
-            (* FIXME: adding l.f -> v means l is nonnull *)
-            Some v_lhs
-        | None, Some v_rhs ->
-            (* Since values in memory are symbol except allocsite, it would be ok to just add *)
-            (* FIXME: adding l.f -> v means l is nonnull *)
-            Some v_rhs
+        | Some _, None | None, Some _ ->
+            (* DO NOT ADD:
+               1. adding l.f -> v implies that l is nonnull
+               2. could add non-trivial facts: l.mIsEmpty -> 1 *)
+            None
         | None, None ->
             None)
       lhs rhs
