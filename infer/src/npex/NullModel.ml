@@ -1,134 +1,29 @@
 open! IStd
 open! Vocab
-
-module Pos = struct
-  type t = InstrNode.t * int [@@deriving compare]
-
-  let pp fmt (InstrNode.{inode; instr}, pos) =
-    let null_access_str =
-      match instr with
-      | Sil.Call (_, Const (Cfun procname), _, _, {cf_virtual}) when cf_virtual ->
-          let method_name = Procname.get_method procname in
-          if Int.equal pos 0 then F.asprintf "NULL.%s(_)" method_name
-          else F.asprintf "_.%s(%d-th NULL)" method_name pos
-      | Sil.Call (_, Const (Cfun procname), _, _, _) ->
-          let method_name = Procname.get_method procname in
-          F.asprintf "_.%s(%d-th NULL)" method_name pos
-      | _ ->
-          ""
-    in
-    F.fprintf fmt "%s (%a)" null_access_str Location.pp_line (InterNode.get_loc inode)
-end
-
-module MValue = struct
-  type t = model_exp list * prob [@@deriving compare]
-
-  and model_exp =
-    (* TODO: design static field (e.g., Collections.EMPTY_SET) *)
-    | NULL
-    | Const of Const.t
-    | Param of int
-    | Assign of model_exp * model_exp
-    | Call of string * model_exp list
-    | Skip
-    | Exn of string
-    | NonNull
-
-  and prob = float
-
-  let equal = [%compare.equal: t]
-
-  let no_apply = ([], 0.5)
-
-  let rec pp_model_exp fmt = function
-    | NULL ->
-        F.fprintf fmt "NULL"
-    | Const c ->
-        (Const.pp Pp.text) fmt c
-    | Param i ->
-        F.fprintf fmt "(#%d)" i
-    | Assign (lhs, rhs) ->
-        F.fprintf fmt "%a := %a" pp_model_exp lhs pp_model_exp rhs
-    | Call (proc, args) ->
-        F.fprintf fmt "%s(%a)" proc (Pp.seq ~sep:"," pp_model_exp) args
-    | Skip ->
-        F.fprintf fmt "SKIP"
-    | Exn exn_type ->
-        F.fprintf fmt "throw new %s" exn_type
-    | NonNull ->
-        F.fprintf fmt "NonNull"
-
-
-  let make_null ~prob : t = ([NULL], prob)
-
-  let make_const ~prob const : t = ([Const const], prob)
-
-  let make_skip ~prob : t = ([Skip], prob)
-
-  let make_exn ~prob exn_type : t = ([Exn exn_type], prob)
-
-  let make_nonnull ~prob : t = ([NonNull], prob)
-
-  let from_string_opt mval_str ~prob : t option =
-    match mval_str with
-    | "0" | "false" ->
-        Some (make_const ~prob (Const.Cint IntLit.zero))
-    | "1" | "true" ->
-        Some (make_const ~prob (Const.Cint IntLit.one))
-    | "0.0F" ->
-        Some (make_const ~prob (Const.Cfloat 0.0))
-    | "null" ->
-        Some (make_null ~prob)
-    | "NPEX_SKIP_VALUE" | "\"NPEX_SKIP_VALUE\"" ->
-        Some (make_skip ~prob)
-    (* TODO: use nonLiteral to invalidate unconfident model *)
-    (* | "NPEXNonLiteral" ->
-        Some (make_nonnull ~prob) *)
-    | "\"\"" ->
-        Some (make_const ~prob (Const.Cstr ""))
-    | "\"null\"" ->
-        Some (make_const ~prob (Const.Cstr "null"))
-    | "NPEXThrowable" ->
-        Some (make_exn ~prob "java.lang.Exception")
-    | "java.lang.Object.class" ->
-        Some (make_const ~prob (Const.Cstr "java.lang.Object"))
-    | "NPEXEmptyCollections" ->
-        Some ([Call ("newCollection", [])], prob)
-    | "EQ, $(0), null" ->
-        L.progress "equals models@." ;
-        Some ([Call ("equals", [Param 0; NULL])], prob)
-    | _ ->
-        (* TODO: *)
-        L.progress "[WARNING]: model value %s is not resolved@." mval_str ;
-        None
-
-
-  let pp fmt (model_exp_list, prob) = F.fprintf fmt "%f (%a)" prob (Pp.seq ~sep:" ; " pp_model_exp) model_exp_list
-end
-
+module MExp = ModelDomain.MExp
+module MValue = ModelDomain.MValue
+module Pos = ModelDomain.Pos
+module Key = ModelDomain.Key
+module MExps = PrettyPrintable.MakePPSet (MExp)
 module MValueSet = PrettyPrintable.MakePPSet (MValue)
 include PrettyPrintable.MakePPMonoMap (Pos) (MValueSet)
 
+let is_applicable pos mval t =
+  for_all
+    (fun pos' mvals' ->
+      (not (Key.equal (Pos.to_key pos) (Pos.to_key pos'))) || MValue.equal_wo_prob mval (MValueSet.choose mvals'))
+    t
+
+
 let joinable lhs rhs =
   (* TODO: should apply same model for same deref-field *)
-  fold
-    (fun pos mval_lhs acc ->
-      if acc then
-        match find_opt pos rhs with
-        | Some mval_rhs when MValueSet.equal mval_lhs mval_rhs ->
-            acc
-        | Some _ ->
-            false
-        | None ->
-            true
-      else acc)
-    lhs true
+  for_all (fun pos mvals_lhs -> is_applicable pos (MValueSet.choose mvals_lhs) rhs) lhs
 
 
 let weak_join ~lhs ~rhs =
   union
     (fun pos mval1 mval2 ->
-      if MValueSet.equal mval1 mval2 then Some mval1
+      if MValue.equal_wo_prob (MValueSet.choose mval1) (MValueSet.choose mval2) then Some mval1
       else
         raise
           (Unexpected
@@ -203,13 +98,15 @@ module LocFieldMValueMap = struct
           if String.equal invo_kind "STATIC" then _model_index else _model_index + 1
         in
         let invoked_field = site_model |> member "site" |> member "deref_field" |> to_string in
+        let type_str = site_model |> member "key" |> member "return_type" |> to_string in
+        let kind_str = site_model |> member "key" |> member "invo_kind" |> to_string in
         let mvalues =
           site_model
           |> member "proba"
           |> to_assoc
           |> List.filter_map ~f:(fun (mval_str, prob_json) ->
                  let prob = prob_json |> to_float in
-                 MValue.from_string_opt mval_str ~prob)
+                 MValue.from_string_opt ~mval_str ~type_str ~kind_str ~prob)
         in
         let mvalues_top3 =
           (* HEURISTICS for state explosion *)
@@ -284,3 +181,9 @@ let construct pdesc : t =
           | None ->
               acc))
     loc_field_node_map empty
+
+
+let mexps_from_mvalues : MValueSet.t -> MExps.t =
+ fun mvalues ->
+  let mvalue_list : MValue.t list = MValueSet.elements mvalues in
+  List.map mvalue_list ~f:fst |> MExps.of_list

@@ -351,29 +351,31 @@ let () =
           let nullpoints = NullPoint.get_nullpoint_list program in
           L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
           InferAnalyze.main ~changed_files:None ;
-          let is_analyzed proc =
-            let astates = SpecCheckerSummary.get_disjuncts (get_summary proc) in
-            List.exists astates ~f:SpecCheckerDomain.is_npe_alternative
-          in
           let target_procs =
-            List.map nullpoints ~f:(fun NullPoint.{node} -> InterNode.get_proc_name node)
+            List.fold nullpoints ~init:Procname.Set.empty ~f:(fun acc NullPoint.{node} ->
+                Procname.Set.add (InterNode.get_proc_name node) acc)
+            |> Procname.Set.elements
           in
-          if List.exists target_procs ~f:is_analyzed then (
-            let procs_to_analyze =
-              List.fold nullpoints ~init:Procname.Set.empty ~f:(fun acc NullPoint.{node} ->
-                  Procname.Set.add (InterNode.get_proc_name node) acc)
-            in
-            Procname.Set.iter
-              (fun proc ->
+          let is_analyzed =
+            List.fold ~init:false target_procs ~f:(fun acc proc ->
                 let disjuncts = SpecCheckerSummary.get_disjuncts (get_summary proc) in
-                let msg =
-                  if Config.debug_mode then Format.asprintf "%a" SpecVeri.pp_states disjuncts
-                  else Format.asprintf "%a" SpecVeri.pp_max disjuncts
-                in
-                Vocab.print_to_file ~msg
-                  ~filename:(Format.asprintf "%s/inferenced_states_%s" Config.npex_result_dir (Procname.get_method proc)))
-              procs_to_analyze ;
-            L.exit 0 )
+                Vocab.print_to_file
+                  ~msg:(Format.asprintf "%a" SpecVeri.pp_states disjuncts)
+                  ~filename:
+                    (Format.asprintf "%s/inferenced_all_states_%s" Config.npex_result_dir
+                       (Procname.get_method proc)) ;
+                match SpecVeri.get_feasible_disjuncts_opt disjuncts with
+                | Some normal_and_infered ->
+                    Vocab.print_to_file
+                      ~msg:(Format.asprintf "%a" SpecVeri.pp_normal_and_infered normal_and_infered)
+                      ~filename:
+                        (Format.asprintf "%s/inferenced_max_states_%s" Config.npex_result_dir
+                           (Procname.get_method proc)) ;
+                    true
+                | None ->
+                    acc)
+          in
+          if is_analyzed then L.exit 0
           else (
             L.progress "[FAIL]: to analyze error proc@." ;
             L.exit 1 ) )

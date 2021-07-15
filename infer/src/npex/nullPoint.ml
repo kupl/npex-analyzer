@@ -120,6 +120,23 @@ let from_alarm_report program filepath : t =
 
 let nullpoint_list = ref []
 
+let parse_npe_methods program =
+  (* for patch validation, we will use most caller to validate patch *)
+  let all_procs = Program.all_procs program in
+  List.filter_map Config.error_report_json ~f:(fun filepath ->
+      let json = read_json_file_exn filepath in
+      let open Yojson.Basic.Util in
+      let class_name = json |> member "npe_class" |> to_string in
+      let method_name = json |> member "npe_method" |> to_string in
+      Procname.Set.find_first_opt
+        (function
+          | Procname.Java mthd when String.equal (Procname.Java.get_simple_class_name mthd) class_name ->
+              String.equal (Procname.Java.get_method mthd) method_name
+          | _ ->
+              false)
+        all_procs)
+
+
 let get_nullpoint_list program =
   if List.is_empty !nullpoint_list then
     let results =

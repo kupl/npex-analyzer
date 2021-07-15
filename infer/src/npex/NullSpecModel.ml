@@ -2,7 +2,7 @@ open! IStd
 open! Vocab
 module Val = SymDom.Val
 module Domain = SpecCheckerDomain
-
+module MExp = NullModel.MExp
 (** constants *)
 module Node = InstrNode
 
@@ -25,42 +25,51 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
   | [astate] -> (
       let instr_node = Node.of_pnode node instr in
       match mval with
-      | [MValue.NULL], _ when Procname.is_constructor callee ->
+      | [MExp.NULL], _ when Procname.is_constructor callee ->
           (* new A(null) -> null *)
           let value = Domain.Val.make_null ~is_model:true instr_node in
           let[@warning "-8"] Exp.Var id, _ = List.hd_exn arg_typs in
           [Domain.store_reg astate id value]
-      | [MValue.NULL], _ ->
+      | [MExp.NULL], _ ->
           let value = Domain.Val.make_null ~is_model:true instr_node in
           [Domain.store_reg astate ret_id value]
-      | [MValue.Const const], _ ->
+      | [MExp.Const const], _ ->
           let value = Domain.eval astate node instr (Exp.Const const) in
           [Domain.store_reg astate ret_id value]
-      | [MValue.Skip], _ when Typ.is_void ret_typ ->
+      | [MExp.Skip], _ when Typ.is_void ret_typ ->
           (* Simple skip would invalidate the state since ret_id is undefined *)
           [Domain.store_reg astate ret_id Domain.Val.top]
-      | [MValue.Skip], _ ->
+      | [MExp.Skip], _ ->
           (* Do not apply skip to non-void invocation*)
+          L.progress "[WARNING]: inapplicable model %a to %a@." MValue.pp mval Pos.pp pos ;
           []
-      | [MValue.Exn _], _ ->
+      | [MExp.Exn _], _ ->
           let exn_value = Domain.Val.make_allocsite instr_node |> Domain.Val.to_exn in
           let ret_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
           let astate' = Domain.store_loc astate ret_loc exn_value |> Domain.set_exception in
           [astate']
-      | [MValue.NonNull], _ ->
+      | [MExp.NonNull], _ ->
           let value = Domain.Val.make_extern instr_node ret_typ in
           let null = Domain.Val.make_null ~pos:0 ~is_model:true instr_node in
           let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
           Domain.add_pc (Domain.store_reg astate ret_id value) non_null_cond
-      | [MValue.Call ("newCollection", [])], _ ->
+      | [MExp.Param i], _ when i < List.length arg_typs ->
+          let arg_exp, _ = List.nth_exn arg_typs i in
+          let value = Domain.eval astate node instr arg_exp in
+          [Domain.store_reg astate ret_id value]
+      | [MExp.Param _], _ ->
+          (* Inapplicable model *)
+          L.progress "[WARNING]: inapplicable model %a to %a@." MValue.pp mval Pos.pp pos ;
+          []
+      | [MExp.Call ("newCollection", [])], _ ->
           let value = Domain.Val.make_allocsite instr_node in
           let astate' = Domain.store_reg astate ret_id value in
           SpecCheckerModels.Collection.setIsEmpty astate' node instr (Domain.Val.to_loc value)
-      | [MValue.Call ("equals", model_args)], _ when List.length arg_typs < List.length model_args ->
+      | [MExp.Call ("equals", model_args)], _ when List.length arg_typs < List.length model_args ->
           (* Inapplicable model *)
           []
-      | [MValue.Call ("equals", [Param 0; NULL])], _ ->
-          let arg_exp, _ = List.nth_exn arg_typs 1 in
+      | [MExp.Call ("equals", [Param i; NULL])], _ ->
+          let arg_exp, _ = List.nth_exn arg_typs i in
           let arg_value = Domain.eval astate node instr arg_exp in
           let null = Domain.Val.make_null ~pos:0 instr_node in
           let true_states =
