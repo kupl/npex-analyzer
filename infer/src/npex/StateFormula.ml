@@ -35,7 +35,7 @@ module ValToAP = struct
               List.map args ~f:(fun arg_value ->
                   (* this recursive is ok because function value does not contain function value *)
                   let arg_aps = resolve arg_value in
-                  APSet.elements arg_aps)
+                  APSet.filter (not <<< AccessExpr.contains_method_access) arg_aps |> APSet.elements)
             in
             let arg_aps_list =
               (* [v1, v2]: args

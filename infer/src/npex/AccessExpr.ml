@@ -119,6 +119,10 @@ module S = struct
         false
 
 
+  let is_method_access = function MethodCallAccess _ -> true | _ -> false
+
+  let contains_method_access (_, accesses) = List.exists accesses ~f:is_method_access
+
   let rec chop_sub_aexpr ~sub access =
     match (sub, access) with
     | [], remaining ->

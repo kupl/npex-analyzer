@@ -31,6 +31,8 @@ val is_sub_expr : sub:t -> t -> bool
 
 val is_var : t -> bool
 
+val contains_method_access : t -> bool
+
 val replace_sub : t -> src:t -> dst:t -> t
 
 val replace_by_map : t -> f:(t -> t) -> t
