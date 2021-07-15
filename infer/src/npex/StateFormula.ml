@@ -65,6 +65,8 @@ module ValToAP = struct
         AccessExpr.of_pvar pv |> APSet.singleton
     | Loc.SymHeap sh ->
         find (Val.Vheap sh) t
+    | Loc.Field (Loc.Var pv, fn) when Pvar.is_global pv ->
+        AccessExpr.append_access (AccessExpr.of_formal pv) (AccessExpr.FieldAccess fn) |> APSet.singleton
     | Loc.Field (Loc.Var pv, fn) ->
         AccessExpr.append_access (AccessExpr.of_pvar pv) (AccessExpr.FieldAccess fn) |> APSet.singleton
     | Loc.Field (Loc.SymHeap sh, fn) ->
@@ -125,7 +127,7 @@ let exception_cond proc_desc is_exceptional =
   Predicate.make_physical_equals Binop.Eq (AccessExpr.of_pvar ab_ret_var) is_true
 
 
-let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.t * Formula.t * APSet.t =
+let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.t * Formula.t * APSet.t * bool =
   let make_formula binop ap_set1 ap_set2 =
     let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
     List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
@@ -189,6 +191,11 @@ let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.
   in
   let uncaught_npes =
     let null_values = Domain.(astate.uncaught_npes) in
-    Val.Set.fold (fun v -> ValToAP.find v val_to_ap |> APSet.union) (Val.Set.of_list null_values) APSet.empty
+    let uncaught_npes =
+      Val.Set.fold (fun v -> ValToAP.find v val_to_ap |> APSet.union) (Val.Set.of_list null_values) APSet.empty
+    in
+    if APSet.is_empty uncaught_npes then APSet.empty
+    else (* redundant, but for equality *)
+      APSet.add AccessExpr.null uncaught_npes
   in
-  (pc_formula, summary_formula, uncaught_npes)
+  (pc_formula, summary_formula, uncaught_npes, is_exceptional)
