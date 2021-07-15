@@ -375,10 +375,13 @@ let add_model astate pos mval =
   | Some _ ->
       L.d_printfln " - model %a is not appliable" NullModel.MValue.pp mval ;
       []
-  | None ->
+  | None when NullModel.is_applicable pos mval astate.applied_models ->
       [ { astate with
           applied_models= NullModel.add_element pos mval astate.applied_models
         ; probability= NullModel.compute_probability astate.applied_models } ]
+  | None ->
+      L.d_printfln " - model %a is not appliable" NullModel.MValue.pp mval ;
+      []
 
 
 (** Summary resolve *)
