@@ -423,6 +423,40 @@ module IO = struct
   let models = [init; close; read]
 end
 
+module Primitives = struct
+  let mValue = Fieldname.make (Typ.Name.Java.from_string "Primitive") "mValue"
+
+  let classes = ["java.lang.Boolean"]
+
+  let booleanValue : model =
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _)], _, _)
+        when String.equal (Procname.get_method callee) "booleanValue" ->
+          implements classes (Procname.Java.get_class_type_name mthd)
+      | _ ->
+          false
+    in
+    let exec astate _ node instr _ (ret_id, _) arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: _) = arg_typs in
+      let value =
+        match Domain.eval astate node instr this_exp with
+        | Val.Vheap (Symbol s) ->
+            let deref_field = SymDom.Symbol.to_ap s |> AccessExpr.get_deref_field in
+            if String.equal deref_field "FALSE" then Domain.Val.zero
+            else if String.equal deref_field "TRUE" then Domain.Val.one
+            else Val.make_extern (Node.of_pnode node instr) Typ.int
+        | _ as v ->
+            Val.make_extern (Node.of_pnode node instr) Typ.int
+      in
+      [Domain.store_reg astate ret_id value]
+    in
+    (is_model, exec)
+
+
+  let models = [booleanValue]
+end
+
 module String = struct
   let classes = ["java.lang.String"]
 
@@ -570,7 +604,7 @@ module String = struct
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [(_, _); (_, _)], _, _)
         when String.equal (Procname.get_method callee) "append" ->
-          implements classes (Procname.Java.get_class_type_name mthd)
+          implements builder_classes (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
     in
@@ -578,7 +612,10 @@ module String = struct
       let[@warning "-8"] ((this_exp, _) :: (str_exp, _) :: _) = arg_typs in
       let this_loc_field = Domain.Loc.append_field (Domain.eval_lv astate node instr this_exp) ~fn:valueField in
       let this_value = Domain.eval astate node instr this_exp in
-      let astate, str_to_append = read_value astate node instr str_exp in
+      let astate, str_to_append =
+        if Domain.Val.is_null (Domain.eval astate node instr str_exp) then (astate, Domain.Val.make_string "null")
+        else read_value astate node instr str_exp
+      in
       let astate, this_str = read_value astate node instr this_exp in
       match (this_str, str_to_append) with
       | Val.Vheap (String str1), Val.Vheap (String str2) ->
@@ -596,7 +633,9 @@ module String = struct
   let models = [init; isEmpty; length; equals; append]
 end
 
-let models : model list = BuiltIn.models @ [invoke] @ Collection.models @ IO.models @ String.models
+let models : model list =
+  BuiltIn.models @ [invoke] @ Collection.models @ IO.models @ String.models @ Primitives.models
+
 
 let find_model_opt callee instr = List.find models ~f:(fun (is_model, _) -> is_model callee instr)
 
