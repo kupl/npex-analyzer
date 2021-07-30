@@ -472,6 +472,11 @@ module SymResolvedMap = struct
             add s (Val.make_extern (Node.dummy_of_proc astate.current_proc) typ) acc
       else add s (Mem.find resolved_loc astate.mem) acc
     in
+    let to_loc v =
+      if is_lambda callee_state.current_proc then
+        try Val.to_loc v with _ -> Loc.make_extern (Node.dummy_of_proc astate.current_proc)
+      else Val.to_loc v
+    in
     List.fold symvals ~init ~f:(fun acc v ->
         let typ, (base, accesses) =
           match v with
@@ -489,10 +494,10 @@ module SymResolvedMap = struct
             (* already resolved at init *)
             acc
         | base, Symbol.Field fn :: remain' ->
-            let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
+            let base_loc = find (base, List.rev remain') acc |> to_loc in
             update_resolved_loc (base, accesses) typ (Loc.append_field base_loc ~fn) acc
         | base, Symbol.Index index :: remain' ->
-            let base_loc = find (base, List.rev remain') acc |> Val.to_loc in
+            let base_loc = find (base, List.rev remain') acc |> to_loc in
             let index = SymExp.of_intlit index in
             update_resolved_loc (base, accesses) typ (Loc.append_index base_loc ~index) acc
         | Symbol.Global (_, _), _ ->
