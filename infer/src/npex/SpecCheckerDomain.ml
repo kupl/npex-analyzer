@@ -822,7 +822,7 @@ let unify lhs rhs : t * t =
     debug_time "replace_astate" ~f:(replace_astate astate l v new_value) ~arg:introduced
   in
   let make_extern = Val.make_extern (Node.dummy_of_proc lhs.current_proc) in
-  let rec _unify worklist rest (lhs, rhs) =
+  let rec _unify worklist rest (lhs, rhs) introduced =
     let add v vals = debug_time "Set" ~f:(Val.Set.add v) ~arg:vals in
     let mem v vals = debug_time "Set" ~f:(Val.Set.mem v) ~arg:vals in
     let mem_mem l mem = debug_time "Mem" ~f:(Mem.mem l) ~arg:mem in
@@ -868,33 +868,26 @@ let unify lhs rhs : t * t =
             (* uninterpretted function term is not in memory *)
             (vals, lhs, rhs, introduced)
         | _, _ ->
-            (vals, lhs, rhs, introduced)
+            (vals, lhs, rhs, introduced) )
       else (vals, lhs, rhs, introduced)
     in
     (* TODO: fix scalability issues *)
-    let next_vals, next_lhs, next_rhs, _ =
-      List.fold worklist ~init:(Val.Set.empty, lhs, rhs, Val.Set.empty) ~f:(fun acc l ->
+    let next_vals, next_lhs, next_rhs, next_introduced =
+      List.fold worklist ~init:(Val.Set.empty, lhs, rhs, introduced) ~f:(fun acc l ->
           debug_time "loop_f" ~f:(f acc) ~arg:l)
-      (* let v_lhs = Mem.find l lhs.mem in
-         if is_node_value (Mem.find l lhs.mem) then
-           let v_rhs = Mem.find l rhs.mem in
-           if Val.equal v_lhs v_rhs then (Val.Set.add v_lhs nexts, rhs)
-           else if is_node_value v_rhs then (Val.Set.add v_lhs nexts, replace_value rhs ~src:v_rhs ~dst:v_lhs)
-           else (nexts, rhs)
-         else (nexts, rhs)) *)
     in
     let partition_tf lst ~f = debug_time "partition" ~f:(List.partition_tf ~f) ~arg:lst in
     let next_worklist, next_rest =
       partition_tf rest ~f:(Loc.is_rec ~f:(function Loc.SymHeap sh -> mem (Val.Vheap sh) next_vals | _ -> false))
     in
     if List.is_empty next_worklist then (next_lhs, next_rhs)
-    else _unify next_worklist next_rest (next_lhs, next_rhs)
+    else _unify next_worklist next_rest (next_lhs, next_rhs) next_introduced
   in
   let _unify concrete_locs extern_locs (lhs, rhs) =
     debug_time "_unify" ~f:(_unify concrete_locs extern_locs) ~arg:(lhs, rhs)
   in
   (* TODO: replace variable first *)
-  _unify concrete_locs extern_locs (lhs, rhs)
+  _unify concrete_locs extern_locs (lhs, rhs) Val.Set.empty
 
 
 let unify lhs rhs = debug_time "Unify" ~f:(unify lhs) ~arg:rhs
