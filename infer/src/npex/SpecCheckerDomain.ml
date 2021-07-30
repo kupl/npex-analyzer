@@ -963,7 +963,8 @@ let joinable lhs rhs =
   Bool.equal lhs.is_npe_alternative rhs.is_npe_alternative
   && Bool.equal lhs.is_exceptional rhs.is_exceptional
   && Bool.equal (has_uncaught_npes lhs) (has_uncaught_npes rhs)
-  && NullModel.joinable lhs.applied_models rhs.applied_models
+  (* sound NullModel.join intersects two nullModel, but we don't want to. *)
+  && NullModel.equal NullModel.MValueSet.equal lhs.applied_models rhs.applied_models
   && Option.equal NullPoint.equal lhs.fault rhs.fault
   && has_no_significant_diff lhs rhs
 
