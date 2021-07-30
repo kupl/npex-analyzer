@@ -88,12 +88,13 @@ module S = struct
   let get_deref_field (base, accesses) =
     match (base, List.rev accesses) with
     | Formal pv, [] | Variable pv, [] ->
-        F.asprintf "%s" (Pvar.get_simplified_name pv)
+        Pvar.get_simplified_name pv
     | Primitive const, [] ->
         (* null *)
         F.asprintf "%a" (Const.pp Pp.text) const
     | _, FieldAccess fld :: _ ->
-        Fieldname.get_field_name fld
+        (* Some fieldname has "access$", so drop it *)
+        Fieldname.get_field_name fld |> String.split_on_chars ~on:['$'] |> List.rev |> List.hd_exn
     | _, MethodCallAccess (method_name, _) :: _ ->
         Procname.get_method method_name
     | _, ArrayAccess _ :: _ ->
