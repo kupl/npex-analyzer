@@ -49,21 +49,6 @@ module LocField = struct
   let make loc invoked_field index = {loc; invoked_field; index}
 end
 
-module LocFieldNodeMap = struct
-  include PrettyPrintable.MakePPMonoMap (LocField) (InstrNode)
-
-  let construct pdesc =
-    let all_instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
-    List.fold all_instr_nodes ~init:empty ~f:(fun acc instr_node ->
-        let loc = InstrNode.get_loc instr_node in
-        match InstrNode.get_instr instr_node with
-        | Sil.Call (_, Const (Cfun procname), _, _, _) ->
-            let invoked_field = Procname.get_method procname in
-            add (LocField.make loc invoked_field 0) instr_node acc
-        | _ ->
-            acc)
-end
-
 module LocFieldMValueMap = struct
   include PrettyPrintable.MakePPMonoMap (LocField) (MValueSet)
 
@@ -82,6 +67,13 @@ module LocFieldMValueMap = struct
     let open Yojson.Basic.Util in
     let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
     let site_model_list = read_json_file_exn filepath |> to_list in
+    let parse_mvalues site_model member_field ~type_str ~kind_str =
+      member member_field site_model
+      |> to_assoc
+      |> List.filter_map ~f:(fun (mval_str, prob_json) ->
+             let prob = prob_json |> to_float in
+             MValue.from_string_opt ~mval_str ~type_str ~kind_str ~prob)
+    in
     let parse_and_collect acc site_model =
       let filename = site_model |> member "site" |> member "source_path" |> to_string in
       try
@@ -100,23 +92,10 @@ module LocFieldMValueMap = struct
         let invoked_field = site_model |> member "site" |> member "deref_field" |> to_string in
         let type_str = site_model |> member "key" |> member "return_type" |> to_string in
         let kind_str = site_model |> member "key" |> member "invo_kind" |> to_string in
-        let mvalues =
-          site_model
-          |> member "proba"
-          |> to_assoc
-          |> List.filter_map ~f:(fun (mval_str, prob_json) ->
-                 let prob = prob_json |> to_float in
-                 MValue.from_string_opt ~mval_str ~type_str ~kind_str ~prob)
-        in
-        let mvalues_top3 =
-          (* HEURISTICS for state explosion *)
-          (* TODO: or remove it by pruning states with too low probability *)
-          let compare_prob (_, l_prob) (_, r_prob) = (r_prob -. l_prob) *. 100.0 |> Int.of_float in
-          (* remove model value with less than 1% *)
-          list_top_n mvalues ~compare:compare_prob ~n:3 |> List.filter ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
-        in
-        L.(debug Analysis Verbose) "Top 3 values: %a@." (Pp.seq MValue.pp) mvalues_top3 ;
-        List.fold mvalues_top3 ~init:acc ~f:(fun acc mval ->
+        let null_mvalues = parse_mvalues site_model "null_proba" ~type_str ~kind_str in
+        let non_null_mvalues = parse_mvalues site_model "proba" ~type_str ~kind_str in
+        let mvalues = null_mvalues @ non_null_mvalues in
+        List.fold mvalues ~init:acc ~f:(fun acc mval ->
             add_elt (LocField.make loc invoked_field model_index) mval acc)
       with Unexpected _ ->
         L.progress "[WARNING]: could not find source file %s from captured files@." filename ;
@@ -128,6 +107,8 @@ module LocFieldMValueMap = struct
   let get () : t =
     if is_empty !_cached then (
       _cached := from_json Config.npex_model_json ;
+      String.Set.iter !ModelDomain.unresolved ~f:(fun model_str ->
+          L.(debug Analysis Quiet) "Unresolve model string: %s@." model_str) ;
       !_cached )
     else !_cached
 
@@ -159,12 +140,56 @@ let compute_probability t =
   sum /. Float.of_int (cardinal no_apply_filtered + 1)
 
 
+let filter_feasible_top3_values instr_node mvalues =
+  let mvalues = MValueSet.elements mvalues in
+  let null_mvalues, non_null_mvalues = List.partition_tf mvalues ~f:(fun (mexp, _) -> MExp.is_null mexp) in
+  let null_mvalue = List.hd_exn null_mvalues in
+  let is_feasible ret_typ arg_typs mval =
+    match mval with
+    | [MExp.Call (_, args)], _ when List.length args > List.length arg_typs ->
+        false
+    | [MExp.NULL], _ when not (Typ.is_pointer ret_typ) ->
+        false
+    | _ ->
+        true
+  in
+  let mvalues_top3 mvalues =
+    (* HEURISTICS for state explosion *)
+    (* TODO: or remove it by pruning states with too low probability *)
+    let compare_prob (_, l_prob) (_, r_prob) = (r_prob -. l_prob) *. 100.0 |> Int.of_float in
+    (* remove model value with less than 1% *)
+    list_top_n mvalues ~compare:compare_prob ~n:3
+    |> List.filter ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
+    |> MValueSet.of_list
+  in
+  match InstrNode.get_instr instr_node with
+  | Sil.Call ((_, ret_typ), _, arg_typs, _, _) when not (is_feasible ret_typ arg_typs null_mvalue) ->
+      let feasibles, infeasibles = List.partition_tf non_null_mvalues ~f:(is_feasible ret_typ arg_typs) in
+      let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
+      let feasibles = List.map ~f:(fun (mexp, prob) -> (mexp, prob /. (1.0 -. infeasible_prob))) feasibles in
+      let mvalues_top3 = mvalues_top3 feasibles in
+      L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
+      mvalues_top3
+  | Sil.Call ((_, ret_typ), _, arg_typs, _, _) ->
+      let feasibles, infeasibles = List.partition_tf non_null_mvalues ~f:(is_feasible ret_typ arg_typs) in
+      let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
+      let feasibles =
+        List.map
+          ~f:(fun (mexp, prob) -> (mexp, prob *. (1.0 -. snd null_mvalue) /. (1.0 -. infeasible_prob)))
+          feasibles
+      in
+      let mvalues_top3 = mvalues_top3 (null_mvalue :: feasibles) in
+      L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
+      mvalues_top3
+  | _ ->
+      MValueSet.empty
+
+
 let construct pdesc : t =
   (* OPTIMIZE: only construct null_model for each proc_desc *)
-  let loc_field_node_map = LocFieldNodeMap.construct pdesc in
   let loc_field_mvalue_map = LocFieldMValueMap.from_marshal () in
-  LocFieldNodeMap.fold
-    (fun loc_field instr_node acc ->
+  let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
+  List.fold instr_nodes ~init:empty ~f:(fun acc instr_node ->
       let possible_indice = [0; 1; 2; 3] in
       List.fold possible_indice ~init:acc ~f:(fun acc index ->
           (* For null.toString(),
@@ -173,14 +198,20 @@ let construct pdesc : t =
            * For SystemLib.write(null),
              * index = 0
              * index in json = 0 *)
-          let loc_field = LocField.{loc_field with index= index + loc_field.index} in
-          match LocFieldMValueMap.find_opt loc_field loc_field_mvalue_map with
-          | Some mvalues ->
-              let pos : Pos.t = (instr_node, index) in
-              add pos mvalues acc
-          | None ->
+          let loc = InstrNode.get_loc instr_node in
+          match InstrNode.get_instr instr_node with
+          | Sil.Call (_, Const (Cfun procname), _, _, _) -> (
+              let invoked_field = Procname.get_method procname in
+              let loc_field = LocField.make loc invoked_field index in
+              match LocFieldMValueMap.find_opt loc_field loc_field_mvalue_map with
+              | Some mvalues ->
+                  let pos : Pos.t = (instr_node, index) in
+                  let mvalues_top3 = filter_feasible_top3_values instr_node mvalues in
+                  add pos mvalues_top3 acc
+              | None ->
+                  acc )
+          | _ ->
               acc))
-    loc_field_node_map empty
 
 
 let mexps_from_mvalues : MValueSet.t -> MExps.t =

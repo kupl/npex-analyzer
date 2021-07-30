@@ -140,6 +140,8 @@ module MExp = struct
 
   let equal = [%compare.equal: t]
 
+  let is_null : t -> bool = function [NULL] -> true | _ -> false
+
   let rec pp_model_exp fmt = function
     | NULL ->
         F.fprintf fmt "NULL"
@@ -161,6 +163,8 @@ module MExp = struct
 
   let pp = Pp.seq ~sep:" ; " pp_model_exp
 end
+
+let unresolved = ref String.Set.empty
 
 module MValue = struct
   type t = MExp.t * float [@@deriving compare]
@@ -196,7 +200,7 @@ module MValue = struct
         Some (make_const ~prob (Const.Cstr ""))
     | "null", _ ->
         Some (make_null ~prob)
-    | "NPEX_SKIP_VALUE", "void" ->
+    | "\"NPEX_SKIP_VALUE\"", "void" | "NPEX_SKIP_VALUE", "void" ->
         Some (make_skip ~prob)
     (* TODO: use nonLiteral to invalidate unconfident model *)
     (* | "NPEXNonLiteral" ->
@@ -213,6 +217,9 @@ module MValue = struct
     | "EQ, $(1), null", "boolean" ->
         (* TODO: parse it by regular expression *)
         Some ([Call ("equals", [Param (arg_index 1); NULL])], prob)
+    | "$(-1)", _ | "this", _ ->
+        (* TODO: parse it by regular expression *)
+        Some ([Param (arg_index (-1))], prob)
     | "$(0)", _ ->
         (* TODO: parse it by regular expression *)
         Some ([Param (arg_index 0)], prob)
@@ -221,7 +228,8 @@ module MValue = struct
         Some ([Param (arg_index 1)], prob)
     | _ ->
         (* TODO: *)
-        L.progress "[WARNING]: model value %s is not resolved@." mval_str ;
+        unresolved := String.Set.add !unresolved mval_str ;
+        (* L.(debug Analysis Quiet) "[WARNING]: model value %s is not resolved@." mval_str ; *)
         None
 
 
