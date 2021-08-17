@@ -301,89 +301,94 @@ let () =
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
           ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
   | NPEX ->
-      let compiled_procs = Program.build () |> Program.all_procs in
-      if Procname.Set.is_empty compiled_procs then L.exit (-2)
-      else
+      let program = Program.build () in
+      let is_capture_failed program =
+        NullPoint.get_nullpoint_list program |> List.map ~f:NullPoint.get_procname |> List.is_empty
+      in
+      if Config.npex_launch_spec_verifier then
+        ignore (Patch.create program ~patch_json_path:Config.npex_patch_json_name)
+      else if (not Config.npex_launch_spec_verifier) && is_capture_failed program then (
+        L.progress "FAILED TO COMPILE: @." ;
+        L.exit 1 ) ;
+      let get_summary proc_name =
+        match Summary.OnDisk.get proc_name with
+        | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
+            spec_checker_summary
+        | _ ->
+            L.(die ExternalError)
+              "%a has not been analyzed during verification" Procname.pp proc_name
+      in
+      let serializer = Serialization.create_serializer Serialization.Key.summary in
+      let get_original_summary proc_name =
+        let original_summary_path =
+          Procname.to_filename proc_name ^ ".specs"
+          |> Filename.concat Config.npex_summary_dir
+          |> DB.filename_from_string
+        in
+        match Serialization.read_from_file serializer original_summary_path with
+        | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
+            spec_checker_summary
+        | _ ->
+            L.(die ExternalError) "%a has not been analyzed during inference" Procname.pp proc_name
+      in
+      ResultsDir.assert_results_dir "have you run capture before?" ;
+      if Config.npex_launch_localize then (
+        assert (Int.equal (List.length Config.error_report_json) 1) ;
+        L.progress "launch fault localization@." ;
+        let program = Program.from_marshal () in
+        let nullpoints = NullPoint.get_nullpoint_list ~debug:true program in
+        L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
         let get_summary proc_name =
           match Summary.OnDisk.get proc_name with
-          | Some {payloads= {spec_checker= Some spec_checker_summary}} ->
-              spec_checker_summary
+          | Some {payloads= {spec_checker_localizer= Some summary}} ->
+              summary
           | _ ->
               L.(die ExternalError)
                 "%a has not been analyzed during verification" Procname.pp proc_name
         in
-        let serializer = Serialization.create_serializer Serialization.Key.summary in
-        let get_original_summary proc_name =
-          let original_summary_path =
-            Procname.to_filename proc_name ^ ".specs"
-            |> Filename.concat Config.npex_summary_dir
-            |> DB.filename_from_string
-          in
-          match Serialization.read_from_file serializer original_summary_path with
-          | Some Summary.{payloads= {spec_checker= Some spec_checker_summary}} ->
-              spec_checker_summary
-          | _ ->
-              L.(die ExternalError)
-                "%a has not been analyzed during inference" Procname.pp proc_name
+        let _, time = Utils.timeit ~f:(fun () -> InferAnalyze.main ~changed_files:None) in
+        Localizer.localize ~get_summary ~time program )
+      else if Config.npex_launch_spec_inference then (
+        L.progress "launch spec inference@." ;
+        let program = Program.from_marshal () in
+        (* OPTIMIZATION *)
+        if not Config.npex_manual_model then ignore (NullModel.LocFieldMValueMap.from_marshal ()) ;
+        let nullpoints = NullPoint.get_nullpoint_list program in
+        L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
+        InferAnalyze.main ~changed_files:None ;
+        let target_procs =
+          List.fold nullpoints ~init:Procname.Set.empty ~f:(fun acc NullPoint.{node} ->
+              Procname.Set.add (InterNode.get_proc_name node) acc)
+          |> Procname.Set.elements
         in
-        ResultsDir.assert_results_dir "have you run capture before?" ;
-        if Config.npex_launch_localize then (
-          assert (Int.equal (List.length Config.error_report_json) 1) ;
-          L.progress "launch fault localization@." ;
-          let program = Program.from_marshal () in
-          let nullpoints = NullPoint.get_nullpoint_list program in
-          L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
-          let get_summary proc_name =
-            match Summary.OnDisk.get proc_name with
-            | Some {payloads= {spec_checker_localizer= Some summary}} ->
-                summary
-            | _ ->
-                L.(die ExternalError)
-                  "%a has not been analyzed during verification" Procname.pp proc_name
-          in
-          let _, time = Utils.timeit ~f:(fun () -> InferAnalyze.main ~changed_files:None) in
-          Localizer.localize ~get_summary ~time program )
-        else if Config.npex_launch_spec_inference then (
-          L.progress "launch spec inference@." ;
-          let program = Program.from_marshal () in
-          (* OPTIMIZATION *)
-          if not Config.npex_manual_model then ignore (NullModel.LocFieldMValueMap.from_marshal ()) ;
-          let nullpoints = NullPoint.get_nullpoint_list program in
-          L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
-          InferAnalyze.main ~changed_files:None ;
-          let target_procs =
-            List.fold nullpoints ~init:Procname.Set.empty ~f:(fun acc NullPoint.{node} ->
-                Procname.Set.add (InterNode.get_proc_name node) acc)
-            |> Procname.Set.elements
-          in
-          let is_analyzed =
-            List.fold ~init:false target_procs ~f:(fun acc proc ->
-                let disjuncts = SpecCheckerSummary.get_disjuncts (get_summary proc) in
-                Vocab.print_to_file
-                  ~msg:(Format.asprintf "%a" SpecVeri.pp_states disjuncts)
-                  ~filename:
-                    (Format.asprintf "%s/inferenced_all_states_%s" Config.npex_result_dir
-                       (Procname.get_method proc)) ;
-                match SpecVeri.get_feasible_disjuncts_opt disjuncts with
-                | Some normal_and_infered ->
-                    Vocab.print_to_file
-                      ~msg:(Format.asprintf "%a" SpecVeri.pp_normal_and_infered normal_and_infered)
-                      ~filename:
-                        (Format.asprintf "%s/inferenced_max_states_%s" Config.npex_result_dir
-                           (Procname.get_method proc)) ;
-                    true
-                | None ->
-                    acc)
-          in
-          if is_analyzed then L.exit 0
-          else (
-            L.progress "[FAIL]: to analyze error proc@." ;
-            L.exit 1 ) )
-        else if Config.npex_launch_spec_verifier then (
-          InferAnalyze.main ~changed_files:None ;
-          let _, time =
-            Utils.timeit ~f:(fun () -> SpecVeri.launch ~get_summary ~get_original_summary)
-          in
-          L.progress "%d ms elapsed to verify specification@." time ) ) ;
+        let is_analyzed =
+          List.fold ~init:false target_procs ~f:(fun acc proc ->
+              let disjuncts = SpecCheckerSummary.get_local_disjuncts (get_summary proc) in
+              Vocab.print_to_file
+                ~msg:(Format.asprintf "%a" SpecVeri.pp_states disjuncts)
+                ~filename:
+                  (Format.asprintf "%s/inferenced_all_states_%a" Config.npex_result_dir Procname.pp
+                     proc) ;
+              match SpecVeri.get_feasible_disjuncts_opt disjuncts with
+              | Some normal_and_infered ->
+                  Vocab.print_to_file
+                    ~msg:(Format.asprintf "%a" SpecVeri.pp_normal_and_infered normal_and_infered)
+                    ~filename:
+                      (Format.asprintf "%s/inferenced_max_states_%a" Config.npex_result_dir
+                         Procname.pp proc) ;
+                  true
+              | None ->
+                  acc)
+        in
+        if is_analyzed then L.exit 0
+        else (
+          L.progress "[FAIL]: to analyze error proc@." ;
+          L.exit 1 ) )
+      else if Config.npex_launch_spec_verifier then (
+        InferAnalyze.main ~changed_files:None ;
+        let _, time =
+          Utils.timeit ~f:(fun () -> SpecVeri.launch ~get_summary ~get_original_summary)
+        in
+        L.progress "%d ms elapsed to verify specification@." time ) ) ;
   (* to make sure the exitcode=0 case is logged, explicitly invoke exit *)
   L.exit 0
