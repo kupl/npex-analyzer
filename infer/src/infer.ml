@@ -301,7 +301,7 @@ let () =
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
           ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
   | NPEX ->
-      let program = Program.build () in
+      let program = Program.from_marshal () in
       let is_capture_failed program =
         NullPoint.get_nullpoint_list program |> List.map ~f:NullPoint.get_procname |> List.is_empty
       in
