@@ -31,7 +31,9 @@ module ExecutedProcs = AbstractDomain.FiniteSet (Procname)
 module Domain = AbstractDomain.Pair (Faults) (ExecutedProcs)
 module Summary = Domain
 
-let check_instr proc_desc post null_values node instr : Fault.t option =
+let empty = (Faults.bottom, ExecutedProcs.bottom)
+
+let check_instr proc_desc post null_values node instr : Domain.t option =
   let location = InstrNode.of_pnode node instr in
   let open SpecCheckerDomain in
   let is_target_null_exp exp ~pos =
@@ -55,8 +57,9 @@ let check_instr proc_desc post null_values node instr : Fault.t option =
     (* use phys_equal to is_target not to collect other null sources *)
     let is_target value =
       let result = List.mem (Val.Set.elements null_values) value ~equal:phys_equal in
-      L.(debug Analysis Verbose) "@.[CheckInstr %a]@.  %a is target values? %b (%a)@." InstrNode.pp location Val.pp value result
-        Val.Set.pp null_values ;
+      L.(debug Analysis Verbose)
+        "@.[CheckInstr %a]@.  %a is target values? %b (%a)@." InstrNode.pp location Val.pp value result Val.Set.pp
+        null_values ;
       result
     in
     List.exists post ~f:(fun astate ->
@@ -64,7 +67,8 @@ let check_instr proc_desc post null_values node instr : Fault.t option =
           let value = eval astate ~pos node instr exp in
           is_target value && is_nullable value astate
         with _ ->
-          L.(debug Analysis Verbose) "@.[CheckInstr %a]@.  failed to evaluate %a@." InstrNode.pp location Exp.pp exp ;
+          L.(debug Analysis Verbose)
+            "@.[CheckInstr %a]@.  failed to evaluate %a@." InstrNode.pp location Exp.pp exp ;
           false)
   in
   let check_exp exp ~pos =
@@ -93,16 +97,21 @@ let check_instr proc_desc post null_values node instr : Fault.t option =
     | _ ->
         None
   in
-  fault_opt
+  match fault_opt with
+  | Some fault ->
+      let executed_procs =
+        List.fold post ~init:ExecutedProcs.empty ~f:(fun acc astate ->
+            Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
+      in
+      Some (Faults.singleton fault, executed_procs)
+  | _ ->
+      None
 
 
-let check_node proc_desc post nullvalues node =
-  let faults =
-    Instrs.fold (CFG.instrs node) ~init:Faults.empty ~f:(fun faults instr ->
-        let new_faults = check_instr proc_desc post nullvalues node instr in
-        match new_faults with Some fault -> Faults.add fault faults | _ -> faults)
-  in
-  faults
+let check_node proc_desc post nullvalues node : Domain.t =
+  Instrs.fold (CFG.instrs node) ~init:empty ~f:(fun acc instr ->
+      let post_opt = check_instr proc_desc post nullvalues node instr in
+      match post_opt with Some post -> Domain.join post acc | _ -> acc)
 
 
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t option =
@@ -112,7 +121,11 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
   let analysis_data =
     SpecChecker.DisjReady.analysis_data (InterproceduralAnalysis.bind_payload interproc ~f:snd)
   in
-  let inv_map = SpecChecker.cached_compute_invariant_map analysis_data in
+  let inv_map =
+    (* HEURISTICS: ignore class initializer which may be called at main procedure. *)
+    if Procname.is_java_class_initializer proc_name then SpecChecker.CFG.Node.IdMap.empty
+    else SpecChecker.cached_compute_invariant_map analysis_data
+  in
   let specchecker_summaries =
     SpecChecker.compute_summary proc_desc cfg inv_map |> SpecCheckerSummary.get_local_disjuncts
   in
@@ -127,13 +140,13 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
   in
   if Val.Set.is_empty nullvalues then Some (Faults.empty, ExecutedProcs.empty)
   else
-    let faults =
-      CFG.fold_nodes cfg ~init:Faults.empty ~f:(fun faults node ->
+    let faults, executed_procs =
+      CFG.fold_nodes cfg ~init:empty ~f:(fun acc node ->
           match SpecChecker.Analyzer.extract_state (CFG.Node.id node) inv_map with
           | Some {post} ->
-              Faults.union (check_node proc_desc post nullvalues node) faults
+              Domain.join (check_node proc_desc post nullvalues node) acc
           | None ->
-              faults)
+              acc)
     in
     if Config.debug_level_analysis > 0 && not (Val.Set.is_empty nullvalues) then
       L.progress " - find null value assigns@.   - null_values: %a@.   - method: %a   - faults: %a@." Val.Set.pp
@@ -154,7 +167,12 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
         nullvalues Faults.empty
     in
     let executed_procs =
-      List.filter specchecker_summaries ~f:SpecCheckerDomain.is_npe_alternative
+      (* let executed_procs_of_npe =
+         List.filter specchecker_summaries ~f:SpecCheckerDomain.is_npe_alternative
+         |> List.fold ~init:ExecutedProcs.empty ~f:(fun acc astate ->
+                Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
+         in *)
+      specchecker_summaries
       |> List.fold ~init:ExecutedProcs.empty ~f:(fun acc astate ->
              Procname.Set.fold (fun proc -> ExecutedProcs.add proc) SpecCheckerDomain.(astate.executed_procs) acc)
     in
@@ -199,10 +217,12 @@ let generate_npe_list faults =
     faults
 
 
-let target_procs program nullpoint executed_procs =
-  Program.slice_virtual_calls program executed_procs ;
+(* 
+let target_procs program nullpoint executed_procs trace_procs =
+  Program.slice_virtual_calls program executed_procs trace_procs ;
   let rec single_caller program proc =
-    match Program.callers_of_proc program proc with [pred] -> single_caller program pred | _ -> proc
+    let callers = Program.callers_of_proc program proc |> Procname.Set.of_list |> Procname.Set.inter trace_procs in
+    match Procname.Set.elements callers with [pred] -> single_caller program pred | _ -> proc
   in
   let slice_by_entry program entry =
     let targets = Procname.Set.singleton entry |> Program.cg_reachables_of program in
@@ -217,8 +237,9 @@ let target_procs program nullpoint executed_procs =
                Procname.Set.mem sink_proc (Procname.Set.singleton proc |> Program.cg_reachables_of program))
       in
       let entry =
-        if Procname.Set.is_empty main_procs then single_caller program sink_proc
-        else Procname.Set.choose main_procs
+        single_caller program sink_proc
+        (* if Procname.Set.is_empty main_procs then single_caller program sink_proc
+           else Procname.Set.choose main_procs *)
       in
       L.progress " - test-main : %a@." Procname.pp entry ;
       slice_by_entry program entry ;
@@ -230,32 +251,46 @@ let target_procs program nullpoint executed_procs =
       Program.print_callgraph program "sliced_callgraph.dot" ;
       Procname.Set.singleton entry |> Program.cg_reachables_of program
   | None ->
-      L.(die ExternalError) "test method name is not given"
-
+      L.(die ExternalError) "test method name is not given" *)
 
 let result_to_json ~time ~target_procs ~executed_procs =
-  let proc_json = `List (List.filter_map (ExecutedProcs.elements executed_procs) ~f:proc_to_json_opt) in
+  let proc_json = `List (List.filter_map (Procname.Set.elements executed_procs) ~f:proc_to_json_opt) in
   let target_json = `List (List.filter_map (Procname.Set.elements target_procs) ~f:proc_to_json_opt) in
   let time_json = `Float (Float.of_int time /. 1000.0) in
   let json = `Assoc [("targets", target_json); ("procs", proc_json); ("time", time_json)] in
   Utils.with_file_out Config.npex_localizer_result ~f:(fun oc -> Yojson.Basic.to_channel oc json)
 
 
-let localize ~get_summary ~time program =
-  (* TODO: why is it slow??? *)
+let parse_trace program =
+  let open Yojson.Basic.Util in
+  let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
+  let json = read_json_file_exn "traces.json" in
+  let traces = json |> to_list in
+  let target_procs =
+    List.filter_map traces ~f:(fun trace_json ->
+        let loc =
+          let file = trace_json |> member "filepath" |> to_string |> source_file_from_string source_files in
+          let line = trace_json |> member "line" |> to_int in
+          Location.{line; file; col= -1}
+        in
+        match Program.find_node_with_location program loc with (proc, _) :: _ -> Some proc | [] -> None)
+  in
+  Program.slice_virtual_calls program (Procname.Set.of_list target_procs) (Procname.Set.of_list target_procs) ;
+  target_procs
+
+
+let localize ~get_summary ~time program trace_procs =
   let nullpoint = NullPoint.get_nullpoint_list program |> List.hd_exn in
-  let all_executed_procs =
+  let trace_procs = Procname.Set.add (NullPoint.get_procname nullpoint) (Procname.Set.of_list trace_procs) in
+  let executed_procs =
     Procname.Set.fold
       (fun proc ->
         let executed_procs = snd (get_summary proc) in
         ExecutedProcs.fold Procname.Set.add executed_procs)
-      (Program.all_procs program) Procname.Set.empty
+      trace_procs Procname.Set.empty
   in
-  let target_procs = target_procs program nullpoint all_executed_procs in
-  let faults = Procname.Set.fold (Faults.union <<< fst <<< get_summary) target_procs Faults.empty in
-  let executed_procs =
-    Procname.Set.fold (ExecutedProcs.union <<< snd <<< get_summary) target_procs ExecutedProcs.empty
-  in
+  L.progress "trace procs: %a@. Executed procs: %a@." Procname.Set.pp trace_procs Procname.Set.pp executed_procs ;
+  let faults = Procname.Set.fold (Faults.union <<< fst <<< get_summary) trace_procs Faults.empty in
   L.progress "@.Faults: %a@." Faults.pp faults ;
-  result_to_json ~time ~target_procs ~executed_procs ;
+  result_to_json ~time ~target_procs:executed_procs ~executed_procs ;
   generate_npe_list faults

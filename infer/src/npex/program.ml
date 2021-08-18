@@ -295,32 +295,6 @@ let all_instr_nodes {cfgs} =
     cfgs []
 
 
-let slice_virtual_calls program executed_procs =
-  Procname.Set.iter
-    (fun proc ->
-      match pdesc_of_opt program proc with
-      | Some pdesc ->
-          let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
-          List.iter instr_nodes ~f:(fun instr_node ->
-              let proc = InstrNode.get_proc_name instr_node in
-              let callees = callees_of_instr_node program instr_node in
-              if List.length callees > 1 then
-                List.iter callees ~f:(fun callee ->
-                    CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
-      | None ->
-          ())
-    executed_procs
-
-
-let slice_procs_except {callgraph} procs =
-  let to_remove =
-    CallGraph.fold_vertex
-      (fun proc acc -> if Procname.Set.mem proc procs then acc else Procname.Set.add proc acc)
-      callgraph Procname.Set.empty
-  in
-  Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove
-
-
 let is_library_call t instr_node = InstrNode.Set.mem instr_node t.library_calls
 
 let add_library_call t instr_node = t.library_calls <- InstrNode.Set.add instr_node t.library_calls
@@ -634,3 +608,57 @@ let has_annot program annot pid =
   let method_annotation = (Procdesc.get_attributes pdesc).ProcAttributes.method_annotation in
   let annot_return = method_annotation.return in
   Annotations.ia_ends_with annot_return annot
+
+
+let resolve_method class_name proc =
+  let method_exists proc procs = List.mem procs proc ~equal:Procname.equal in
+  Tenv.resolve_method ~method_exists !_tenv class_name proc
+
+
+let is_final_field_exp = function
+  | Exp.Lfield (_, fn, typ) -> (
+    match Struct.get_field_info ~lookup:(Tenv.lookup !_tenv) fn typ with
+    | Some Struct.{annotations; is_static} when is_static && Annot.Item.is_final annotations ->
+        true
+    | _ ->
+        false )
+  | _ ->
+      false
+
+
+let slice_virtual_calls program executed_procs trace_procs =
+  let reachable_callees = cg_reachables_of program ~forward:true ~reflexive:true executed_procs in
+  Procname.Set.iter
+    (fun proc ->
+      if not (Procname.Set.mem proc reachable_callees) then CallGraph.remove_vertex program.callgraph proc)
+    reachable_callees ;
+  Procname.Set.iter
+    (fun proc ->
+      match pdesc_of_opt program proc with
+      | Some pdesc ->
+          let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
+          List.iter instr_nodes ~f:(fun instr_node ->
+              let proc = InstrNode.get_proc_name instr_node in
+              let callees = callees_of_instr_node program instr_node in
+              if List.length callees > 1 then
+                let inter_callees =
+                  Procname.Set.inter trace_procs (Procname.Set.of_list callees) |> Procname.Set.elements
+                in
+                match inter_callees with
+                | [_] ->
+                    ()
+                | _ ->
+                    List.iter callees ~f:(fun callee ->
+                        CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
+      | None ->
+          ())
+    executed_procs
+
+
+let slice_procs_except {callgraph} procs =
+  let to_remove =
+    CallGraph.fold_vertex
+      (fun proc acc -> if Procname.Set.mem proc procs then acc else Procname.Set.add proc acc)
+      callgraph Procname.Set.empty
+  in
+  Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove

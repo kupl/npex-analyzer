@@ -336,6 +336,8 @@ let () =
         assert (Int.equal (List.length Config.error_report_json) 1) ;
         L.progress "launch fault localization@." ;
         let program = Program.from_marshal () in
+        let target_procs = Localizer.parse_trace program in
+        Program.to_marshal Program.marshalled_path program ;
         let nullpoints = NullPoint.get_nullpoint_list ~debug:true program in
         L.progress "NullPoint : %a@." (Pp.seq NullPoint.pp) nullpoints ;
         let get_summary proc_name =
@@ -347,7 +349,7 @@ let () =
                 "%a has not been analyzed during verification" Procname.pp proc_name
         in
         let _, time = Utils.timeit ~f:(fun () -> InferAnalyze.main ~changed_files:None) in
-        Localizer.localize ~get_summary ~time program )
+        Localizer.localize ~get_summary ~time program target_procs )
       else if Config.npex_launch_spec_inference then (
         L.progress "launch spec inference@." ;
         let program = Program.from_marshal () in
