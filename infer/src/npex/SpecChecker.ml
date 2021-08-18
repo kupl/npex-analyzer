@@ -406,6 +406,14 @@ module DisjReady = struct
         if Domain.is_unknown_loc astate loc then L.(die InternalError) "%a is unknown@." Domain.Loc.pp loc ;
         let value = Domain.read_loc astate loc in
         [Domain.store_reg astate id value] *)
+    | Sil.Load {id; e; typ} when Program.is_final_field_exp e && Typ.is_pointer typ ->
+        (* ASSUMPTION: final static field is not null! *)
+        let loc = Domain.eval_lv astate node instr e in
+        (* symbolic location is introduced if location is unknown *)
+        let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
+        let value = Domain.read_loc state_unknown_resolved loc in
+        let state_reg_stored = Domain.store_reg astate id value in
+        add_non_null_constraints state_reg_stored node instr value
     | Sil.Load {id; e; typ} ->
         let loc = Domain.eval_lv astate node instr e in
         (* symbolic location is introduced if location is unknown *)
