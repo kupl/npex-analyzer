@@ -356,30 +356,17 @@ module DisjReady = struct
     else []
 
 
-  let throw_uncaught_exn astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr value =
-    (* let instr_node = Node.of_pnode node instr in
-       L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ; *)
-    let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
-    let astate_exn = Domain.set_exception astate in
-    let exn_value = Domain.Val.npe in
-    let null = Domain.Val.make_null ~pos:0 (Node.of_pnode node instr) in
-    let null_cond = Domain.PathCond.make_physical_equals Binop.Eq value null in
-    let states_with_nullcond = Domain.add_pc ~is_branch:true astate_exn null_cond in
-    (* Maintain astates with uncaught exception for patch validation and fault localization
-     * * validation: to check if patch introduce uncaught exception (e.g., NPE)
-     * * localization: to pass the target error to caller *)
-    let store_return_exn states =
-      List.map states ~f:(fun state_with_nullcond -> Domain.store_loc state_with_nullcond return_loc exn_value)
-    in
-    let values = Domain.equal_values astate value in
-    List.map states_with_nullcond ~f:(fun astate' -> Domain.set_uncaught_npes astate' values) |> store_return_exn
-
-
   let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
     let normal_states =
       let apply_no_model astate =
+        let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+        let ret_value =
+          if Domain.is_exceptional astate then Domain.Val.exn
+          else if Typ.is_void (snd ret_typ) then Domain.Val.bottom
+          else Domain.eval astate node instr (Exp.Var (fst ret_typ))
+        in
+        let astate = Domain.record_call astate callee ret_value arg_values in
         if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
-          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
           match NullSpecModel.find_model_index astate node instr arg_values with
           | Some pos ->
               Domain.add_model astate pos NullModel.MValue.no_apply
