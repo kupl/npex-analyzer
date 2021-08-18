@@ -77,8 +77,8 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
             Domain.add_pc true_state' (Domain.PathCond.make_physical_equals Binop.Eq arg_value null)
           in
           let false_states =
-            let true_state' = Domain.store_reg astate ret_id Domain.Val.one in
-            Domain.add_pc true_state' (Domain.PathCond.make_physical_equals Binop.Ne arg_value null)
+            let false_state' = Domain.store_reg astate ret_id Domain.Val.zero in
+            Domain.add_pc false_state' (Domain.PathCond.make_physical_equals Binop.Ne arg_value null)
           in
           true_states @ false_states
       | [], _ ->
