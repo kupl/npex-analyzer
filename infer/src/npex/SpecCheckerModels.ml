@@ -295,7 +295,7 @@ module Collection = struct
   let add : model =
     let is_model callee _ =
       match callee with
-      | Procname.Java mthd when String.is_prefix (Procname.get_method callee) ~prefix:"add" ->
+      | Procname.Java mthd when String.equal (Procname.get_method callee) "add" ->
           is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
