@@ -484,6 +484,10 @@ module DisjReady = struct
     | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when not cf_virtual ->
         (* static call *)
         exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc
+    | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual})
+      when cf_virtual && Typ.is_int (List.hd_exn arg_typs |> snd) ->
+        (* Pasring ERROR: callee is virtual, but invoke it by integer *)
+        exec_unknown_method astate node instr ret_typ arg_typs proc
     | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when cf_virtual -> (
         (* virtual call *)
         let this_exp, _ = List.hd_exn arg_typs in
