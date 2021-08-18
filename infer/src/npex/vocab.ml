@@ -274,3 +274,75 @@ let debug_time_finalize () =
   String.Map.iteri !time_debugger ~f:(fun ~key ~data:(num_iter, time) ->
       L.(debug Analysis Quiet) " - %s : %d, %f@." key num_iter time) ;
   time_debugger := String.Map.empty
+
+
+let builtin_procs =
+  [ BuiltinDecl.__array_access
+  ; BuiltinDecl.__assert_fail
+  ; BuiltinDecl.__builtin_va_arg
+  ; BuiltinDecl.__builtin_va_copy
+  ; BuiltinDecl.__builtin_va_end
+  ; BuiltinDecl.__builtin_va_start
+  ; BuiltinDecl.__builtin_offsetof
+  ; BuiltinDecl.__cast
+  ; BuiltinDecl.__cxx_typeid
+  ; BuiltinDecl.__delete
+  ; BuiltinDecl.__delete_array
+  ; BuiltinDecl.__delete_locked_attribute
+  ; BuiltinDecl.__exit
+  ; BuiltinDecl.__objc_bridge_transfer
+  ; BuiltinDecl.__get_array_length
+  ; BuiltinDecl.__get_type_of
+  ; BuiltinDecl.__global_access
+  ; BuiltinDecl.__infer_assume
+  ; BuiltinDecl.__infer_fail
+  ; BuiltinDecl.__infer_skip
+  ; BuiltinDecl.__instanceof
+  ; BuiltinDecl.__method_set_ignore_attribute
+  ; BuiltinDecl.__new
+  ; BuiltinDecl.__new_array
+  ; BuiltinDecl.__objc_alloc_no_fail
+  ; BuiltinDecl.__objc_dictionary_literal
+  ; BuiltinDecl.__placement_delete
+  ; BuiltinDecl.__placement_new
+  ; BuiltinDecl.__print_value
+  ; BuiltinDecl.__require_allocated_array
+  ; BuiltinDecl.__set_array_length
+  ; BuiltinDecl.__set_file_attribute
+  ; BuiltinDecl.__set_locked_attribute
+  ; BuiltinDecl.__set_mem_attribute
+  ; BuiltinDecl.__set_observer_attribute
+  ; BuiltinDecl.__set_unsubscribed_observer_attribute
+  ; BuiltinDecl.__set_wont_leak_attribute
+  ; BuiltinDecl.__split_get_nth
+  ; BuiltinDecl.__throw
+  ; BuiltinDecl.__unwrap_exception
+  ; BuiltinDecl.abort
+  ; BuiltinDecl.exit
+  ; BuiltinDecl.free
+  ; BuiltinDecl.fscanf
+  ; BuiltinDecl.fwscanf
+  ; BuiltinDecl.malloc
+  ; BuiltinDecl.malloc_no_fail
+  ; BuiltinDecl.nsArray_arrayWithObjects
+  ; BuiltinDecl.nsArray_arrayWithObjectsCount
+  ; BuiltinDecl.objc_autorelease_pool_pop
+  ; BuiltinDecl.objc_autorelease_pool_push
+  ; BuiltinDecl.objc_cpp_throw
+  ; BuiltinDecl.pthread_create
+  ; BuiltinDecl.scanf
+  ; BuiltinDecl.sscanf
+  ; BuiltinDecl.swscanf
+  ; BuiltinDecl.vfscanf
+  ; BuiltinDecl.vfwscanf
+  ; BuiltinDecl.vscanf
+  ; BuiltinDecl.vsscanf
+  ; BuiltinDecl.vswscanf
+  ; BuiltinDecl.vwscanf
+  ; BuiltinDecl.wscanf
+  ; BuiltinDecl.zero_initialization ]
+
+
+let is_builtin_proc callee = List.mem builtin_procs callee ~equal:Procname.equal
+
+let is_lambda = function Procname.Java mthd -> Procname.Java.is_lambda mthd | _ -> false
