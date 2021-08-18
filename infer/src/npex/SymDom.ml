@@ -27,13 +27,16 @@ module Allocsite = struct
 
   let pp fmt (instr_node, call_cnt, cnt) =
     let loc = InstrNode.get_loc instr_node in
+    let instr_str =
+      F.asprintf "%a" (Sil.pp_instr ~print_types:false Pp.text) (InstrNode.get_instr instr_node) |> String.length
+    in
     if Location.equal Location.dummy loc then
       match InstrNode.get_proc_name instr_node with
       | Procname.Java mthd when Procname.Java.is_constructor mthd ->
-          F.fprintf fmt "%s_%d_%d" (Procname.Java.get_simple_class_name mthd) call_cnt cnt
+          F.fprintf fmt "%s_%d_%d (%d)" (Procname.Java.get_simple_class_name mthd) call_cnt cnt instr_str
       | proc_name ->
-          F.fprintf fmt "%s_%d_%d" (Procname.get_method proc_name) call_cnt cnt
-    else F.fprintf fmt "%a_%d_%d" Location.pp_line loc call_cnt cnt
+          F.fprintf fmt "%s_%d_%d (%d)" (Procname.get_method proc_name) call_cnt cnt instr_str
+    else F.fprintf fmt "%a_%d_%d (%d)" Location.pp_line loc call_cnt cnt instr_str
 
 
   let is_const_extern (node, _, _) =
