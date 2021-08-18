@@ -786,7 +786,9 @@ let remove_unreachables ({mem; pc} as astate) =
     PC.filter_by_value ~f:(fun v -> List.exists (Val.get_subvalues v) ~f:(not <<< is_unreachable_value)) pc
   in
   let nullptrs' = Val.Set.filter (not <<< is_unreachable_value) astate.nullptrs in
-  let uncaught_npes' = List.filter ~f:(not <<< is_unreachable_value) astate.uncaught_npes in
+  let uncaught_npes' =
+    List.map ~f:(fun v -> if is_unreachable_value v then Val.default_null else v) astate.uncaught_npes
+  in
   {astate with mem= mem'; pc= pc'; nullptrs= nullptrs'; uncaught_npes= uncaught_npes'}
 
 
