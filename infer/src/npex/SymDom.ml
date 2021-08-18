@@ -925,3 +925,17 @@ module Mem = struct
 
   (* union (fun _ v1 v2 -> if Val.equal v1 v2 then Some v1 else Some (Val.weak_join v1 v2)) lhs rhs *)
 end
+
+module ExecutedCall = struct
+  type t = Val.t * Val.t [@@deriving compare]
+
+  let replace_sub ~src ~dst (ret, fexp) = (Val.replace_sub ret ~src ~dst, Val.replace_sub fexp ~src ~dst)
+
+  let pp fmt (ret, fexp) = F.fprintf fmt "(%a, %a)" Val.pp ret Val.pp fexp
+end
+
+module ExecutedCalls = struct
+  include AbstractDomain.FiniteSet (ExecutedCall)
+
+  let to_vals x = fold (fun (r, f) acc -> Val.Set.add r acc |> Val.Set.add f) x Val.Set.empty
+end
