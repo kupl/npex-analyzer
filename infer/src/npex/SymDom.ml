@@ -782,7 +782,7 @@ module ValCore = struct
     match (x, dst) with
     | Vheap (Null _), _ when phys_equal x src ->
         dst
-    | _ when equal x src ->
+    | _ when (not (is_null src)) && equal x src ->
         dst
     | Vextern _, Vextern _ ->
         (* TODO: support only single function *) x
