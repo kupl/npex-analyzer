@@ -170,19 +170,53 @@ module DisjReady = struct
         if Domain.Val.is_true value then [astate] else if Domain.Val.is_false value then [] else [astate]
 
 
-  let add_non_null_constraints node instr e astate =
+  let throw_uncaught_exn astate {interproc= InterproceduralAnalysis.{proc_desc}} node instr value =
+    (* let instr_node = Node.of_pnode node instr in
+       L.progress "[WARNING]: Uncaught NPE for %a!@. - at %a@." SymDom.Null.pp_src null Node.pp instr_node ; *)
+    let return_loc = Procdesc.get_ret_var proc_desc |> Domain.Loc.of_pvar in
+    let astate_exn = Domain.set_exception astate in
+    let exn_value = Domain.Val.npe in
+    let null = Domain.Val.make_null ~pos:0 (Node.of_pnode node instr) in
+    let null_cond = Domain.PathCond.make_physical_equals Binop.Eq value null in
+    let states_with_nullcond = Domain.add_pc ~is_branch:true astate_exn null_cond in
+    (* Maintain astates with uncaught exception for patch validation and fault localization
+     * * validation: to check if patch introduce uncaught exception (e.g., NPE)
+     * * localization: to pass the target error to caller *)
+    let store_return_exn states =
+      List.map states ~f:(fun state_with_nullcond -> Domain.store_loc state_with_nullcond return_loc exn_value)
+    in
+    let values = Domain.equal_values astate value in
+    List.map states_with_nullcond ~f:(fun astate' -> Domain.set_uncaught_npes astate' values) |> store_return_exn
+
+
+  let add_non_null_constraints astate node instr value =
+    let instr_node = Node.of_pnode node instr in
+    let null = Domain.Val.make_null ~pos:0 instr_node in
+    let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
+    if Domain.PathCond.is_true non_null_cond then [astate]
+    else
+      (* HEURISTICS: distinguish nullability in verification *)
+      Domain.add_pc ~is_branch:true astate non_null_cond
+
+
+  let check_null astate analysis_data node instr e =
     match e with
-    | Exp.Var _ ->
-        let instr_node = Node.of_pnode node instr in
-        let value = Domain.eval ~pos:0 astate node instr e in
-        let null = Domain.Val.make_null ~pos:0 instr_node in
-        let non_null_cond = Domain.PathCond.make_physical_equals Binop.Ne value null in
-        if Domain.PathCond.is_true non_null_cond then [astate]
-        else
-          (* HEURISTICS: distinguish nullability in verification *)
-          Domain.add_pc ~is_branch:true astate non_null_cond
+    | Exp.Lvar _ | Exp.Lindex _ ->
+        (* TODO: deal with null.f, null[x] cases
+         * Currently, we assume _.f and _[] location is non-null *)
+        ([], [astate])
+    | Exp.Lfield (Exp.Lvar _, _, _) ->
+        ([], [astate])
+    | Exp.Lfield ((Exp.Var _ as e'), _, _) ->
+        let value = Domain.eval astate node instr e' in
+        let null_states = throw_uncaught_exn astate analysis_data node instr value in
+        let non_null_states = add_non_null_constraints astate node instr value in
+        (null_states, non_null_states)
     | _ ->
-        [astate]
+        let value = Domain.eval astate node instr e in
+        let null_states = throw_uncaught_exn astate analysis_data node instr value in
+        let non_null_states = add_non_null_constraints astate node instr value in
+        (null_states, non_null_states)
 
 
   let exec_unknown_call astate node instr (ret_id, ret_typ) arg_typs =
@@ -337,12 +371,10 @@ module DisjReady = struct
         | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
             (* null-check on "this", not on empty load instruction *)
             let this_exp, _ = List.hd_exn arg_typs in
-            let this_value = Domain.eval astate node instr this_exp in
-            let null_states = throw_uncaught_exn astate analysis_data node instr this_value in
+            let null_states, non_null_states = check_null astate analysis_data node instr this_exp in
             let non_null_states =
-              add_non_null_constraints node instr this_exp astate
-              |> List.concat_map ~f:(fun astate ->
-                     exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee)
+              List.concat_map non_null_states ~f:(fun astate ->
+                  exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee)
             in
             null_states @ non_null_states
         | _ ->
@@ -370,17 +402,10 @@ module DisjReady = struct
         let loc = Domain.eval_lv astate node instr e in
         (* symbolic location is introduced if location is unknown *)
         let state_unknown_resolved = Domain.resolve_unknown_loc astate typ loc in
+        let null_states, non_null_states = check_null state_unknown_resolved analysis_data node instr e in
         let non_null_states =
           let value = Domain.read_loc state_unknown_resolved loc in
-          Domain.store_reg state_unknown_resolved id value |> add_non_null_constraints node instr e
-        in
-        let null_states =
-          if Domain.Loc.is_symheap loc then
-            (* TODO: deal with null.f, null[x] cases
-             * Currently, we assume _.f and _[] location is non-null *)
-            let value = loc |> Domain.Loc.to_symheap |> Domain.Val.of_symheap in
-            throw_uncaught_exn state_unknown_resolved analysis_data node instr value
-          else []
+          List.map non_null_states ~f:(fun non_null_state -> Domain.store_reg non_null_state id value)
         in
         null_states @ non_null_states
     | Sil.Store {e1; e2= Exp.BinOp (Binop.PlusA _, x, Const (Cint y))} when IntLit.isone y ->
@@ -428,17 +453,10 @@ module DisjReady = struct
         [Domain.store_loc astate loc value]
     | Sil.Store {e1; e2} ->
         let loc = Domain.eval_lv astate node instr e1 in
-        let null_states =
-          if Domain.Loc.is_symheap loc then
-            (* TODO: deal with null.f, null[x] cases
-             * Currently, we assume _.f and _[] location is non-null *)
-            let value = loc |> Domain.Loc.to_symheap |> Domain.Val.of_symheap in
-            throw_uncaught_exn astate analysis_data node instr value
-          else []
-        in
+        let null_states, non_null_states = check_null astate analysis_data node instr e1 in
         let non_null_states =
           let value = Domain.eval astate node instr e2 ~pos:0 in
-          Domain.store_loc astate loc value |> add_non_null_constraints node instr e1
+          List.map non_null_states ~f:(fun non_null_state -> Domain.store_loc non_null_state loc value)
         in
         null_states @ non_null_states
     | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when Models.is_new proc ->
