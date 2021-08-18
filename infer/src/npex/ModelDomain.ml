@@ -187,50 +187,52 @@ module MValue = struct
 
   let from_string_opt ~mval_str ~type_str ~kind_str ~prob : t option =
     let arg_index index = if String.equal kind_str "STATIC" then index else index + 1 in
-    match (mval_str, type_str) with
-    | "NPEX_DEFAULT_LITERAL", "boolean" ->
+    match mval_str with
+    | "0" | "false" ->
         Some (make_const ~prob (Const.Cint IntLit.zero))
-    | "NPEX_NON_DEFAULT_LITERAL", "boolean" ->
+    | "1" | "true" ->
         Some (make_const ~prob (Const.Cint IntLit.one))
-    | "NPEX_DEFAULT_LITERAL", "int" ->
-        Some (make_const ~prob (Const.Cint IntLit.zero))
-    | "NPEX_DEFAULT_LITERAL", "float" ->
+    | "0.0F" ->
         Some (make_const ~prob (Const.Cfloat 0.0))
-    | "NPEX_DEFAULT_LITERAL", "java.lang.String" ->
+    | "\"\"" ->
         Some (make_const ~prob (Const.Cstr ""))
-    | "null", _ ->
+    | "null" ->
         Some (make_null ~prob)
-    | "\"NPEX_SKIP_VALUE\"", "void" | "NPEX_SKIP_VALUE", "void" ->
+    | "\"NPEX_SKIP_VALUE\"" | "NPEX_SKIP_VALUE" ->
         Some (make_skip ~prob)
     (* TODO: use nonLiteral to invalidate unconfident model *)
     (* | "NPEXNonLiteral" ->
         Some (make_nonnull ~prob) *)
     (* | "NPEXThrowable" ->
         Some (make_exn ~prob "java.lang.Exception") *)
-    | "NPEX_DEFAULT_LITERAL", "java.lang.Class" | "java.lang.Object.class", "java.lang.Class" ->
+    | "java.lang.Object.class" ->
         Some (make_const ~prob (Const.Cstr "java.lang.Object"))
-    | "NPEX_DEFAULT_LITERAL", "java.util.Collection" | "NPEXEmptyCollections", "java.util.Collection" ->
+    | "java.util.Collections.emptySet()" | "java.util.Collections.emptyList()" | "java.util.Collections.emptyMap()"
+      ->
         Some ([Call ("newCollection", [])], prob)
-    | "EQ, $(0), null", "boolean" ->
+    | "EQ, $(0), null" ->
         (* TODO: parse it by regular expression *)
         Some ([Call ("equals", [Param (arg_index 0); NULL])], prob)
-    | "EQ, $(1), null", "boolean" ->
+    | "EQ, $(1), null" ->
         (* TODO: parse it by regular expression *)
         Some ([Call ("equals", [Param (arg_index 1); NULL])], prob)
-    | "$(-1)", _ | "this", _ ->
+    | "$(-1)" | "this" ->
         (* TODO: parse it by regular expression *)
         Some ([Param (arg_index (-1))], prob)
-    | "$(0)", _ ->
+    | "$(0)" ->
         (* TODO: parse it by regular expression *)
         Some ([Param (arg_index 0)], prob)
-    | "$(1)", _ ->
+    | "$(1)" ->
         (* TODO: parse it by regular expression *)
         Some ([Param (arg_index 1)], prob)
+    | "nonnull" ->
+        None
     | _ ->
         (* TODO: *)
         unresolved := String.Set.add !unresolved mval_str ;
-        (* L.(debug Analysis Quiet) "[WARNING]: model value %s is not resolved@." mval_str ; *)
-        None
+        L.(debug Analysis Quiet) "[WARNING]: model value %s is not resolved@." mval_str ;
+        (* None *)
+        Some ([Param 999], prob)
 
 
   let pp fmt (model_exp_list, prob) = F.fprintf fmt "%f (%a)" prob MExp.pp model_exp_list
