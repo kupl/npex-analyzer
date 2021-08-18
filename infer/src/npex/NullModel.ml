@@ -72,7 +72,7 @@ module LocFieldMValueMap = struct
       |> to_assoc
       |> List.filter_map ~f:(fun (mval_str, prob_json) ->
              let prob = prob_json |> to_float in
-             MValue.from_string_opt ~mval_str ~type_str ~kind_str ~prob)
+             if Float.equal prob 0.0 then None else MValue.from_string_opt ~mval_str ~type_str ~kind_str ~prob)
     in
     let parse_and_collect acc site_model =
       let filename = site_model |> member "site" |> member "source_path" |> to_string in
@@ -142,16 +142,32 @@ let compute_probability t =
 
 let filter_feasible_top3_values instr_node mvalues =
   let mvalues = MValueSet.elements mvalues in
-  let null_mvalues, non_null_mvalues = List.partition_tf mvalues ~f:(fun (mexp, _) -> MExp.is_null mexp) in
-  let null_mvalue = List.hd_exn null_mvalues in
-  let is_feasible ret_typ arg_typs mval =
-    match mval with
-    | [MExp.Call (_, args)], _ when List.length args > List.length arg_typs ->
-        false
-    | [MExp.NULL], _ when not (Typ.is_pointer ret_typ) ->
-        false
-    | _ ->
-        true
+  let null_mvalue, non_null_mvalues =
+    match List.partition_tf mvalues ~f:(fun (mexp, _) -> MExp.is_null mexp) with
+    | [], non_null_mvalues ->
+        (([MExp.NULL], 0.0), non_null_mvalues)
+    | null_mvalue :: _, non_null_mvalues ->
+        (null_mvalue, non_null_mvalues)
+  in
+  let is_feasible ret_typ arg_typs (mexps, _) =
+    let has_valid_arg_pos = function MExp.Param i when i >= List.length arg_typs -> false | _ -> true in
+    let _is_feasible = function
+      | MExp.Param i when i >= List.length arg_typs ->
+          false
+      | MExp.Param i
+        when (not (Typ.equal ret_typ (List.nth_exn arg_typs i |> snd)))
+             || Typ.equal ret_typ Typ.pointer_to_java_lang_object ->
+          false
+      | MExp.Call ("EQ", args) ->
+          Typ.is_int ret_typ && List.for_all args ~f:has_valid_arg_pos
+      | MExp.Call (_, args) ->
+          List.for_all args ~f:has_valid_arg_pos
+      | MExp.NULL when not (Typ.is_pointer ret_typ) ->
+          false
+      | _ ->
+          true
+    in
+    List.for_all mexps ~f:_is_feasible
   in
   let mvalues_top3 mvalues =
     (* HEURISTICS for state explosion *)
@@ -163,24 +179,31 @@ let filter_feasible_top3_values instr_node mvalues =
     |> MValueSet.of_list
   in
   match InstrNode.get_instr instr_node with
-  | Sil.Call ((_, ret_typ), _, arg_typs, _, _) when not (is_feasible ret_typ arg_typs null_mvalue) ->
+  | Sil.Call ((_, ret_typ), Const (Cfun callee), arg_typs, _, _)
+    when not (Procname.is_constructor callee || is_feasible ret_typ arg_typs null_mvalue) ->
+      (* No NULL *)
       let feasibles, infeasibles = List.partition_tf non_null_mvalues ~f:(is_feasible ret_typ arg_typs) in
       let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
       let feasibles = List.map ~f:(fun (mexp, prob) -> (mexp, prob /. (1.0 -. infeasible_prob))) feasibles in
       let mvalues_top3 = mvalues_top3 feasibles in
       L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
       mvalues_top3
-  | Sil.Call ((_, ret_typ), _, arg_typs, _, _) ->
+  | Sil.Call ((_, ret_typ), Const (Cfun callee), arg_typs, _, _) ->
       let feasibles, infeasibles = List.partition_tf non_null_mvalues ~f:(is_feasible ret_typ arg_typs) in
-      let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
-      let feasibles =
-        List.map
-          ~f:(fun (mexp, prob) -> (mexp, prob *. (1.0 -. snd null_mvalue) /. (1.0 -. infeasible_prob)))
-          feasibles
-      in
-      let mvalues_top3 = mvalues_top3 (null_mvalue :: feasibles) in
-      L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
-      mvalues_top3
+      (* L.progress "Feasibles, Infeasbiles of %a@.Feasibles: %a@. Infeasibles: %a@." (Pp.seq MValue.pp) mvalues
+         (Pp.seq MValue.pp) feasibles (Pp.seq MValue.pp) infeasibles ; *)
+      if List.is_empty feasibles then MValueSet.singleton null_mvalue
+      else
+        let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
+        let feasibles =
+          List.map
+            ~f:(fun (mexp, prob) -> (mexp, prob *. (1.0 -. snd null_mvalue) /. (1.0 -. infeasible_prob)))
+            feasibles
+        in
+        L.progress "Lifted Feasibles: %a (%f)@." (Pp.seq MValue.pp) feasibles infeasible_prob ;
+        let mvalues_top3 = mvalues_top3 (null_mvalue :: feasibles) in
+        L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
+        mvalues_top3
   | _ ->
       MValueSet.empty
 
