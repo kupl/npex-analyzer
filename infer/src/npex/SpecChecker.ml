@@ -324,9 +324,30 @@ module DisjReady = struct
           |> List.map ~f:(init_uninitialized_fields (Procdesc.get_proc_name callee_pdesc) arg_typs node instr)
       | Some (callee_pdesc, callee_summary) ->
           instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary
-      | None ->
-          exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee
+      | None -> (
+          let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
+          (* Assume: npe occurs if an extern function is invoked with null arguments *)
+          match NullSpecModel.find_model_index astate node instr arg_values with
+          | Some (_, i) ->
+              L.d_printfln "[INVALID] execute extern call by null-model arg" ;
+              let model_exp = List.nth_exn arg_typs i |> fst in
+              let model_value = Domain.eval astate node instr model_exp in
+              throw_uncaught_exn astate analysis_data node instr model_value
+          | _ ->
+              exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee )
 
+
+  (* let null_states, non_null_states =
+       List.fold arg_typs
+         ~init:([], [astate])
+         ~f:(fun (acc_nulls, acc_non_nulls) (arg_exp, _) ->
+           List.fold acc_non_nulls ~init:(acc_nulls, []) ~f:(fun (acc_nulls', acc_non_nulls') astate' ->
+               let null_states, non_null_states = check_null astate' analysis_data node instr arg_exp in
+               (acc_nulls' @ null_states, acc_non_nulls' @ non_null_states)))
+     in
+     null_states
+     @ List.concat_map non_null_states ~f:(fun non_null_state ->
+           exec_unknown_method non_null_state node instr (ret_id, ret_typ) arg_typs callee) *)
 
   let exec_null_model astate {interproc= InterproceduralAnalysis.{proc_desc}; null_model} node instr
       (ret_id, ret_typ) arg_typs callee =
