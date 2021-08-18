@@ -107,11 +107,17 @@ let exec astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs calle
         | Some mval when is_builtin_proc callee ->
             L.d_printfln "[Builtin Callee]: use default value as model" ;
             exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee model_pos mval
+        | Some mval -> 
+            L.d_printfln "[Implicit Call]: use default value as model";
+            exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee model_pos mval
         | _ ->
             L.d_printfln "[FAIL] to find model, the state will be invalidated" ;
             L.progress "[FAIL]: no model for %a@." Pos.pp model_pos ;
             L.progress "Model: %a@." NullModel.pp null_model;
-            [] ) )
+            [] 
+            ) 
+            )
+
   | None ->
       L.d_printfln "(* No model index in %a *)" (Pp.seq Domain.Val.pp) arg_values ;
       []
