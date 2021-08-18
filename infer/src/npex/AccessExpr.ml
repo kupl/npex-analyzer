@@ -142,6 +142,8 @@ module S = struct
       (* src:p.f1.f2, dst:q, original: p.f1.f2.f3 
        * output: q.f3, remaining: [f3] *)
       match chop_sub_aexpr ~sub:src_access org_access with
+      | Some remaining when List.contains_dup (dst_access @ remaining) ~compare:compare_access ->
+          original
       | Some remaining ->
           (dst_base, dst_access @ remaining)
       | None ->
