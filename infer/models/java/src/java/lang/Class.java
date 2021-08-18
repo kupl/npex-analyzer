@@ -6,6 +6,7 @@
  */
 
 package java.lang;
+import com.facebook.infer.builtins.InferUndefined;
 
 public final class Class<T> {
 
@@ -20,7 +21,7 @@ public final class Class<T> {
   }
 
   public boolean isAssignableFrom(Class<?> cls) {
-    return false;
+    return InferUndefined.boolean_undefined();
   }
 
   public static Class getPrimitiveClass(String name) {
