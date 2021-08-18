@@ -135,9 +135,9 @@ end
 
 let compute_probability t =
   (* exclude no_apply model *)
-  let no_apply_filtered = filter (fun _ v -> not (MValue.equal MValue.no_apply (MValueSet.choose v))) t in
-  let sum = fold (fun _ mvals acc -> (MValueSet.choose mvals |> snd) +. acc) no_apply_filtered 0.5 in
-  sum /. Float.of_int (cardinal no_apply_filtered + 1)
+  (* let no_apply_filtered = filter (fun _ v -> not (MValue.equal MValue.no_apply (MValueSet.choose v))) t in *)
+  let sum = fold (fun _ mvals acc -> (MValueSet.choose mvals |> snd) +. acc) t 0.5 in
+  sum /. Float.of_int (cardinal t + 1)
 
 
 let filter_feasible_top3_values instr_node mvalues =
