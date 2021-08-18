@@ -381,7 +381,15 @@ let fork_child ~file_lock ~child_prologue ~slot (updates_r, updates_w) ~f ~epilo
       Unix.close updates_r ;
       Unix.close to_child_w ;
       (* Pin to a core. [setcore] does the modulo <number of cores> for us. *)
-      Utils.set_best_cpu_for slot ;
+      ( if Int.equal (-1) Config.npex_cpu_pool then Utils.set_best_cpu_for slot
+      else
+        (* For NPEX evaluation *)
+        let numcores = 2 in
+        let threads_per_core = 2 in
+        let worker_id = slot in
+        let chosen_core = (worker_id % numcores) + (numcores * Config.npex_cpu_pool) in
+        let chosen_thread_in_core = worker_id % threads_per_core in
+        Setcore.setcore ((chosen_core * threads_per_core) + chosen_thread_in_core) ) ;
       ProcessPoolState.in_child := true ;
       ProcessPoolState.reset_pid () ;
       child_prologue () ;

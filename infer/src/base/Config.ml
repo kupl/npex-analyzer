@@ -171,11 +171,13 @@ let max_widens = 10000
 let meet_level = 1
 
 let npex_specification_extension = ".spec"
+
 let npex_localizer_result = "localizer_result.json"
 
 let npex_model_json = "model.json"
 
 let npex_summary_dir = "npex-summaries"
+
 let npex_result_dir = "npex-results"
 
 let npex_patch_json_name = "patch.json"
@@ -2267,6 +2269,12 @@ and export_changed_functions =
      the $(b,--modified-lines)."
 
 
+and npex_cpu_pool =
+  CLOpt.mk_int ~long:"cpu-pool" ~default:(-1)
+    ~in_help:InferCommand.[(NPEX, manual_generic)]
+    "Specify which cpu pool to use (0: [0,9], 1:[10, 19], 2:[20, 29], 3:[30,39])"
+
+
 and npex_specifications_directory =
   CLOpt.mk_path ~long:"specifications-dir" ~default:"specs"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
@@ -2278,10 +2286,12 @@ and npex_test_method =
     ~in_help:InferCommand.[(NPEX, manual_generic)]
     "Specify the test-method triggering NPE"
 
+
 and npex_patch_id =
   CLOpt.mk_string_opt ~long:"patch-id"
     ~in_help:InferCommand.[(NPEX, manual_generic)]
     "Specify patch id to verify"
+
 
 and npex_launch_localize =
   CLOpt.mk_bool ~default:false ~long:"localize"
@@ -3231,9 +3241,12 @@ and test_determinator = !test_determinator
 
 and export_changed_functions = !export_changed_functions
 
+and npex_cpu_pool = !npex_cpu_pool
+
 and npex_specifications_directory = !npex_specifications_directory
 
 and npex_test_method = !npex_test_method
+
 and npex_patch_id = !npex_patch_id
 
 and npex_launch_localize = !npex_launch_localize

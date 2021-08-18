@@ -587,6 +587,8 @@ val test_determinator : bool
 
 val export_changed_functions : bool
 
+val npex_cpu_pool : int
+
 val npex_specifications_directory : string
 
 val npex_localizer_result : string
