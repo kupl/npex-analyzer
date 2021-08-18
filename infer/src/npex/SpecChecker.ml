@@ -269,12 +269,21 @@ module DisjReady = struct
     result
 
 
-  let exec_interproc_call astate {interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}} node instr
+  let exec_interproc_call astate
+      ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}; program} as analysis_data) node instr
       (ret_id, ret_typ) arg_typs callee =
     (* TODO: refactoring *)
-    if SpecCheckerModels.is_model callee instr then
-      SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs
+    if SpecCheckerModels.is_model callee instr then (
+      L.d_printfln "execute model function" ;
+      SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs )
     else
+      let callee =
+        match Program.unique_callee_of_instr_node_opt analysis_data.program (Node.of_pnode node instr) with
+        | Some callee ->
+            callee
+        | None ->
+            callee
+      in
       match analyze_dependency callee with
       | Some (callee_pdesc, callee_summary) when Procname.is_constructor (Procdesc.get_proc_name callee_pdesc) ->
           instantiate_summary astate proc_desc node instr (ret_id, ret_typ) arg_typs callee_pdesc callee_summary

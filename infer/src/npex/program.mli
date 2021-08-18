@@ -17,9 +17,11 @@ val build : unit -> t
 
 val tenv : unit -> Tenv.t
 
-val to_marshal : t -> unit
+val to_marshal : string -> t -> unit
 
 val from_marshal : unit -> t
+
+val marshalled_path : string
 
 val add_call_edge : t -> InstrNode.t -> Procname.t -> unit
 
@@ -30,6 +32,8 @@ val callees_of_instr_node : t -> InstrNode.t -> Procname.t list
 val callers_of_proc : t -> Procname.t -> Procname.t list
 
 val callees_of_proc : t -> Procname.t -> Procname.t list
+
+val unique_callee_of_instr_node_opt : t -> InstrNode.t -> Procname.t option
 
 val is_library_call : t -> InstrNode.t -> bool
 
@@ -95,6 +99,10 @@ val has_annot : t -> string -> Procname.t -> bool
 
 val print_callgraph : t -> string -> unit
 
-val slice_virtual_calls : t -> Procname.Set.t -> unit
+val slice_virtual_calls : t -> Procname.Set.t -> Procname.Set.t -> unit
 
 val slice_procs_except : t -> Procname.Set.t -> unit
+
+val resolve_method : Typ.Name.t -> Procname.t -> Procname.t option
+
+val is_final_field_exp : Exp.t -> bool

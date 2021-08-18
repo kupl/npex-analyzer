@@ -397,35 +397,49 @@ let _tenv = ref (Tenv.create ())
 
 let tenv () = !_tenv
 
+let original_mpath = Filename.concat Config.npex_summary_dir "program.data"
+
 let build () : t =
-  let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-  let procnames = List.concat_map source_files ~f:(fun src -> SourceFiles.proc_names_of_source src) in
-  let tenv =
-    let tenv' =
-      List.fold source_files
-        ~init:(Tenv.FileLocal (Tenv.create ()))
-        ~f:(fun acc file ->
-          let tenv_local =
-            try Tenv.FileLocal (Option.value_exn (Tenv.load file))
-            with _ -> L.(die ExternalError "Failed to load tenv file: %a@." SourceFile.pp file)
-          in
-          Tenv.merge_per_file ~src:tenv_local ~dst:acc)
+  let tenv, cfgs =
+    let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
+    let procnames = List.concat_map source_files ~f:(fun src -> SourceFiles.proc_names_of_source src) in
+    let tenv =
+      let tenv' =
+        List.fold source_files
+          ~init:(Tenv.FileLocal (Tenv.create ()))
+          ~f:(fun acc file ->
+            let tenv_local =
+              try Tenv.FileLocal (Option.value_exn (Tenv.load file))
+              with _ -> L.(die ExternalError "Failed to load tenv file: %a@." SourceFile.pp file)
+            in
+            Tenv.merge_per_file ~src:tenv_local ~dst:acc)
+      in
+      match tenv' with Global -> L.(die InternalError "Global Tenv Found") | FileLocal t -> t
     in
-    match tenv' with Global -> L.(die InternalError "Global Tenv Found") | FileLocal t -> t
+    let cfgs =
+      List.fold procnames ~init:Procname.Map.empty ~f:(fun acc procname ->
+          match Procdesc.load procname with
+          | Some pdesc ->
+              Procname.Map.add procname (IntraCfg.from_pdesc pdesc) acc
+          | None ->
+              acc)
+    in
+    try
+      let original_program : t = Utils.with_file_in original_mpath ~f:Marshal.from_channel in
+      let tenv = original_program.tenv in
+      let cfgs =
+        Procname.Map.merge
+          (fun _ cfg cfg_org ->
+            match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None)
+          cfgs original_program.cfgs
+      in
+      (tenv, cfgs)
+    with _ -> (tenv, cfgs)
   in
-  let cfgs =
-    List.fold procnames ~init:Procname.Map.empty ~f:(fun acc procname ->
-        match Procdesc.load procname with
-        | Some pdesc ->
-            Procname.Map.add procname (IntraCfg.from_pdesc pdesc) acc
-        | None ->
-            acc)
-  in
-  let callgraph = CallGraph.create () in
   let program =
     { cfgs
     ; tenv
-    ; callgraph
+    ; callgraph= CallGraph.create ()
     ; library_calls= InstrNode.Set.empty
     ; entries= []
     ; class_inits= []
@@ -466,20 +480,25 @@ let build () : t =
               | _ ->
                   []
             in
+            (* TODO: why only defined?  *)
             let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
             List.iter callees_defed ~f:(add_call_edge program instr_node) ;
             if List.is_empty callees_undefed then acc else InstrNode.Set.add instr_node acc))
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;
-  {program with callgraph; library_calls}
+  {program with library_calls}
+
+
+let unique_callee_of_instr_node_opt t instr_node =
+  match callees_of_instr_node t instr_node with [callee] -> Some callee | _ -> None
 
 
 let has_instr ~f node = Instrs.exists (Node.get_instrs node) ~f
 
 let marshalled_path = Filename.concat Config.results_dir "program.data"
 
-let to_marshal program = Utils.with_file_out marshalled_path ~f:(fun oc -> Marshal.to_channel oc program [])
+let to_marshal path program = Utils.with_file_out path ~f:(fun oc -> Marshal.to_channel oc program [])
 
 let get_files {cfgs} : SourceFile.t list = Procname.Map.fold (fun _ IntraCfg.{file} acc -> file :: acc) cfgs []
 
@@ -520,7 +539,9 @@ let from_marshal () : t =
         try Utils.with_file_in marshalled_path ~f:Marshal.from_channel
         with _ ->
           let program = build () in
-          to_marshal program ; program
+          if Config.npex_launch_spec_inference then to_marshal original_mpath program ;
+          to_marshal marshalled_path program ;
+          program
       in
       cache := Some program ;
       _tenv := program.tenv ;
