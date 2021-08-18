@@ -4,6 +4,7 @@ module PathCond = SymDom.PathCond
 module PC = SymDom.PC
 module Reg = SymDom.Reg
 module Mem = SymDom.Mem
+module ExecutedCalls = SymDom.ExecutedCalls
 
 module Vars : PrettyPrintable.PPSet with type elt = Var.t
 
@@ -20,7 +21,8 @@ type t =
   ; executed_procs: Procname.Set.t
   ; uncaught_npes: Val.t list
   ; temps_to_remove: Vars.t
-  ; current_proc: Procname.t }
+  ; current_proc: Procname.t
+  ; executed_calls: ExecutedCalls.t }
 
 val pp : Format.formatter -> t -> unit
 
@@ -103,6 +105,8 @@ val get_nullptrs : t -> Val.Set.t
 val set_nullptrs : t -> Val.Set.t -> t
 
 val add_executed_proc : t -> Procname.t -> t
+
+val record_call : t -> Procname.t -> Val.t -> Val.t list -> t
 
 val add_pc_simple : ?is_branch:bool -> t -> PathCond.t -> t
 

@@ -12,6 +12,8 @@ module SymExp = SymDom.SymExp
 module SymHeap = SymDom.SymHeap
 module Reg = SymDom.Reg
 module Mem = SymDom.Mem
+module ExecutedCall = SymDom.ExecutedCall
+module ExecutedCalls = SymDom.ExecutedCalls
 module Vars = PrettyPrintable.MakePPSet (Var)
 
 (* TODO: add counter for each state *)
@@ -28,11 +30,24 @@ type t =
   ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
   ; uncaught_npes: Val.t list
   ; temps_to_remove: Vars.t
-  ; current_proc: Procname.t }
+  ; current_proc: Procname.t
+  ; executed_calls: ExecutedCalls.t (* For weak syntatic equivalence *) }
 
 let pp fmt
-    {reg; mem; pc; is_npe_alternative; is_exceptional; probability; applied_models; nullptrs; fault; uncaught_npes}
-    =
+    { reg
+    ; mem
+    ; pc
+    ; is_npe_alternative
+    ; is_exceptional
+    ; probability
+    ; applied_models
+    ; nullptrs
+    ; fault
+    ; uncaught_npes
+    ; executed_procs } =
+  let executed_procs_str =
+    if Config.debug_mode then F.asprintf " - Executed Procs:@,   %a" Procname.Set.pp executed_procs else ""
+  in
   F.fprintf fmt
     "@[<v 2>  - Register:@,\
     \   %a@,\
@@ -47,8 +62,10 @@ let pp fmt
     \ - Fault and Null Values:@,\
     \   %a, %a@,\
     \ - Uncaughted NPEs:@,\
-    \   %a@]" Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
+    \   %a@,\
+    \ %s@]" Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
     applied_models (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes
+    executed_procs_str
 
 
 let cardinal x =
@@ -79,7 +96,8 @@ let bottom =
   ; executed_procs= Procname.Set.empty
   ; uncaught_npes= []
   ; temps_to_remove= Vars.empty
-  ; current_proc= Procname.empty_block }
+  ; current_proc= Procname.empty_block
+  ; executed_calls= ExecutedCalls.empty }
 
 
 let is_bottom {reg; mem; pc} = Reg.is_bottom reg && Mem.is_bottom mem && PC.is_bottom pc
@@ -118,7 +136,7 @@ let equal_values astate v = PC.equal_values astate.pc v
 
 let inequal_values astate v = PC.inequal_values astate.pc v
 
-let all_values {reg; pc; mem; nullptrs; uncaught_npes} =
+let all_values {reg; pc; mem; nullptrs; uncaught_npes; executed_calls} =
   let reg_values = Reg.fold (fun _ v -> Val.Set.add v) reg Val.Set.empty in
   let pc_values = PC.all_values pc |> Val.Set.of_list in
   let mem_values =
@@ -136,6 +154,7 @@ let all_values {reg; pc; mem; nullptrs; uncaught_npes} =
   |> Val.Set.union mem_values
   |> Val.Set.union nullptrs
   |> Val.Set.union (Val.Set.of_list uncaught_npes)
+  |> Val.Set.union (ExecutedCalls.to_vals executed_calls)
 
 
 let all_symbols astate =
@@ -232,7 +251,14 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
   let reg' = Reg.map (Val.replace_sub ~src ~dst) astate.reg in
   let nullptrs' = Val.Set.map (Val.replace_sub ~src ~dst) astate.nullptrs in
   let uncaught_npes' = List.map ~f:(Val.replace_sub ~src ~dst) astate.uncaught_npes in
-  {astate with pc= pc'; mem= mem'; reg= reg'; nullptrs= nullptrs'; uncaught_npes= uncaught_npes'}
+  let executed_calls' = ExecutedCalls.map (ExecutedCall.replace_sub ~src ~dst) astate.executed_calls in
+  { astate with
+    pc= pc'
+  ; mem= mem'
+  ; reg= reg'
+  ; nullptrs= nullptrs'
+  ; uncaught_npes= uncaught_npes'
+  ; executed_calls= executed_calls' }
 
 
 let add_pc_simple ?(is_branch = false) astate pathcond : t =
@@ -293,6 +319,12 @@ let get_nullptrs astate = astate.nullptrs
 let set_nullptrs astate vals = {astate with nullptrs= Val.Set.union vals astate.nullptrs}
 
 let add_executed_proc astate proc = {astate with executed_procs= Procname.Set.add proc astate.executed_procs}
+
+let record_call astate callee ret_value arg_values =
+  (* { astate with
+     executed_calls= ExecutedCalls.add (ret_value, Val.Vextern (callee, arg_values)) astate.executed_calls } *)
+  astate
+
 
 (* Symbolic domain *)
 let resolve_unknown_loc astate typ loc : t =
@@ -525,6 +557,14 @@ module SymResolvedMap = struct
     List.fold nullptrs_to_resolve ~init:nullptrs_to_update ~f:(fun acc v ->
         let resolved = resolve_val sym_resolved_map v in
         if List.mem acc resolved ~equal:Val.equal_up_to_source then acc else resolved :: acc)
+
+
+  let resolve_executed_calls sym_resolved_map to_resolve to_update =
+    ExecutedCalls.fold
+      (fun (ret_value, fexp) ->
+        let resolved = (resolve_val sym_resolved_map ret_value, resolve_val sym_resolved_map fexp) in
+        ExecutedCalls.add resolved)
+      to_resolve to_update
 end
 
 let resolve_summary astate ~actual_values ~formals callee_summary =
@@ -572,6 +612,9 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   in
   let probability' = NullModel.compute_probability applied_models' in
   let executed_procs' = Procname.Set.union astate.executed_procs callee_summary.executed_procs in
+  let executed_calls' =
+    SymResolvedMap.resolve_executed_calls sym_resolved_map callee_summary.executed_calls astate.executed_calls
+  in
   let astate' =
     { reg= astate.reg
     ; mem= mem'
@@ -585,7 +628,8 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; executed_procs= executed_procs'
     ; uncaught_npes= uncaught_npes'
     ; temps_to_remove= astate.temps_to_remove
-    ; current_proc= astate.current_proc }
+    ; current_proc= astate.current_proc
+    ; executed_calls= executed_calls' }
   in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated by pathcond =====@." ;
@@ -801,7 +845,9 @@ let unify lhs rhs : t * t =
   let extern_locs, concrete_locs =
     List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
   in
-  let add_pc_simple astate pathcond = debug_time "add_pc_simple" ~f:(add_pc_simple astate) ~arg:pathcond in
+  let add_pc_simple astate pathcond =
+    debug_time "add_pc_simple" ~f:(add_pc_simple ~is_branch:true astate) ~arg:pathcond
+  in
   let replace_value astate ~src ~dst = debug_time "replace_value" ~f:(replace_value ~src ~dst) ~arg:astate in
   let replace_astate astate l v new_value introduced =
     match v with
@@ -870,7 +916,7 @@ let unify lhs rhs : t * t =
             (* uninterpretted function term is not in memory *)
             (vals, lhs, rhs, introduced)
         | _, _ ->
-            (vals, lhs, rhs, introduced) )
+            (vals, lhs, rhs, introduced)
       else (vals, lhs, rhs, introduced)
     in
     (* TODO: fix scalability issues *)
@@ -973,6 +1019,21 @@ let joinable lhs rhs =
 
 let joinable lhs rhs = debug_time "Joinable" ~f:(joinable lhs) ~arg:rhs
 
+(* FOR DEBUG *)
+let check_debug astate =
+  (* Mem.iter
+     (fun l v ->
+       let l_str = F.asprintf "%a" Loc.pp l in
+       if String.equal l_str "(Pvar) r" then
+         if List.exists (equal_values astate v) ~f:Val.is_null then
+           let null_cond = PathCond.make_physical_equals Binop.Eq v Val.default_null in
+           if PC.PCSet.mem null_cond astate.pc.branches then
+             L.(debug Analysis Quiet) "%a is in branch cond@." Val.pp v
+           else L.(debug Analysis Quiet) "%a is NOT in branch cond@." Val.pp v)
+     astate.mem *)
+  ()
+
+
 let weak_join lhs rhs : t =
   (* Assumption: lhs and rhs are joinable *)
   if phys_equal lhs rhs then (
@@ -1001,6 +1062,7 @@ let weak_join lhs rhs : t =
           if List.mem acc ~equal:Val.equal_up_to_source null then acc else null :: acc)
     in
     let temps_to_remove = Vars.union lhs.temps_to_remove rhs.temps_to_remove in
+    let executed_calls = ExecutedCalls.union lhs.executed_calls rhs.executed_calls in
     let joined =
       { reg
       ; mem
@@ -1014,9 +1076,13 @@ let weak_join lhs rhs : t =
       ; executed_procs
       ; uncaught_npes
       ; temps_to_remove
-      ; current_proc= lhs.current_proc }
+      ; current_proc= lhs.current_proc
+      ; executed_calls }
     in
     L.d_printfln " - Joined - @.%a@." pp joined ;
+    check_debug lhs ;
+    check_debug rhs ;
+    check_debug joined ;
     joined )
 
 

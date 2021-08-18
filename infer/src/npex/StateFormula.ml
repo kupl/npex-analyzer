@@ -7,6 +7,14 @@ module Predicate = Constraint.Make (AccessExpr)
 module Formula = Constraint.MakePC (AccessExpr)
 module APSet = AbstractDomain.FiniteSet (AccessExpr)
 
+module ExecutedCallExp = struct
+  type t = AccessExpr.t * AccessExpr.t [@@deriving compare]
+
+  let pp fmt (ret, fexp) = F.fprintf fmt "(%a, %a)" AccessExpr.pp ret AccessExpr.pp fexp
+end
+
+module ExecutedCallExps = PrettyPrintable.MakePPSet (ExecutedCallExp)
+
 module ValToAP = struct
   include WeakMap.Make (Val) (APSet)
 
@@ -94,11 +102,39 @@ module ValToAP = struct
     if not (mem v t) then weak_update v (APSet.union aps (find v t)) t else weak_update v aps t
 end
 
-type t = Formula.t * Formula.t * APSet.t [@@deriving compare]
+type t =
+  { pc: Formula.t
+  ; output: Formula.t
+  ; local_output: Formula.t
+  ; symbols: Val.Set.t
+  ; uncaught_npes: APSet.t
+  ; is_exceptional: bool
+  ; executed_calls: ExecutedCallExps.t
+  ; defined_aps: APSet.t }
+[@@deriving compare]
 
-(* let pp fmt (pc_formula, state_formula) =
-  F.fprintf fmt "== PC Formula ==@.%a@.== State Formula ==@.%a@." Formula.PCSet.pp (Formula.to_pc_set pc_formula)
-    Formula.PCSet.pp (Formula.to_pc_set state_formula) *)
+let pp fmt {pc; output; symbols; uncaught_npes; local_output; defined_aps} =
+  F.fprintf fmt
+    "@[<v 2> - Formula:@,\
+    \   %a@,\n\
+    \     - Output:@,\
+    \   %a@,\n\
+    \     - Local Output:@,\
+    \   %a@,\n\
+    \     - Symbol used:@,\
+    \   %a@,\n\
+    \     - Defined Exprs:@,\
+    \   %a@,\n\
+    \     - Uncaughted NPEs:@,\
+    \   %a@]" Formula.pp_set pc Formula.pp_set output Formula.pp_set local_output Val.Set.pp symbols APSet.pp
+    defined_aps APSet.pp uncaught_npes
+
+
+let pp_executed_calls fmt {executed_calls} =
+  F.fprintf fmt "@[<v 2> - Executed calls:@, %a@]@." ExecutedCallExps.pp executed_calls
+
+
+let pp_local_output fmt {local_output} = F.fprintf fmt "@[<v 2> - Local output:@, %a@]@." Formula.pp local_output
 
 let do_work Domain.{mem; pc= Domain.PC.{const_map; pc_set}} val_to_ap : ValToAP.t =
   Domain.Mem.fold
@@ -127,75 +163,183 @@ let exception_cond proc_desc is_exceptional =
   Predicate.make_physical_equals Binop.Eq (AccessExpr.of_pvar ab_ret_var) is_true
 
 
-let from_state proc_desc (Domain.{pc; mem; is_exceptional} as astate) : Formula.t * Formula.t * APSet.t * bool =
-  let make_formula binop ap_set1 ap_set2 =
-    let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
-    List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
-        Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
+let make_formula binop ap_set1 ap_set2 =
+  let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
+  List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
+      Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
+
+
+let encoding_memory val_to_ap astate =
+  Domain.Mem.fold
+    (fun l v ->
+      let aps_loc, aps_val = (ValToAP.find_loc l val_to_ap, ValToAP.find v val_to_ap) in
+      (* L.debug_dev "from (%a -> %a) to (%a = %a)@." Loc.pp l Val.pp v APSet.pp aps_loc APSet.pp aps_val ; *)
+      let formula =
+        make_formula Binop.Eq aps_loc aps_val
+        |> Formula.filter ~f:(function
+             | Predicate.PEquals (v1, v2) ->
+                 (* prestate information could be different whether a pointer is used or not. 
+                  * e.g., local-variable = param just instroduces param = $param *)
+                 not (AccessExpr.equal_wo_formal v1 v2)
+             | _ ->
+                 true)
+      in
+      (* L.debug_dev "Formula: %a@." Formula.pp_set formula ; *)
+      Formula.join formula)
+    Domain.(astate.mem)
+    Formula.empty
+
+
+let from_state proc_desc (astate_local : Domain.t) : t =
+  let astate_public =
+    List.fold (Domain.Mem.bindings astate_local.mem) ~init:astate_local ~f:(fun acc (l, _) ->
+        (* remove all local-variable assignment *)
+        match l with
+        | Loc.Var pv when Pvar.is_return pv ->
+            acc
+        | Loc.Var pv ->
+            Domain.remove_pvar ~pv ~line:0 acc
+        | _ ->
+            acc)
   in
-  let val_to_ap = do_worklist astate ValToAP.empty in
-  L.progress "ValToAP: %a@." ValToAP.pp val_to_ap ;
+  let val_to_ap_public = do_worklist astate_public ValToAP.empty in
+  let val_to_ap_local = do_worklist astate_local ValToAP.empty in
+  L.progress "ValToAP: %a@." ValToAP.pp val_to_ap_public ;
   (* L.progress "=========================convert state ================@.%a@." Domain.pp astate ; *)
   let pc_formula =
     let pathcond_to_formula = function
       | Domain.PathCond.PEquals (v1, v2) ->
-          let ap_set1, ap_set2 = (ValToAP.find v1 val_to_ap, ValToAP.find v2 val_to_ap) in
-          (* L.debug_dev "from (%a = %a) to (%a = %a)@." Val.pp v1 Val.pp v2 APSet.pp ap_set1 APSet.pp ap_set2 ; *)
+          let ap_set1, ap_set2 = (ValToAP.find v1 val_to_ap_public, ValToAP.find v2 val_to_ap_public) in
+          L.debug_dev "from (%a = %a) to (%a = %a)@." Val.pp v1 Val.pp v2 APSet.pp ap_set1 APSet.pp ap_set2 ;
           make_formula Binop.Eq ap_set1 ap_set2
       | Domain.PathCond.Not (Domain.PathCond.PEquals (v1, v2)) ->
-          let ap_set1, ap_set2 = (ValToAP.find v1 val_to_ap, ValToAP.find v2 val_to_ap) in
+          let ap_set1, ap_set2 = (ValToAP.find v1 val_to_ap_public, ValToAP.find v2 val_to_ap_public) in
           make_formula Binop.Ne ap_set1 ap_set2
       | _ ->
           (* TODO: *)
           Formula.empty
     in
-    let exception_cond = exception_cond proc_desc is_exceptional in
+    let exception_cond = exception_cond proc_desc astate_public.is_exceptional in
     Domain.PC.PCSet.fold
       (fun pc -> pathcond_to_formula pc |> Formula.join)
-      (Domain.PC.get_branches pc) Formula.empty
+      (Domain.PC.to_pc_set astate_public.pc) Formula.empty
     |> Formula.add exception_cond
   in
-  let summary_formula =
-    let astate' =
-      List.fold (Domain.Mem.bindings mem) ~init:astate ~f:(fun acc (l, _) ->
-          (* remove all local-variable assignment *)
-          match l with
-          | Loc.Var pv when Pvar.is_return pv ->
-              acc
-          | Loc.Var pv ->
-              Domain.remove_pvar ~pv ~line:0 acc
-          | _ ->
-              acc)
-    in
-    let val_to_ap' = do_worklist astate' ValToAP.empty in
-    let result =
-      Domain.Mem.fold
-        (fun l v ->
-          let aps_loc, aps_val = (ValToAP.find_loc l val_to_ap', ValToAP.find v val_to_ap') in
-          (* L.debug_dev "from (%a -> %a) to (%a = %a)@." Loc.pp l Val.pp v APSet.pp aps_loc APSet.pp aps_val ; *)
-          let formula =
-            make_formula Binop.Eq aps_loc aps_val
-            |> Formula.filter ~f:(function
-                 | Predicate.PEquals (v1, v2) ->
-                     (* prestate information could be different whether a pointer is used or not. 
-                      * e.g., local-variable = param just instroduces param = $param *)
-                     not (AccessExpr.equal_wo_formal v1 v2)
-                 | _ ->
-                     true)
-          in
-          Formula.join formula)
-        Domain.(astate'.mem)
-        Formula.empty
-    in
-    Formula.diff result pc_formula
+  L.progress "PC Formula %a@." Formula.pp_set pc_formula ;
+  let output =
+    let result = encoding_memory val_to_ap_public astate_public in
+    result
+  in
+  let local_output =
+    let result = encoding_memory val_to_ap_local astate_local in
+    result
   in
   let uncaught_npes =
-    let null_values = Domain.(astate.uncaught_npes) in
+    let null_values = Domain.(astate_public.uncaught_npes) in
     let uncaught_npes =
-      Val.Set.fold (fun v -> ValToAP.find v val_to_ap |> APSet.union) (Val.Set.of_list null_values) APSet.empty
+      Val.Set.fold
+        (fun v -> ValToAP.find v val_to_ap_public |> APSet.union)
+        (Val.Set.of_list null_values) APSet.empty
     in
     if APSet.is_empty uncaught_npes then APSet.empty
     else (* redundant, but for equality *)
       APSet.add AccessExpr.null uncaught_npes
   in
-  (pc_formula, summary_formula, uncaught_npes, is_exceptional)
+  let symbols = Domain.collect_summary_symbols astate_public in
+  let executed_calls =
+    let executed_call_values = Domain.(astate_local.executed_calls) in
+    ExecutedCalls.fold
+      (fun (ret, fexp) ->
+        let ret_aps = ValToAP.find ret val_to_ap_local in
+        let fexps = ValToAP.find fexp val_to_ap_local in
+        APSet.fold (fun ret_ap -> APSet.fold (fun f_ap -> ExecutedCallExps.add (ret_ap, f_ap)) fexps) ret_aps)
+      executed_call_values ExecutedCallExps.empty
+    (* (ValToAP.find v val_to_ap |> APSet.union) executed_call_values APSet.empty *)
+  in
+  let defined_aps =
+    Domain.Mem.fold
+      (fun l v -> APSet.union (ValToAP.find_loc l val_to_ap_local))
+      Domain.(astate_local.mem)
+      APSet.empty
+  in
+  { pc= pc_formula
+  ; output
+  ; uncaught_npes
+  ; is_exceptional= astate_public.is_exceptional
+  ; symbols
+  ; executed_calls
+  ; local_output
+  ; defined_aps }
+
+
+let check_sat ?(print_unsat = false) (infered : t) (patched : t) =
+  (* let pc_sat = Formula.check_sat ~print_unsat infered.pc patched.pc in
+     let uncaught_sat = Bool.equal (APSet.is_empty infered.uncaught_npes) (APSet.is_empty patched.uncaught_npes) in *)
+  (* pc_sat && uncaught_sat *)
+  true
+
+
+let filter_by_defined_aps defined_aps formula =
+  Formula.filter_by_value formula ~f:(fun ap -> APSet.mem ap defined_aps)
+
+
+let check_valid ?(print_invalid = false) (infered : t) (patched : t) =
+  let defined_aps = APSet.inter infered.defined_aps patched.defined_aps in
+  let missing_output =
+    (* FIXME: this is temporal fix for unalined formula *)
+    let output1 = Formula.merge infered.pc patched.output in
+    let output2 = Formula.merge patched.pc infered.output in
+    Formula.join output1 output2
+  in
+  let infered_output = Formula.join missing_output infered.output |> filter_by_defined_aps defined_aps in
+  let patched_output = Formula.join missing_output patched.output |> filter_by_defined_aps defined_aps in
+  L.progress "check sat %a, %a@." Formula.pp_set infered.pc Formula.pp_set patched.pc ;
+  let result =
+    Formula.check_sat infered.pc patched.pc
+    && Bool.equal (APSet.is_empty infered.uncaught_npes) (APSet.is_empty patched.uncaught_npes)
+    && Formula.check_valid ~print_invalid infered_output patched_output
+    && Val.Set.equal infered.symbols patched.symbols
+    && APSet.subset
+         (APSet.filter (fun ap -> APSet.mem ap defined_aps) patched.uncaught_npes)
+         (APSet.filter (fun ap -> APSet.mem ap defined_aps) infered.uncaught_npes)
+  in
+  result
+
+
+let check_syn_equiv (infered : t) (patched : t) =
+  let defined_aps = APSet.inter infered.defined_aps patched.defined_aps in
+  let infered_output = filter_by_defined_aps defined_aps infered.local_output in
+  let patched_output = filter_by_defined_aps defined_aps patched.local_output in
+  (* L.progress "Compare %a and %a on %a@.Acutial compare: %a, %a@." Formula.pp_set infered.local_output
+     Formula.pp_set patched.local_output APSet.pp defined_aps Formula.pp_set infered_output Formula.pp_set
+     patched_output ; *)
+  check_valid infered patched && Formula.check_valid ~print_invalid:false infered_output patched_output
+
+
+let join lhs rhs =
+  let pc = Formula.merge lhs.pc rhs.pc in
+  let output = Formula.merge lhs.output rhs.output in
+  let symbols = Val.Set.union lhs.symbols rhs.symbols in
+  let uncaught_npes = APSet.union lhs.uncaught_npes rhs.uncaught_npes in
+  let executed_calls = ExecutedCallExps.union lhs.executed_calls rhs.executed_calls in
+  let local_output = Formula.merge lhs.local_output rhs.local_output in
+  { pc
+  ; output
+  ; symbols
+  ; uncaught_npes
+  ; is_exceptional= lhs.is_exceptional
+  ; executed_calls
+  ; local_output
+  ; defined_aps= APSet.inter lhs.defined_aps rhs.defined_aps }
+
+
+let joinable lhs rhs = check_sat lhs rhs
+
+let is_exceptional {is_exceptional} = is_exceptional
+
+let from_state proc_desc astate =
+  let result = from_state proc_desc astate in
+  (* L.progress "@.========= State to Spec ===========@." ;
+     L.progress "%a@.------------------------------Specification-------------------@." Domain.pp astate ;
+     L.progress "%a@." pp result ; *)
+  result
