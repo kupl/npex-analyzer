@@ -424,7 +424,7 @@ let build () : t =
           | None ->
               acc)
     in
-    try
+    if Config.npex_launch_spec_verifier then (
       let original_program : t = Utils.with_file_in original_mpath ~f:Marshal.from_channel in
       let tenv = original_program.tenv in
       let cfgs =
@@ -433,8 +433,8 @@ let build () : t =
             match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None)
           cfgs original_program.cfgs
       in
-      (tenv, cfgs)
-    with _ -> (tenv, cfgs)
+      (tenv, cfgs) )
+    else (tenv, cfgs)
   in
   let program =
     { cfgs
@@ -539,10 +539,10 @@ let from_marshal () : t =
         try Utils.with_file_in marshalled_path ~f:Marshal.from_channel
         with _ ->
           let program = build () in
-          if Config.npex_launch_spec_inference then to_marshal original_mpath program ;
           to_marshal marshalled_path program ;
           program
       in
+      if Config.npex_launch_spec_inference then to_marshal original_mpath program ;
       cache := Some program ;
       _tenv := program.tenv ;
       program
