@@ -205,7 +205,8 @@ module DisjReady = struct
         (* TODO: deal with null.f, null[x] cases
          * Currently, we assume _.f and _[] location is non-null *)
         ([], [astate])
-    | Exp.Lfield (Exp.Lvar _, _, _) ->
+    | Exp.Lfield (Exp.Lvar _, _, _) | Exp.Lfield (Exp.Const _, _, _) ->
+        (* Global.field, "".value: not null *)
         ([], [astate])
     | Exp.Lfield ((Exp.Var _ as e'), _, _) ->
         let value = Domain.eval astate node instr e' in
