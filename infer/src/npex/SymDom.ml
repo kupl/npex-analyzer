@@ -189,9 +189,9 @@ module SymHeap = struct
   let make_const_extern = function
     | Null Null.{node; is_model} when is_model ->
         (* Extern Allocsite.(InstrNode.dummy_of "NPEX_CONST_MODEL_NULL", 1) *)
-        Extern Allocsite.(node, 0, 1)
+        Extern Allocsite.(node, 0, -2)
     | Null Null.{node} ->
-        Extern Allocsite.(node, 0, 0)
+        Extern Allocsite.(node, 0, -1)
     | String str ->
         Extern Allocsite.(InstrNode.dummy_of ("NPEX_CONST_STRING_" ^ str), 0, 0)
     | _ as sh ->
