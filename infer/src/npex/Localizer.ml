@@ -33,6 +33,33 @@ module Summary = Domain
 
 let empty = (Faults.bottom, ExecutedProcs.bottom)
 
+let parse_trace_nodes program =
+  let open Yojson.Basic.Util in
+  let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
+  let json = read_json_file_exn "traces.json" in
+  let traces = json |> to_list in
+  let results =
+    List.concat_map traces ~f:(fun trace_json ->
+        try
+          let loc =
+            let file = trace_json |> member "filepath" |> to_string |> source_file_from_string source_files in
+            let line = trace_json |> member "line" |> to_int in
+            Location.{line; file; col= -1}
+          in
+          Program.find_node_with_location program loc
+        with _ -> [])
+  in
+  let nullpoints = NullPoint.get_nullpoint_list program |> List.map ~f:NullPoint.get_node in
+  if List.exists results ~f:(List.mem nullpoints ~equal:InterNode.equal) then results else []
+
+
+let parse_trace program =
+  let trace_nodes = parse_trace_nodes program in
+  let target_procs = List.map trace_nodes ~f:fst in
+  Program.slice_virtual_calls program (Procname.Set.of_list target_procs) (Procname.Set.of_list target_procs) ;
+  target_procs
+
+
 let check_instr proc_desc post null_values node instr : Domain.t option =
   let location = InstrNode.of_pnode node instr in
   let open SpecCheckerDomain in
@@ -114,6 +141,22 @@ let check_node proc_desc post nullvalues node : Domain.t =
       match post_opt with Some post -> Domain.join post acc | _ -> acc)
 
 
+let _reachables = ref Procname.Set.empty
+
+let reachable_from_traces program =
+  if Procname.Set.is_empty !_reachables then (
+    let traces = parse_trace program in
+    let nullproc = NullPoint.get_nullpoint_list program |> List.hd_exn |> NullPoint.get_procname in
+    let reachables =
+      if List.is_empty traces then
+        Program.cg_reachables_of ~forward:true ~reflexive:true program (Procname.Set.singleton nullproc)
+      else Program.cg_reachables_of ~forward:true ~reflexive:true program (Procname.Set.of_list traces)
+    in
+    _reachables := reachables ;
+    reachables )
+  else !_reachables
+
+
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t option =
   (* let proc_name = Procdesc.get_proc_name proc_desc in *)
   let cfg = CFG.from_pdesc proc_desc in
@@ -121,9 +164,12 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) : Summary.t optio
   let analysis_data =
     SpecChecker.DisjReady.analysis_data (InterproceduralAnalysis.bind_payload interproc ~f:snd)
   in
+  let program = analysis_data.SpecChecker.DisjReady.program in
+  (* L.progress "reachable from traces: %a@." Procname.Set.pp (reachable_from_traces program) ; *)
   let inv_map =
     (* HEURISTICS: ignore class initializer which may be called at main procedure. *)
     if Procname.is_java_class_initializer proc_name then SpecChecker.CFG.Node.IdMap.empty
+    else if not (Procname.Set.mem proc_name (reachable_from_traces program)) then SpecChecker.CFG.Node.IdMap.empty
     else SpecChecker.cached_compute_invariant_map analysis_data
   in
   let specchecker_summaries =
@@ -261,26 +307,32 @@ let result_to_json ~time ~target_procs ~executed_procs =
   Utils.with_file_out Config.npex_localizer_result ~f:(fun oc -> Yojson.Basic.to_channel oc json)
 
 
-let parse_trace program =
-  let open Yojson.Basic.Util in
-  let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-  let json = read_json_file_exn "traces.json" in
-  let traces = json |> to_list in
-  let target_procs =
-    List.filter_map traces ~f:(fun trace_json ->
-        let loc =
-          let file = trace_json |> member "filepath" |> to_string |> source_file_from_string source_files in
-          let line = trace_json |> member "line" |> to_int in
-          Location.{line; file; col= -1}
-        in
-        match Program.find_node_with_location program loc with (proc, _) :: _ -> Some proc | [] -> None)
-  in
-  Program.slice_virtual_calls program (Procname.Set.of_list target_procs) (Procname.Set.of_list target_procs) ;
-  target_procs
+let filter_faults program faults =
+  let traces = parse_trace_nodes program in
+  Faults.filter
+    (fun {location} ->
+      let proc = InstrNode.get_proc_name location in
+      let trace_nodes =
+        if not (List.is_empty traces) then List.filter traces ~f:(Procname.equal proc <<< InterNode.get_proc_name)
+        else [NullPoint.get_nullpoint_list program |> List.hd_exn |> NullPoint.get_node]
+      in
+      let reachable_nodes =
+        List.filter trace_nodes ~f:(Program.is_reachable program (InstrNode.inode_of location))
+      in
+      (* L.progress "check %a reachables to one of %a@." (Pp.seq InterNode.pp) trace_nodes InstrNode.pp location ; *)
+      L.progress "%a is reachable from %a@." (Pp.seq InterNode.pp) reachable_nodes InstrNode.pp location ;
+      List.exists trace_nodes ~f:(Program.is_reachable program (InstrNode.inode_of location)))
+    faults
 
 
 let localize ~get_summary ~time program trace_procs =
   let nullpoint = NullPoint.get_nullpoint_list program |> List.hd_exn in
+  let npe_fault =
+    let node = NullPoint.(nullpoint.node) in
+    let instr = NullPoint.(nullpoint.instr) in
+    let nullexp = NullPoint.(nullpoint.null_access_expr) in
+    Fault.{location= InstrNode.of_pnode (InterNode.pnode_of node) instr; nullexp; fault_type= NullDeref}
+  in
   let trace_procs = Procname.Set.add (NullPoint.get_procname nullpoint) (Procname.Set.of_list trace_procs) in
   let executed_procs =
     Procname.Set.fold
@@ -290,7 +342,13 @@ let localize ~get_summary ~time program trace_procs =
       trace_procs Procname.Set.empty
   in
   L.progress "trace procs: %a@. Executed procs: %a@." Procname.Set.pp trace_procs Procname.Set.pp executed_procs ;
-  let faults = Procname.Set.fold (Faults.union <<< fst <<< get_summary) trace_procs Faults.empty in
+  let faults =
+    Procname.Set.fold (Faults.union <<< fst <<< get_summary) trace_procs (Faults.singleton npe_fault)
+    |> filter_faults program
+  in
   L.progress "@.Faults: %a@." Faults.pp faults ;
-  result_to_json ~time ~target_procs:executed_procs ~executed_procs ;
+  if Procname.Set.is_empty executed_procs then
+    let executed_procs = Program.cg_reachables_of program trace_procs in
+    result_to_json ~time ~target_procs:executed_procs ~executed_procs
+  else result_to_json ~time ~target_procs:executed_procs ~executed_procs ;
   generate_npe_list faults
