@@ -194,6 +194,8 @@ module MValue = struct
         Some (make_const ~prob (Const.Cint IntLit.one))
     | "0.0F" ->
         Some (make_const ~prob (Const.Cfloat 0.0))
+    | "java.lang.Double.NaN" ->
+        Some ([Call ("java.lang.Double.NaN", [])], prob)
     | "\"\"" ->
         Some (make_const ~prob (Const.Cstr ""))
     | "null" ->
@@ -205,10 +207,12 @@ module MValue = struct
         Some (make_nonnull ~prob) *)
     (* | "NPEXThrowable" ->
         Some (make_exn ~prob "java.lang.Exception") *)
-    | "java.lang.Object.class" ->
+    | "java.lang.Object.class" when String.equal "java.lang.Class" type_str ->
         Some (make_const ~prob (Const.Cstr "java.lang.Object"))
     | "java.util.Collections.emptySet()" | "java.util.Collections.emptyList()" | "java.util.Collections.emptyMap()"
       ->
+        Some ([Call ("newCollection", [])], prob)
+    | "NPEXDefaultNew" when String.equal "java.util.Collection" type_str ->
         Some ([Call ("newCollection", [])], prob)
     | "EQ, $(0), null" ->
         (* TODO: parse it by regular expression *)

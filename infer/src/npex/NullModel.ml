@@ -97,8 +97,9 @@ module LocFieldMValueMap = struct
         let mvalues = null_mvalues @ non_null_mvalues in
         List.fold mvalues ~init:acc ~f:(fun acc mval ->
             add_elt (LocField.make loc invoked_field model_index) mval acc)
-      with Unexpected _ ->
-        L.progress "[WARNING]: could not find source file %s from captured files@." filename ;
+      with Unexpected msg ->
+        (* L.(debug V) "[WARNING]: error occurs during parsing null model values:@.%s@." msg ; *)
+        L.(debug Analysis Verbose) "[WARNING]: could not find source file %s from captured files@." filename ;
         acc
     in
     List.fold site_model_list ~init:empty ~f:parse_and_collect
@@ -172,11 +173,12 @@ let filter_feasible_top3_values instr_node mvalues =
   let mvalues_top3 mvalues =
     (* HEURISTICS for state explosion *)
     (* TODO: or remove it by pruning states with too low probability *)
-    let compare_prob (_, l_prob) (_, r_prob) = (r_prob -. l_prob) *. 100.0 |> Int.of_float in
+    let compare_prob (_, l_prob) (_, r_prob) =
+      try (r_prob -. l_prob) *. 100.0 |> Int.of_float
+      with _ -> L.(die InternalError) "%a@." (Pp.seq MValue.pp) mvalues
+    in
     (* remove model value with less than 1% *)
-    list_top_n mvalues ~compare:compare_prob ~n:3
-    |> List.filter ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
-    |> MValueSet.of_list
+    list_top_n mvalues ~compare:compare_prob ~n:3 |> MValueSet.of_list
   in
   match InstrNode.get_instr instr_node with
   | Sil.Call ((_, ret_typ), Const (Cfun callee), arg_typs, _, _)
@@ -184,7 +186,10 @@ let filter_feasible_top3_values instr_node mvalues =
       (* No NULL *)
       let feasibles, infeasibles = List.partition_tf non_null_mvalues ~f:(is_feasible ret_typ arg_typs) in
       let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
-      let feasibles = List.map ~f:(fun (mexp, prob) -> (mexp, prob /. (1.0 -. infeasible_prob))) feasibles in
+      let feasibles =
+        List.filter feasibles ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
+        |> List.map ~f:(fun (mexp, prob) -> (mexp, prob /. (1.0 -. infeasible_prob)))
+      in
       let mvalues_top3 = mvalues_top3 feasibles in
       L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
       mvalues_top3
@@ -195,15 +200,17 @@ let filter_feasible_top3_values instr_node mvalues =
       if List.is_empty feasibles then MValueSet.singleton null_mvalue
       else
         let infeasible_prob = List.fold infeasibles ~init:0.0 ~f:(fun acc (_, prob) -> prob +. acc) in
-        let feasibles =
-          List.map
-            ~f:(fun (mexp, prob) -> (mexp, prob *. (1.0 -. snd null_mvalue) /. (1.0 -. infeasible_prob)))
-            feasibles
-        in
-        L.progress "Lifted Feasibles: %a (%f)@." (Pp.seq MValue.pp) feasibles infeasible_prob ;
-        let mvalues_top3 = mvalues_top3 (null_mvalue :: feasibles) in
-        L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
-        mvalues_top3
+        if Float.( > ) infeasible_prob 0.99 then MValueSet.empty
+        else
+          let feasibles =
+            List.filter feasibles ~f:(fun (_, prob) -> Float.( > ) prob 0.01)
+            |> List.map ~f:(fun (mexp, prob) ->
+                   (mexp, prob *. (1.0 -. snd null_mvalue) /. (1.0 -. infeasible_prob)))
+          in
+          (* L.progress "Lifted Feasibles: %a (%f)@." (Pp.seq MValue.pp) feasibles infeasible_prob ; *)
+          let mvalues_top3 = mvalues_top3 (null_mvalue :: feasibles) in
+          L.(debug Analysis Verbose) "Top 3 values: %a@." MValueSet.pp mvalues_top3 ;
+          mvalues_top3
   | _ ->
       MValueSet.empty
 
@@ -229,7 +236,9 @@ let construct pdesc : t =
               match LocFieldMValueMap.find_opt loc_field loc_field_mvalue_map with
               | Some mvalues ->
                   let pos : Pos.t = (instr_node, index) in
+                  (* L.progress "filter mvalues of %a: %a@." Pos.pp pos MValueSet.pp mvalues ; *)
                   let mvalues_top3 = filter_feasible_top3_values instr_node mvalues in
+                  (* L.progress "MValues of %a: %a@." Pos.pp pos MValueSet.pp mvalues_top3 ; *)
                   add pos mvalues_top3 acc
               | None ->
                   acc )
