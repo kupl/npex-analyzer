@@ -27,6 +27,8 @@ val get_deref_field : t -> string
 
 val is_local : Procdesc.t -> t -> bool
 
+val is_formal : t -> bool
+
 val is_sub_expr : sub:t -> t -> bool
 
 val is_var : t -> bool

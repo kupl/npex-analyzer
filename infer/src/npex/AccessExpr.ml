@@ -78,7 +78,8 @@ module S = struct
     | FieldAccess fld ->
         F.fprintf fmt ".%s" (Fieldname.get_field_name fld)
     | MethodCallAccess (method_name, args) ->
-        F.fprintf fmt ".%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args
+        F.fprintf fmt ".%s(%a)" (Procname.to_string method_name) (Pp.seq ~sep:", " pp) args
+        (* F.fprintf fmt ".%s(%a)" (Procname.get_method method_name) (Pp.seq ~sep:", " pp) args *)
     | ArrayAccess index ->
         F.fprintf fmt "[%a]" pp index
 
@@ -104,6 +105,8 @@ module S = struct
   let is_var (base, accesses) =
     match base with (Formal _ | Variable _) when List.is_empty accesses -> true | _ -> false
 
+
+  let is_formal (base, _) = match base with Formal _ -> true | _ -> false
 
   let is_local pdesc (base, _) =
     let formals = Procdesc.get_ret_var pdesc :: (Procdesc.get_pvar_formals pdesc |> List.map ~f:fst) in
