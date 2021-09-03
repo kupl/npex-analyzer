@@ -113,7 +113,7 @@ type t =
   ; defined_aps: APSet.t }
 [@@deriving compare]
 
-let pp fmt {pc; output; symbols; uncaught_npes; local_output; defined_aps} =
+let pp fmt {pc; output; symbols; uncaught_npes; local_output; defined_aps; executed_calls} =
   F.fprintf fmt
     "@[<v 2> - Formula:@,\
     \   %a@,\n\
@@ -123,11 +123,15 @@ let pp fmt {pc; output; symbols; uncaught_npes; local_output; defined_aps} =
     \   %a@,\n\
     \     - Symbol used:@,\
     \   %a@,\n\
+    \     - Executed calls:@,\
+    \   %a@,\n\
     \     - Defined Exprs:@,\
     \   %a@,\n\
     \     - Uncaughted NPEs:@,\
-    \   %a@]" Formula.pp_set pc Formula.pp_set output Formula.pp_set local_output Val.Set.pp symbols APSet.pp
-    defined_aps APSet.pp uncaught_npes
+    \   %a@,\
+     @]"
+    Formula.pp_set pc Formula.pp_set output Formula.pp_set local_output Val.Set.pp symbols ExecutedCallExps.pp
+    executed_calls APSet.pp defined_aps APSet.pp uncaught_npes
 
 
 let pp_executed_calls fmt {executed_calls} =
@@ -169,7 +173,7 @@ let make_formula binop ap_set1 ap_set2 =
       Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
 
 
-let encoding_memory val_to_ap astate =
+let encoding_memory ~is_local val_to_ap astate =
   Domain.Mem.fold
     (fun l v ->
       let aps_loc, aps_val = (ValToAP.find_loc l val_to_ap, ValToAP.find v val_to_ap) in
@@ -184,8 +188,17 @@ let encoding_memory val_to_ap astate =
              | _ ->
                  true)
       in
+      let inequal_formula =
+        let init =
+          let null_aps = if Val.is_allocsite v then APSet.singleton AccessExpr.null else APSet.empty in
+          make_formula Binop.Ne aps_val null_aps
+        in
+        List.fold (Domain.inequal_values astate v) ~init ~f:(fun acc v' ->
+            let aps_val' = ValToAP.find v' val_to_ap in
+            make_formula Binop.Ne aps_loc aps_val' |> Formula.join acc)
+      in
       (* L.debug_dev "Formula: %a@." Formula.pp_set formula ; *)
-      Formula.join formula)
+      if is_local then Formula.join formula inequal_formula |> Formula.join else Formula.join formula)
     Domain.(astate.mem)
     Formula.empty
 
@@ -204,7 +217,7 @@ let from_state proc_desc (astate_local : Domain.t) : t =
   in
   let val_to_ap_public = do_worklist astate_public ValToAP.empty in
   let val_to_ap_local = do_worklist astate_local ValToAP.empty in
-  L.progress "ValToAP: %a@." ValToAP.pp val_to_ap_public ;
+  (* L.progress "ValToAP: %a@." ValToAP.pp val_to_ap_public ; *)
   (* L.progress "=========================convert state ================@.%a@." Domain.pp astate ; *)
   let pc_formula =
     let pathcond_to_formula = function
@@ -225,13 +238,13 @@ let from_state proc_desc (astate_local : Domain.t) : t =
       (Domain.PC.to_pc_set astate_public.pc) Formula.empty
     |> Formula.add exception_cond
   in
-  L.progress "PC Formula %a@." Formula.pp_set pc_formula ;
+  (* L.progress "PC Formula %a@." Formula.pp_set pc_formula ; *)
   let output =
-    let result = encoding_memory val_to_ap_public astate_public in
+    let result = encoding_memory ~is_local:false val_to_ap_public astate_public in
     result
   in
   let local_output =
-    let result = encoding_memory val_to_ap_local astate_local in
+    let result = encoding_memory ~is_local:true val_to_ap_local astate_local in
     result
   in
   let uncaught_npes =
@@ -250,9 +263,17 @@ let from_state proc_desc (astate_local : Domain.t) : t =
     let executed_call_values = Domain.(astate_local.executed_calls) in
     ExecutedCalls.fold
       (fun (ret, fexp) ->
-        let ret_aps = ValToAP.find ret val_to_ap_local in
-        let fexps = ValToAP.find fexp val_to_ap_local in
-        APSet.fold (fun ret_ap -> APSet.fold (fun f_ap -> ExecutedCallExps.add (ret_ap, f_ap)) fexps) ret_aps)
+        (* let ret_aps = ValToAP.find ret val_to_ap_local in
+           let fexps = ValToAP.find fexp val_to_ap_local in *)
+        (* APSet.fold (fun ret_ap -> APSet.fold (fun f_ap -> ExecutedCallExps.add (ret_ap, f_ap)) fexps) ret_aps) *)
+        match fexp with
+        | Val.Vextern (callee, _) ->
+            let method_call_access = AccessExpr.MethodCallAccess (callee, []) in
+            let f_ap = AccessExpr.append_access AccessExpr.dummy method_call_access in
+            let ret_ap = AccessExpr.dummy in
+            ExecutedCallExps.add (ret_ap, f_ap)
+        | _ ->
+            fun x -> x)
       executed_call_values ExecutedCallExps.empty
     (* (ValToAP.find v val_to_ap |> APSet.union) executed_call_values APSet.empty *)
   in
@@ -279,8 +300,8 @@ let check_sat ?(print_unsat = false) (infered : t) (patched : t) =
   true
 
 
-let filter_by_defined_aps defined_aps formula =
-  Formula.filter_by_value formula ~f:(fun ap -> APSet.mem ap defined_aps)
+let filter_by_defined_aps ~is_local defined_aps formula =
+  Formula.filter_by_value formula ~f:(fun ap -> (is_local && AccessExpr.is_formal ap) || APSet.mem ap defined_aps)
 
 
 let check_valid ?(print_invalid = false) (infered : t) (patched : t) =
@@ -291,9 +312,13 @@ let check_valid ?(print_invalid = false) (infered : t) (patched : t) =
     let output2 = Formula.merge patched.pc infered.output in
     Formula.join output1 output2
   in
-  let infered_output = Formula.join missing_output infered.output |> filter_by_defined_aps defined_aps in
-  let patched_output = Formula.join missing_output patched.output |> filter_by_defined_aps defined_aps in
-  L.progress "check sat %a, %a@." Formula.pp_set infered.pc Formula.pp_set patched.pc ;
+  let infered_output =
+    Formula.join missing_output infered.output |> filter_by_defined_aps ~is_local:false defined_aps
+  in
+  let patched_output =
+    Formula.join missing_output patched.output |> filter_by_defined_aps ~is_local:false defined_aps
+  in
+  (* L.progress "check sat %a, %a@." Formula.pp_set infered.pc Formula.pp_set patched.pc ; *)
   let result =
     Formula.check_sat infered.pc patched.pc
     && Bool.equal (APSet.is_empty infered.uncaught_npes) (APSet.is_empty patched.uncaught_npes)
@@ -308,12 +333,14 @@ let check_valid ?(print_invalid = false) (infered : t) (patched : t) =
 
 let check_syn_equiv (infered : t) (patched : t) =
   let defined_aps = APSet.inter infered.defined_aps patched.defined_aps in
-  let infered_output = filter_by_defined_aps defined_aps infered.local_output in
-  let patched_output = filter_by_defined_aps defined_aps patched.local_output in
+  let infered_output = filter_by_defined_aps defined_aps ~is_local:true infered.local_output in
+  let patched_output = filter_by_defined_aps defined_aps ~is_local:true patched.local_output in
   (* L.progress "Compare %a and %a on %a@.Acutial compare: %a, %a@." Formula.pp_set infered.local_output
      Formula.pp_set patched.local_output APSet.pp defined_aps Formula.pp_set infered_output Formula.pp_set
      patched_output ; *)
-  check_valid infered patched && Formula.check_valid ~print_invalid:false infered_output patched_output
+  check_valid infered patched
+  && Formula.check_valid ~print_invalid:false infered_output patched_output
+  && ExecutedCallExps.equal infered.executed_calls patched.executed_calls
 
 
 let join lhs rhs =

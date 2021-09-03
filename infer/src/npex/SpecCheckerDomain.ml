@@ -44,10 +44,15 @@ let pp fmt
     ; nullptrs
     ; fault
     ; uncaught_npes
-    ; executed_procs } =
+    ; temps_to_remove
+    ; executed_procs
+    ; executed_calls } =
   let executed_procs_str =
-    if Config.debug_mode then F.asprintf " - Executed Procs:@,   %a" Procname.Set.pp executed_procs else ""
+    if Int.equal Config.debug_level_analysis 3 then
+      F.asprintf " - Executed Procs:@,   %a" Procname.Set.pp executed_procs
+    else ""
   in
+  let executed_call_str = F.asprintf " - Executed Procs:@,   %a" ExecutedCalls.pp executed_calls in
   F.fprintf fmt
     "@[<v 2>  - Register:@,\
     \   %a@,\
@@ -63,9 +68,12 @@ let pp fmt
     \   %a, %a@,\
     \ - Uncaughted NPEs:@,\
     \   %a@,\
+    \ - Temps to remove:@,\
+    \   %a@,\
+    \ %s@,\
     \ %s@]" Reg.pp reg Mem.pp mem PC.pp pc is_npe_alternative is_exceptional probability NullModel.pp
-    applied_models (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes
-    executed_procs_str
+    applied_models (Pp.option NullPoint.pp) fault Val.Set.pp nullptrs (Pp.seq Val.pp) uncaught_npes Vars.pp
+    temps_to_remove executed_procs_str executed_call_str
 
 
 let cardinal x =
@@ -221,7 +229,8 @@ let remove_temps astate ~line vars =
                 remove_pvar astate' ~line ~pv)
           astate.temps_to_remove astate
       in
-      {astate_temps_removed with temps_to_remove= Vars.of_list vars}
+      (* For some case, Nullify(bcvar1); ExitScope([bcvar1]) *)
+      {astate_temps_removed with temps_to_remove= Vars.diff (Vars.of_list vars) astate.temps_to_remove}
 
 
 let remove_locals astate ~pdesc =
@@ -320,10 +329,10 @@ let set_nullptrs astate vals = {astate with nullptrs= Val.Set.union vals astate.
 
 let add_executed_proc astate proc = {astate with executed_procs= Procname.Set.add proc astate.executed_procs}
 
-let record_call astate callee ret_value arg_values =
-  (* { astate with
-     executed_calls= ExecutedCalls.add (ret_value, Val.Vextern (callee, arg_values)) astate.executed_calls } *)
-  astate
+let record_call astate node instr callee ret_value arg_values =
+  (* if Val.is_bottom ret_value then *)
+  (* else astate *)
+  {astate with executed_calls= ExecutedCalls.add (ret_value, Val.Vextern (callee, [])) astate.executed_calls}
 
 
 (* Symbolic domain *)
@@ -597,16 +606,6 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   let uncaught_npes' =
     SymResolvedMap.resolve_uncaught_npes sym_resolved_map callee_summary.uncaught_npes astate.uncaught_npes
   in
-  let fault' : NullPoint.t option =
-    match (astate.fault, callee_summary.fault) with
-    | None, fault_opt ->
-        fault_opt
-    | Some fault, None ->
-        Some fault
-    | Some fault, Some _ ->
-        (* TODO: this will not be merged *)
-        Some fault
-  in
   let applied_models' =
     NullModel.union (fun _ l _ -> Some l) astate.applied_models callee_summary.applied_models
   in
@@ -622,7 +621,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; is_npe_alternative= callee_summary.is_npe_alternative || astate.is_npe_alternative
     ; is_exceptional= callee_summary.is_exceptional (* since exceptional state cannot execute fuction *)
     ; nullptrs= nullptrs'
-    ; fault= fault'
+    ; fault= astate.fault
     ; applied_models= applied_models'
     ; probability= probability'
     ; executed_procs= executed_procs'
@@ -631,6 +630,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     ; current_proc= astate.current_proc
     ; executed_calls= executed_calls' }
   in
+  let is_callee_only_fault = match (astate.fault, callee_summary.fault) with None, Some _ -> true | _ -> false in
   if PC.is_invalid pc' then (
     L.d_printfln "@.===== Summary is invalidated by pathcond =====@." ;
     L.d_printfln " - resolved state: %a@." pp astate' ;
@@ -651,6 +651,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
     L.d_printfln " - callee state: %a@. - symresolved_map: %a@." pp callee_summary SymResolvedMap.pp
       sym_resolved_map ;
     None (* None *) )
+  else if Config.npex_launch_spec_inference && is_callee_only_fault then None
   else Some astate'
 
 
@@ -840,7 +841,26 @@ let remove_unreachables ({mem; pc} as astate) =
 let unify lhs rhs : t * t =
   let all_locs =
     (* TODO: unify non-memory symbols? or guarantee all symbols are in memory *)
-    Mem.fold (fun l _ acc -> l :: acc) lhs.mem []
+    let left_locs = Mem.fold (fun l _ acc -> l :: acc) lhs.mem [] in
+    Mem.fold
+      (fun l' _ acc -> if Mem.mem l' lhs.mem then acc else if Loc.is_symbolic l' then l' :: acc else acc)
+      rhs.mem left_locs
+  in
+  let lhs, rhs =
+    List.fold all_locs ~init:(lhs, rhs) ~f:(fun (lhs_acc, rhs_acc) l ->
+        if Loc.is_symbolic l then
+          match (Mem.find l lhs.mem, Mem.find l rhs.mem) with
+          | Val.Vheap _, Val.Bot ->
+              (lhs_acc, resolve_unknown_loc rhs_acc Typ.void_star l)
+          | Val.Vint _, Val.Bot ->
+              (lhs_acc, resolve_unknown_loc rhs_acc Typ.int l)
+          | Val.Bot, Val.Vheap _ ->
+              (resolve_unknown_loc lhs_acc Typ.void_star l, rhs_acc)
+          | Val.Bot, Val.Vint _ ->
+              (resolve_unknown_loc lhs_acc Typ.int l, rhs_acc)
+          | _ ->
+              (lhs_acc, rhs_acc)
+        else (lhs_acc, rhs_acc))
   in
   let extern_locs, concrete_locs =
     List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
@@ -1012,7 +1032,8 @@ let joinable lhs rhs =
   && Bool.equal lhs.is_exceptional rhs.is_exceptional
   && Bool.equal (has_uncaught_npes lhs) (has_uncaught_npes rhs)
   (* sound NullModel.join intersects two nullModel, but we don't want to. *)
-  && NullModel.equal NullModel.MValueSet.equal lhs.applied_models rhs.applied_models
+  && NullModel.equal_except_no_apply lhs.applied_models rhs.applied_models
+  (* && NullModel.equal NullModel.MValueSet.equal lhs.applied_models rhs.applied_models *)
   && Option.equal NullPoint.equal lhs.fault rhs.fault
   && has_no_significant_diff lhs rhs
 
@@ -1062,7 +1083,7 @@ let weak_join lhs rhs : t =
           if List.mem acc ~equal:Val.equal_up_to_source null then acc else null :: acc)
     in
     let temps_to_remove = Vars.union lhs.temps_to_remove rhs.temps_to_remove in
-    let executed_calls = ExecutedCalls.union lhs.executed_calls rhs.executed_calls in
+    let executed_calls = ExecutedCalls.inter lhs.executed_calls rhs.executed_calls in
     let joined =
       { reg
       ; mem

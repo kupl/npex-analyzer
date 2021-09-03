@@ -106,7 +106,7 @@ val set_nullptrs : t -> Val.Set.t -> t
 
 val add_executed_proc : t -> Procname.t -> t
 
-val record_call : t -> Procname.t -> Val.t -> Val.t list -> t
+val record_call : t -> Procdesc.Node.t -> Sil.instr -> Procname.t -> Val.t -> Val.t list -> t
 
 val add_pc_simple : ?is_branch:bool -> t -> PathCond.t -> t
 
