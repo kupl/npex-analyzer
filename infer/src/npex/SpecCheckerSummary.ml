@@ -46,7 +46,7 @@ let resolve_summary astate ~actual_values ~callee_pdesc callee_summaries =
   let callee_unreachable_removed =
     List.map ~f:StateWithFeature.get_astate callee_summaries
     (* FIXME: bottom state implys identity function, it would be better not to remove it *)
-    |> Domain.merge
+    |> (if Config.npex_launch_localize then Domain.merge else fun x -> x)
     (* |> join_list ~joinable:Domain.joinable ~join:Domain.weak_join ~pp:Domain.pp *)
     |> List.map ~f:(append_ctx (Procdesc.get_proc_name callee_pdesc))
   in

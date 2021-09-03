@@ -34,6 +34,8 @@ module S = struct
   let from_state proc_desc astate =
     let astate_with_local = remove_local astate in
     let astate_wo_unreachables = Domain.remove_unreachables astate_with_local in
+    if Domain.is_bottom astate_wo_unreachables then
+      L.progress "state becomes bottom after removing unreachables@.Original:@.%a@." Domain.pp astate_with_local ;
     {astate= astate_wo_unreachables; astate_with_local; features= Features.from_state proc_desc astate}
 
 

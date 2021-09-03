@@ -28,6 +28,8 @@ let is_main_func pname = String.equal "main" (Procname.get_method pname)
 
 let is_call_instr = function Sil.Call _ -> true | _ -> false
 
+let is_virtual_call_instr = function Sil.Call (_, _, _, _, {cf_virtual}) -> cf_virtual | _ -> false
+
 let is_load_instr = function Sil.Load _ -> true | _ -> false
 
 let is_store_instr = function Sil.Store _ -> true | _ -> false

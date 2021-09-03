@@ -934,7 +934,8 @@ module ExecutedCall = struct
 
   let replace_sub ~src ~dst (ret, fexp) = (Val.replace_sub ret ~src ~dst, Val.replace_sub fexp ~src ~dst)
 
-  let pp fmt (ret, fexp) = F.fprintf fmt "(%a, %a)" Val.pp ret Val.pp fexp
+  (* let pp fmt (ret, fexp) = F.fprintf fmt "(%a, %a)" Val.pp ret Val.pp fexp *)
+  let pp fmt (_, fexp) = match fexp with Val.Vextern (proc, _) -> F.fprintf fmt "%a" Procname.pp proc | _ -> ()
 end
 
 module ExecutedCalls = struct
