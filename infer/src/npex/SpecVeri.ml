@@ -9,6 +9,7 @@ module MValues = NullModel.MValueSet
 module MValue = NullModel.MValue
 module MExp = NullModel.MExp
 module MExps = PrettyPrintable.MakePPSet (MExp)
+module KeyModel = PrettyPrintable.MakePPMonoMap (ModelKey) (MValue)
 module Model = PrettyPrintable.MakePPMonoMap (ModelKey) (MExp)
 module Models = PrettyPrintable.MakePPMonoMap (ModelKey) (MExps)
 module Val = Domain.Val
@@ -19,7 +20,22 @@ let score spec =
     List.fold ~init:NullModel.empty spec ~f:(fun acc Domain.{applied_models} ->
         NullModel.union (fun _ lhs _ -> Some lhs) acc applied_models)
   in
-  NullModel.compute_probability applied_models
+  let key_model =
+    NullModel.fold
+      (fun pos mvalues acc ->
+        let mexp', prob' = MValues.choose mvalues in
+        let key = Pos.to_key pos in
+        match KeyModel.find_opt key acc with
+        | _ when List.is_empty mexp' ->
+            acc
+        | Some (mexp, prob) ->
+            KeyModel.add key (mexp, (prob +. prob') /. 2.0) acc
+        | None ->
+            KeyModel.add key (mexp', prob') acc)
+      applied_models KeyModel.empty
+  in
+  KeyModel.fold (fun _ (_, prob) acc -> prob +. acc) key_model 0.5
+  /. (KeyModel.cardinal key_model + 1 |> Float.of_int)
 
 
 let print_spec spec =
@@ -56,6 +72,11 @@ module Specs = struct
     for_all (exists_valid ~check_valid infered_normal) patched_normal
     && for_all (exists_valid ~check_valid patched_normal) infered_normal
     && for_all (exists_valid ~check_valid infered_exceptional) patched_exceptional
+
+
+  let pp fmt specs =
+    F.fprintf fmt "=================== Specs =====================@," ;
+    List.iteri (elements specs) ~f:(fun i spec -> F.fprintf fmt "%d-th spec:@, - %a@," i Spec.pp spec)
 
   (* && for_all (exists_valid ~check_valid x) y *)
 end
@@ -262,6 +283,13 @@ let verify proc_desc summary_inferenced summary_patched =
       let check_valid = Spec.check_syn_equiv in
       let category = if is_alternative then "FAIL_SYN" else "FAIL_SYN_NORMAL" in
       List.for_all tuples ~f:(fun (sat_inferenced_specs, sat_patched_specs) ->
+          (* let exceptional_filtered =
+               Specs.filter
+                 (fun spec ->
+                   let check_valid = Spec.check_sat ~print_unsat:false in
+                   Spec.is_exceptional spec && Specs.exists_valid ~check_valid sat_patched_specs spec)
+                 sat_inferenced_specs
+             in *)
           let is_valid = Specs.check_valid ~check_valid sat_inferenced_specs sat_patched_specs in
           ( if not is_valid then
             let unmatched_infered =
@@ -354,6 +382,17 @@ let verify proc_desc summary_inferenced summary_patched =
    let specs_patched = Specs.from_disjuncts proc_desc (states_patched @ states_patched_normal) in
    verify ~specs_inferenced ~specs_patched *)
 
+let has_caller_npe program get_summary target_proc =
+  let callers = Program.callers_of_proc program target_proc in
+  List.exists callers ~f:(fun caller ->
+      try
+        let summary = get_summary caller |> SpecCheckerSummary.get_disjuncts in
+        let alternative_states = List.filter summary ~f:Domain.is_npe_alternative in
+        if List.is_empty alternative_states then false
+        else List.for_all alternative_states ~f:Domain.has_uncaught_npes
+      with _ -> (* caller not analyzed *) false)
+
+
 let launch ~get_summary ~get_original_summary =
   let program = Program.build () in
   let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
@@ -373,6 +412,10 @@ let launch ~get_summary ~get_original_summary =
   (* L.progress "patched summaries: %a@." (Pp.seq ~sep:"\n" Domain.pp) summary_patched ; *)
   let result : result = verify target_pdesc summary_inferenced summary_patched in
   match result with
+  | _ when has_caller_npe program get_summary target_proc ->
+      L.progress "[FAIL]: NPE remains in patch@." ;
+      print_result () ;
+      L.exit 13
   | SynEquiv ->
       L.progress "[SUCCESS]: the patch is verified w.r.t. specification (SynEquiv) @." ;
       print_result () ;
