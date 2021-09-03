@@ -155,3 +155,5 @@ let get_procname {node} = InterNode.get_proc_name node
 let get_method np = Procname.get_method (get_procname np)
 
 let get_pdesc np = Option.value_exn (Procdesc.load (get_procname np))
+
+let get_node {node} = node

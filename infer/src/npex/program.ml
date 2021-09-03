@@ -483,7 +483,7 @@ let build () : t =
             (* TODO: why only defined?  *)
             let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
             List.iter callees_defed ~f:(add_call_edge program instr_node) ;
-            if List.is_empty callees_undefed then acc else InstrNode.Set.add instr_node acc))
+            if not (List.is_empty callees_defed) &&  List.is_empty callees_undefed then acc else InstrNode.Set.add instr_node acc))
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;

@@ -15,6 +15,12 @@ let is_applicable pos mval t =
     t
 
 
+let equal_except_no_apply lhs rhs =
+  let lhs = filter (fun _ mvals -> not (MValueSet.equal mvals (MValueSet.singleton MValue.no_apply))) lhs in
+  let rhs = filter (fun _ mvals -> not (MValueSet.equal mvals (MValueSet.singleton MValue.no_apply))) rhs in
+  equal MValueSet.equal lhs rhs
+
+
 let joinable lhs rhs =
   (* TODO: should apply same model for same deref-field *)
   for_all (fun pos mvals_lhs -> is_applicable pos (MValueSet.choose mvals_lhs) rhs) lhs

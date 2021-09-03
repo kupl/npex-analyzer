@@ -61,6 +61,9 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
           (* Inapplicable model *)
           L.progress "[WARNING]: inapplicable model %a to %a@." MValue.pp mval Pos.pp pos ;
           []
+      | [MExp.Call ("java.lang.Double.NaN", [])], _ ->
+          let callee = Procname.from_string_c_fun "java.lang.Double.NaN" in
+          Domain.bind_extern_value astate (Node.of_pnode node instr) (ret_id, ret_typ) callee [] 
       | [MExp.Call ("newCollection", [])], _ ->
           let value = Domain.Val.make_allocsite instr_node in
           let astate' = Domain.store_reg astate ret_id value in
@@ -91,9 +94,16 @@ let exec_model astate proc_desc node instr (ret_id, ret_typ) arg_typs callee pos
       []
 
 
-let exec astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs callee =
+
+let exec ~is_library ~must astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs callee =
   let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
   match find_model_index astate node instr arg_values with
+  | Some (_, pos) when not (is_library) && is_virtual_call_instr instr && not (Int.equal pos 0) && not must -> 
+    (* a.foo(NULL), but foo is defined *)
+    []
+  | Some _ when not (is_library) && not (is_virtual_call_instr instr) && not must -> 
+    (* foo(NULL), but foo is defined *)
+    []
   | Some model_pos -> (
       L.d_printfln "*** Found model_index %a ***" Pos.pp model_pos ;
       match NullModel.find_opt model_pos null_model with

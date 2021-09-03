@@ -30,7 +30,7 @@ module DisjReady = struct
         if Config.npex_manual_model then ManualNullModel.construct_manual_model proc_desc
         else NullModel.construct proc_desc
       in
-      if Int.equal Config.debug_level_analysis 1 then
+      if Config.debug_level_analysis >= 3 then
         L.debug_dev "@.======= Null Model of %a ========@.%a@." Procname.pp (Procdesc.get_proc_name proc_desc)
           NullModel.pp null_model ;
       {program; interproc; npe_list= Some (NullPoint.get_nullpoint_list program); patch= None; null_model} )
@@ -52,6 +52,7 @@ module DisjReady = struct
       in
       match List.find (IOption.find_value_exn npe_list) ~f:is_npe_instr with
       | Some (NullPoint.{null_exp; instr} as npe) when not (has_different_npe astate null_exp) ->
+          L.d_printfln " - Found null pointer expression %a" Exp.pp null_exp ;
           let nullvalue =
             match instr with
             | Sil.Metadata Skip ->
@@ -308,12 +309,14 @@ module DisjReady = struct
       ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}; program} as analysis_data) node instr
       (ret_id, ret_typ) arg_typs callee =
     (* TODO: refactoring *)
+    (* L.progress "method name of %a: %s@. (%b) (%d)" Procname.pp callee (Procname.get_method callee)
+       (Procname.is_java callee) (List.length arg_typs) ; *)
     if SpecCheckerModels.is_model callee instr then (
       L.d_printfln "execute model function" ;
       SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs )
     else
       let callee =
-        match Program.unique_callee_of_instr_node_opt analysis_data.program (Node.of_pnode node instr) with
+        match Program.unique_callee_of_instr_node_opt program (Node.of_pnode node instr) with
         | Some callee ->
             callee
         | None ->
@@ -350,14 +353,17 @@ module DisjReady = struct
      @ List.concat_map non_null_states ~f:(fun non_null_state ->
            exec_unknown_method non_null_state node instr (ret_id, ret_typ) arg_typs callee) *)
 
-  let exec_null_model astate {interproc= InterproceduralAnalysis.{proc_desc}; null_model} node instr
-      (ret_id, ret_typ) arg_typs callee =
+  let exec_null_model ~is_library ~must astate
+      {interproc= InterproceduralAnalysis.{proc_desc}; null_model; program} node instr (ret_id, ret_typ) arg_typs
+      callee =
     if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
-      NullSpecModel.exec astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs callee
+      NullSpecModel.exec ~is_library ~must astate null_model proc_desc node instr (ret_id, ret_typ) arg_typs callee
     else []
 
 
-  let exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee =
+  let exec_interproc_call astate
+      ({interproc= InterproceduralAnalysis.{analyze_dependency}; program} as analysis_data) node instr ret_typ
+      arg_typs callee =
     let normal_states =
       let apply_no_model astate =
         let arg_values = List.map arg_typs ~f:(fun (arg_exp, _) -> Domain.eval astate node instr arg_exp) in
@@ -366,7 +372,11 @@ module DisjReady = struct
           else if Typ.is_void (snd ret_typ) then Domain.Val.bottom
           else Domain.eval astate node instr (Exp.Var (fst ret_typ))
         in
-        let astate = Domain.record_call astate callee ret_value arg_values in
+        let astate =
+          (* TODO: invocation whose return is unused *)
+          if Typ.is_void (snd ret_typ) then Domain.record_call astate node instr callee ret_value arg_values
+          else astate
+        in
         if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
           match NullSpecModel.find_model_index astate node instr arg_values with
           | Some pos ->
@@ -391,7 +401,54 @@ module DisjReady = struct
       in
       List.concat_map posts ~f:apply_no_model
     in
-    let inferenced_states = exec_null_model astate analysis_data node instr ret_typ arg_typs callee in
+    let inferenced_states =
+      if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then (
+        (* Apply null model for foo if
+           1. NPE occurs by null arguments (e.g., foo(NULL) -> NPE)
+           2. NPE occurs by dereferencing base variable (e.g., NULL.foo())
+           3. foo is extern function (NPE may occur)
+        *)
+        let summary_opt =
+          let callee =
+            match Program.unique_callee_of_instr_node_opt program (Node.of_pnode node instr) with
+            | Some callee ->
+                callee
+            | None ->
+                callee
+          in
+          analyze_dependency callee
+        in
+        let has_inferred_summary =
+          match summary_opt with
+          | Some (_, summary) ->
+              SpecCheckerSummary.get_disjuncts summary |> List.exists ~f:Domain.is_inferred
+          | None ->
+              false
+        in
+        let is_library =
+          let is_model = SpecCheckerModels.is_model callee instr in
+          let has_summary = Option.is_some summary_opt in
+          not (is_model || has_summary)
+          (* || Program.is_library_call analysis_data.program (Node.of_pnode node instr) *)
+        in
+        L.progress "Is library : %b (%a)@." is_library Node.pp (Node.of_pnode node instr) ;
+        (* L.progress "Callees: %a@." (Pp.seq Procname.pp) Program.callees_of_instr_node program
+           Node.of_pnode node instr ; *)
+        if
+          List.is_empty normal_states (* this != null, but call by null = this *)
+          || (List.exists normal_states ~f:Domain.has_uncaught_model_npes && not has_inferred_summary)
+        then (
+          (* only apply model if NPE occurs in callee *)
+          L.progress
+            "Execute %a by model since NPE occurs in \
+             callee@.%a@.=================================================@."
+            Procname.pp callee (Pp.seq Domain.pp)
+            (List.filter normal_states ~f:Domain.has_uncaught_model_npes) ;
+          (* In some case, virtual flag is not annotated. *)
+          exec_null_model ~is_library ~must:true astate analysis_data node instr ret_typ arg_typs callee )
+        else exec_null_model ~is_library ~must:false astate analysis_data node instr ret_typ arg_typs callee )
+      else []
+    in
     normal_states @ inferenced_states
 
 
@@ -541,6 +598,23 @@ module DisjReady = struct
         [astate]
 
 
+  let check_debug node instr astate =
+    (* Domain.Mem.iter
+       (fun l v ->
+         let l_str = F.asprintf "%a" Domain.Loc.pp l in
+         if String.equal l_str "(Pvar) r" then
+           if List.exists (Domain.equal_values astate v) ~f:Domain.Val.is_null then
+             let null_cond = Domain.PathCond.make_physical_equals Binop.Eq v Domain.Val.default_null in
+             if Domain.PC.PCSet.mem null_cond Domain.(astate.pc.branches) then
+               L.(debug Analysis Quiet)
+                 "%a is in branch cond at %a@." Domain.Val.pp v Node.pp (Node.of_pnode node instr)
+             else
+               L.(debug Analysis Quiet)
+                 "%a is NOT in branch cond at %a@." Domain.Val.pp v Node.pp (Node.of_pnode node instr))
+       Domain.(astate.mem) ; *)
+    astate
+
+
   let exec_instr astate analysis_data cfg_node instr =
     let node = CFG.Node.underlying_node cfg_node in
     let is_exn_handler =
@@ -555,6 +629,7 @@ module DisjReady = struct
         List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
       in
       List.concat_map post_states ~f:(check_npe_alternative analysis_data node instr)
+      |> List.map ~f:(check_debug node instr)
 
 
   let exec_instr astate analysis_data node instr =
@@ -568,7 +643,9 @@ end
 module DisjunctiveConfig : TransferFunctions.DisjunctiveConfig = struct
   let join_policy = `UnderApproximateAfter 20
 
-  let widen_policy = `UnderApproximateAfterNumIterations 1
+  let widen_policy =
+    if Config.npex_launch_localize then `UnderApproximateAfterNumIterations 0
+    else `UnderApproximateAfterNumIterations 2
 end
 
 module Analyzer = NpexSymExecutor.Make (DisjReady) (DisjunctiveConfig)
@@ -638,8 +715,20 @@ let is_executed procname =
           let name = proc_json |> member "name" |> to_string in
           let class_name = proc_json |> member "class" |> to_string in
           (name, class_name)) ) ;
+  (* if List.is_empty !_executed_procs then
+     let program = Program.from_marshal () in
+     let null_procs = NullPoint.get_nullpoint_list program |> List.map ~f:NullPoint.get_procname in
+     _executed_procs :=
+       List.map null_procs ~f:(fun procname ->
+           match Procname.get_class_name procname with
+           | Some class_name ->
+               (Procname.get_method procname, class_name)
+           | None ->
+               (Procname.get_method procname, "")) ) ; *)
   let name = Procname.get_method procname in
   match Procname.get_class_name procname with
+  | _ when List.is_empty !_executed_procs ->
+      true
   | Some class_name ->
       List.exists !_executed_procs ~f:(fun (name', class_name') ->
           (* L.progress "[Method] %s and %s : %b@." name name' (String.equal name name') ;
@@ -671,6 +760,9 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
     (* In this case, IR might be incomplete *)
     L.(debug Analysis Quiet) "%a has incompletely translated IR" Procname.pp procname ;
     None )
+  else if Config.npex_launch_localize && Procname.is_java_class_initializer procname then
+    (* HEURISTICS: ignore class initializer which may be called at main procedure. *)
+    None
   else if (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier) && not (is_executed procname)
   then None (* && is_all_target_funs_analyzed analysis_data then None *)
   else
