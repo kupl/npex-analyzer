@@ -165,7 +165,7 @@ let run_proc_analysis ~caller_pdesc callee_pdesc =
   let log_elapsed_time =
     let start_time = Mtime_clock.counter () in
     fun () ->
-      L.(debug Analysis Medium)
+      L.(debug Analysis Verbose)
         "Elapsed analysis time: %a: %a@\n" Procname.pp callee_pname Mtime.Span.pp
         (Mtime_clock.count start_time)
   in

@@ -204,7 +204,34 @@ module AbstractInterpreterCommon (TransferFunctions : NodeTransferFunctions) = s
             let res = Domain.widen ~prev ~next ~num_iters in
             if Config.write_html then debug_absint_operation (`Widen (num_iters, (prev, next, res))) ;
             res )
-          else astate_pre
+          else
+            let is_loop_enter_cond =
+              let node = Node.underlying_node node in
+              let pred_is_join =
+                let preds = Procdesc.Node.get_preds node in
+                if Int.equal 1 (List.length preds) then
+                  match Procdesc.Node.get_kind (List.hd_exn preds) with Join_node -> true | _ -> false
+                else false
+              in
+              let is_true_prune =
+                match Procdesc.Node.get_kind node with Prune_node (true, _, _) -> true | _ -> false
+              in
+              (* let next_is_stmt =
+                   let succs = Procdesc.Node.get_succs node in
+                   if Int.equal 1 (List.length succs) then
+                     match Procdesc.Node.get_kind (List.hd_exn succs) with Stmt_node _ -> true | _ -> false
+                   else false
+                 in *)
+              pred_is_join && is_true_prune
+            in
+            if is_loop_enter_cond then (
+              let num_iters = (old_state.State.visit_count :> int) + 1 in
+              let prev = old_state.State.pre in
+              let next = astate_pre in
+              let res = Domain.widen ~prev ~next ~num_iters in
+              if Config.write_html then debug_absint_operation (`Widen (num_iters, (prev, next, res))) ;
+              res )
+            else astate_pre
         in
         if
           if is_narrowing then

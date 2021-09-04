@@ -424,7 +424,7 @@ let build () : t =
           | None ->
               acc)
     in
-    if Config.npex_launch_spec_verifier then (
+    if Config.npex_launch_spec_verifier then
       let original_program : t = Utils.with_file_in original_mpath ~f:Marshal.from_channel in
       let tenv = original_program.tenv in
       let cfgs =
@@ -433,7 +433,7 @@ let build () : t =
             match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None)
           cfgs original_program.cfgs
       in
-      (tenv, cfgs) )
+      (tenv, cfgs)
     else (tenv, cfgs)
   in
   let program =
@@ -483,7 +483,8 @@ let build () : t =
             (* TODO: why only defined?  *)
             let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
             List.iter callees_defed ~f:(add_call_edge program instr_node) ;
-            if not (List.is_empty callees_defed) &&  List.is_empty callees_undefed then acc else InstrNode.Set.add instr_node acc))
+            if (not (List.is_empty callees_defed)) && List.is_empty callees_undefed then acc
+            else InstrNode.Set.add instr_node acc))
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;
@@ -539,8 +540,7 @@ let from_marshal () : t =
         try Utils.with_file_in marshalled_path ~f:Marshal.from_channel
         with _ ->
           let program = build () in
-          to_marshal marshalled_path program ;
-          program
+          to_marshal marshalled_path program ; program
       in
       if Config.npex_launch_spec_inference then to_marshal original_mpath program ;
       cache := Some program ;

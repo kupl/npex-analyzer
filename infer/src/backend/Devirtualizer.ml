@@ -154,7 +154,6 @@ let process summary tenv =
                     , loc
                     , resolved_call_flags ) )
             | _ ->
-                Logging.debug Capture Verbose "unchanged\n" ;
                 instr )
         | _ ->
             instr)

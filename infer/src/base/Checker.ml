@@ -99,7 +99,7 @@ let config_unsafe checker =
       ; short_documentation=
           "This analysis deals with a range of issues, many linked to memory safety."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | BufferOverrunAnalysis ->
       { id= "bufferoverrun-analysis"
@@ -169,7 +169,7 @@ let config_unsafe checker =
       ; short_documentation=
           "Detects when Android fragments are not explicitly nullified before becoming unreachable."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | ImmutableCast ->
       { id= "immutable-cast"
@@ -208,7 +208,7 @@ let config_unsafe checker =
           "Check for inefficient uses of iterators that iterate on keys then lookup their values, \
            instead of iterating on key-value pairs directly."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | Linters ->
       { id= "linters"
@@ -220,7 +220,7 @@ let config_unsafe checker =
       ; support= supports_clang
       ; short_documentation= "Declarative linting framework over the Clang AST."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | LithoRequiredProps ->
       { id= "litho-required-props"
@@ -328,7 +328,7 @@ let config_unsafe checker =
       ; support= supports_clang_and_java
       ; short_documentation= "Thread safety analysis."
       ; cli_flags= Some {deprecated= ["-threadsafety"]; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | ResourceLeakLabExercise ->
       { id= "resource-leak-lab"
@@ -354,7 +354,7 @@ let config_unsafe checker =
           "Catches Static Initialization Order Fiascos in C++, that can lead to subtle, \
            compiler-version-dependent errors."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | SelfInBlock ->
       { id= "self-in-block"
@@ -363,7 +363,7 @@ let config_unsafe checker =
       ; short_documentation=
           "An Objective-C-specific analysis to detect when a block captures `self`."
       ; cli_flags= Some {deprecated= ["-self_in_block"]; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | Starvation ->
       { id= "starvation"
@@ -376,7 +376,7 @@ let config_unsafe checker =
           "Detect various kinds of situations when no progress is being made because of \
            concurrency errors."
       ; cli_flags= Some {deprecated= []; show_in_help= true}
-      ; enabled_by_default= true
+      ; enabled_by_default= false
       ; activates= [] }
   | ToplOnBiabduction ->
       { id= "topl-biabd"

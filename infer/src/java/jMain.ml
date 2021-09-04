@@ -117,7 +117,7 @@ let main load_sources_and_classes =
   | false, false ->
       L.(die UserError) "Java model file is required"
   | true, true ->
-      L.(die UserError) "Not expecting model file when analyzing the models"
+      () (* L.(die UserError) "Not expecting model file when analyzing the models" *)
   | false, true ->
       JModels.load_models ~jar_filename:Config.biabduction_models_jar ) ;
   JBasics.set_permissive true ;

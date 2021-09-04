@@ -60,7 +60,8 @@ module BuiltIn = struct
           (* Exception catch *)
           let arg_value = Domain.eval astate node instr arg_exp in
           if Val.equal arg_value (Val.npe |> Val.unwrap_exn) then
-            (* HEURISTIC 1: uncaught NPE will never catched *)
+            (* HEURISTIC 1: uncaught NPE will never catched
+               FIXME: this is not desirable *)
             [Domain.store_reg astate ret_id Val.zero]
           else
             (* HEURISTIC 2: ignore exception type  *)
@@ -468,11 +469,12 @@ module String = struct
     match Domain.eval astate node instr str_exp with
     | Val.Vheap (SymHeap.String _) as str_value ->
         (astate, str_value)
-    | Val.Vheap sh ->
-        let str_field = Loc.append_field ~fn:valueField (Loc.SymHeap sh) in
-        let astate_unknown_resolved = Domain.resolve_unknown_loc astate Typ.void_star str_field in
-        let str_value = Domain.read_loc astate str_field in
-        (astate_unknown_resolved, str_value)
+    | Val.Vheap _ as heap ->
+        (astate, heap)
+        (* let str_field = Loc.append_field ~fn:valueField (Loc.SymHeap sh) in
+           let astate_unknown_resolved = Domain.resolve_unknown_loc astate Typ.void_star str_field in
+           let str_value = Domain.read_loc astate str_field in
+           (astate_unknown_resolved, str_value) *)
     | _ as v ->
         L.progress "[WARNING]: %a is not allowed as string value@." Val.pp v ;
         let str_value = Val.make_extern (Node.of_pnode node instr) Typ.void_star in
