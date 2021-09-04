@@ -14,14 +14,12 @@ from typing import List, Dict
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 
 INFER_PATH = os.getenv("INFER_NPEX")
+NPEX_DIR = os.getenv("NPEX_DIR")
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true -DskipTests=true -DskipITs=true -Dtest=None -DfailIfNoTests=false"
 ROOT_DIR = os.getcwd()
 
 # TODO: replace hard-coded path by environment
 DEP_JAR_PATH = "/media/4tb/npex/NPEX_DATA/vfix_benchmarks/deps"
-# CLASSIFIERS = '/home/june/project/Apache_NPE_Benchmarks/classifiers.nullstring'
-# NPEX_DIR = "/home/junhee/projects/npex"
-NPEX_DIR = "/home/june/project/npex"
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
 
@@ -58,7 +56,6 @@ class Result:
     def add_result(self, patch, result):
         self.number_of_patches = self.number_of_patches + 1
         self.results[patch] = result
-
 
 
 def apply_patch(project_root_dir, patch_dir):
@@ -113,12 +110,17 @@ class Bug:
             exit(-1)
 
     def is_pl_able(self, module, filename):
-        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+        target_classes = glob.glob(
+            f"{self.project_root_dir}/**/{filename}.class", recursive=True)
         for target_class_file in target_classes:
             os.remove(target_class_file)
-        
-        is_compiled = subprocess.run(f"mvn package {MVN_OPT} -pl {module} -amd", shell=True, cwd=self.project_root_dir).returncode == 0
-        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+
+        is_compiled = subprocess.run(
+            f"mvn package {MVN_OPT} -pl {module} -amd",
+            shell=True,
+            cwd=self.project_root_dir).returncode == 0
+        target_classes = glob.glob(
+            f"{self.project_root_dir}/**/{filename}.class", recursive=True)
         if is_compiled:
             if target_classes != []:
                 print(f"found target class compiled: {target_classes}")
@@ -134,7 +136,9 @@ class Bug:
             if os.path.isdir(f"{self.project_root_dir}/infer-out"):
                 shutil.rmtree(f"{self.project_root_dir}/infer-out")
             shutil.copytree(cached_dir, f"{self.project_root_dir}/infer-out")
-            if subprocess.run(f"{INFER_PATH} npex", shell=True, cwd=self.project_root_dir).returncode == 0:
+            if subprocess.run(f"{INFER_PATH} npex",
+                              shell=True,
+                              cwd=self.project_root_dir).returncode == 0:
                 return True
             else:
                 # Retry!
@@ -142,20 +146,20 @@ class Bug:
                 return False
         return False
 
-
-    def capture_all(self, recap : bool):
+    def capture_all(self, recap: bool):
         start_time = time.time()
         self.checkout()
-        
+
         if recap:
-            cached_captures = glob.glob(f"{self.project_root_dir}/**/infer-out*", recursive=True)
+            cached_captures = glob.glob(
+                f"{self.project_root_dir}/**/infer-out*", recursive=True)
             print(f"re-capture {cached_captures}")
             for cached in cached_captures:
                 shutil.rmtree(cached)
-        
+
         if self.cache_exists(f"{self.project_root_dir}/infer-out-cached"):
             return
-                
+
         if self.build_type == "mvn":
             with open(f"{self.project_root_dir}/npe.json", "r") as f:
                 npe_json = json.load(f)
@@ -163,9 +167,12 @@ class Bug:
                 first_module = filepath.split('/')[0]
             if first_module != "src":
                 print(f"found module: {first_module}")
-                if self.is_pl_able(first_module, os.path.basename(filepath).rstrip(".java")):
+                if self.is_pl_able(first_module,
+                                   os.path.basename(filepath).rstrip(".java")):
                     build_cmd = f"mvn clean package {MVN_OPT} -pl {first_module} -amd"
-                    subprocess.run(f"touch {self.project_root_dir}/.pl_able", shell=True, cwd=self.project_root_dir)
+                    subprocess.run(f"touch {self.project_root_dir}/.pl_able",
+                                   shell=True,
+                                   cwd=self.project_root_dir)
                 else:
                     build_cmd = f"mvn clean package {MVN_OPT}"
             else:
@@ -188,7 +195,8 @@ class Bug:
             print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
         subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
-        shutil.copytree(f"{self.project_root_dir}/infer-out", f"{self.project_root_dir}/infer-out-cached")
+        shutil.copytree(f"{self.project_root_dir}/infer-out",
+                        f"{self.project_root_dir}/infer-out-cached")
         self.time_to_capture_original = time.time() - start_time
 
     def inference(self, manual_model, debug, cpu_pool):
@@ -217,17 +225,19 @@ class Bug:
 
     def capture_incremental(self, patch_dir, recap):
         if recap:
-            cached_captures = glob.glob(f"{self.project_root_dir}/**/infer-out*", recursive=True)
+            cached_captures = glob.glob(
+                f"{self.project_root_dir}/**/infer-out*", recursive=True)
             print(f"re-capture {cached_captures}")
             for cached in cached_captures:
                 shutil.rmtree(cached)
-        
+
         if os.path.isdir(f"{patch_dir}/infer-out"):
             if os.path.isdir(f"{self.project_root_dir}/infer-out"):
                 shutil.rmtree(f"{self.project_root_dir}/infer-out")
-            shutil.copytree(f"{patch_dir}/infer-out", f"{self.project_root_dir}/infer-out")
+            shutil.copytree(f"{patch_dir}/infer-out",
+                            f"{self.project_root_dir}/infer-out")
             return
-        
+
         start_time = time.time()
         if self.build_type == "mvn":
             with open(f"{self.project_root_dir}/npe.json", "r") as f:
@@ -239,7 +249,9 @@ class Bug:
                 print(f"found module: {first_module}")
                 # if self.is_pl_able(first_module, filename):
                 if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
-                    target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+                    target_classes = glob.glob(
+                        f"{self.project_root_dir}/**/{filename}.class",
+                        recursive=True)
                     for target_class_file in target_classes:
                         os.remove(target_class_file)
                     build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
@@ -252,12 +264,14 @@ class Bug:
                 patch_json = json.load(f)
             patched_file = f"{self.project_root_dir}/{patch_json['original_filepath']}"
             build_cmd = f"javac -cp {self.class_path} {patched_file}"
-            
-        
+
         print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
-        ret = subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
-        shutil.copytree(f"{self.project_root_dir}/infer-out", f"{patch_dir}/infer-out")
+        ret = subprocess.run(capture_cmd,
+                             shell=True,
+                             cwd=self.project_root_dir)
+        shutil.copytree(f"{self.project_root_dir}/infer-out",
+                        f"{patch_dir}/infer-out")
         self.time_to_capture_patches += time.time() - start_time
 
     def verify(self, patch_dir, cpu_pool, recap):
@@ -298,17 +312,32 @@ class Bug:
         result.time_to_inference = self.time_to_inference
         result.time_to_capture_original = self.time_to_capture_original
         result.time_to_capture_patches = self.time_to_capture_patches
-        if any([result.results[patch_id] == "SynEquiv" for patch_id in result.results]):
-            result.verified_patches = [patch_id for patch_id in result.results if result.results[patch_id] == "SynEquiv"]
-            result.rejected_patches = [patch_id for patch_id in result.results if result.results[patch_id] != "SynEquiv"]
+        if any([
+                result.results[patch_id] == "SynEquiv"
+                for patch_id in result.results
+        ]):
+            result.verified_patches = [
+                patch_id for patch_id in result.results
+                if result.results[patch_id] == "SynEquiv"
+            ]
+            result.rejected_patches = [
+                patch_id for patch_id in result.results
+                if result.results[patch_id] != "SynEquiv"
+            ]
         else:
-            result.verified_patches = [patch_id for patch_id in result.results if result.results[patch_id] == "SemEquiv"]
-            result.rejected_patches = [patch_id for patch_id in result.results if result.results[patch_id] != "SemEquiv"]
+            result.verified_patches = [
+                patch_id for patch_id in result.results
+                if result.results[patch_id] == "SemEquiv"
+            ]
+            result.rejected_patches = [
+                patch_id for patch_id in result.results
+                if result.results[patch_id] != "SemEquiv"
+            ]
         # if result:
         #     self.verified_patches.append(patch)
         # else:
         #     self.rejected_patches.append(patch)
-        
+
         result.to_json("result")
 
         print(f'Result has been stored at: result.json')
@@ -366,10 +395,7 @@ class Bug:
                 f"{self.project_root_dir}/invo-ctx.npex.json") is False:
             print("FAILED to extract invo-context")
             exit(1)
-            
-        if os.path.isfile(classifiers) is False:
-            classifiers = "/media/4tb/june/learning/models_output/hbase-operator-tools_bd6616f.classifier"
-            
+
         print(f"predicting model_value and probability for each invocation...")
         subprocess.run(
             f"{NPEX_SCRIPT} predict {self.project_root_dir} {classifiers} model.json",
@@ -384,7 +410,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--error_reports", help="error reports")
     parser.add_argument("--patch_id", help="patch_id")
-    parser.add_argument("--recap", default=False, action="store_true",help="re capture")
+    parser.add_argument("--recap",
+                        default=False,
+                        action="store_true",
+                        help="re capture")
     parser.add_argument("--debug",
                         default=False,
                         action='store_true',
@@ -411,7 +440,7 @@ if __name__ == '__main__':
                         action='store_true',
                         help="generate model.json")
     parser.add_argument("--classifiers",
-                        default="/media/4tb/june/learning/models_output/hbase-operator-tools_bd6616f.classifiers",
+                        default=None,
                         help="classifiers to extract model")
     parser.add_argument("--manual_model",
                         default=False,
