@@ -164,7 +164,11 @@ let add_profile_to_pom_in_directory dir =
          ~description:"saving infer's pom.xml" *)
   in
   try _add_profile_to_pom_in_directory (dir ^/ "pom.xml")
-  with _ -> _add_profile_to_pom_in_directory dir
+  with _ -> (
+    try
+      L.progress "FAILED to create pom %s" (dir ^/ "pom.xml") ;
+      _add_profile_to_pom_in_directory dir
+    with _ -> L.progress "FAILED to create pom %s" dir )
 
 
 let capture ~prog ~args =
