@@ -1,4 +1,4 @@
-#!/usr/bin/python3.8
+#!/home/june/Python-3.8.0/python
 import argparse
 import time
 import json
@@ -19,7 +19,6 @@ MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=tr
 ROOT_DIR = os.getcwd()
 
 # TODO: replace hard-coded path by environment
-DEP_JAR_PATH = "/media/4tb/npex/NPEX_DATA/vfix_benchmarks/deps"
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
 
@@ -84,7 +83,7 @@ class Bug:
             self.class_path = None
         else:
             self.build_type = "javac"
-            jar_path = ':'.join(glob.glob(f"{DEP_JAR_PATH}/*.jar"))
+            jar_path = ':'.join(glob.glob(f"{project_root_dir}/../../deps/*.jar"))
             self.class_path = f"{jar_path}:{self.project_root_dir}:{self.project_root_dir}/../target/classes"
         self.time_to_inference = 0.0
         self.time_to_capture_original = 0.0
