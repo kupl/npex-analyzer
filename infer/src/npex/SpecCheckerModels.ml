@@ -188,11 +188,13 @@ module Collection = struct
     (is_model, exec)
 
 
-  let empty_enumeration : model =
+  let emptyCollection : model =
     let is_model callee instr =
       match (callee, instr) with
       | Procname.Java mthd, Sil.Call (_, _, [], _, _)
-        when String.equal "emptyEnumeration" (Procname.get_method callee) ->
+        when List.mem
+               ["emptyEnumeration"; "emptySet"; "emptyList"; "emptyMap"]
+               ~equal:String.equal (Procname.get_method callee) ->
           is_model_class (Procname.Java.get_class_type_name mthd)
       | _ ->
           false
@@ -344,7 +346,7 @@ module Collection = struct
     (is_model, exec)
 
 
-  let models = [init; isEmpty; iterator; next; hasNext; add; enumeration_of; empty_enumeration]
+  let models = [init; isEmpty; iterator; next; hasNext; add; enumeration_of; emptyCollection]
 end
 
 module IO = struct
@@ -519,6 +521,38 @@ module String = struct
     (is_model, exec)
 
 
+  let init_size : model =
+    (* new StringBuilder (size) *)
+    let is_model callee instr =
+      match (callee, instr) with
+      | Procname.Java mthd, Sil.Call (_, _, [(_, _); (_, typ)], _, _) when Procname.Java.is_constructor mthd ->
+          implements builder_classes (Procname.Java.get_class_type_name mthd) && Typ.is_int typ
+      | _ ->
+          false
+    in
+    let exec astate proc_desc node instr callee _ arg_typs =
+      let[@warning "-8"] ((this_exp, _) :: (size_exp, _) :: _) = arg_typs in
+      let instr_node = Node.of_pnode node instr in
+      let this_val, size_val = (Domain.eval astate node instr this_exp, Domain.eval astate node instr size_exp) in
+      let ret_var = Procdesc.get_ret_var proc_desc in
+      let minus_states =
+        let minus_cond = SymDom.PathCond.make_lt_pred size_val Val.zero in
+        Domain.bind_exn_extern astate instr_node ret_var callee [this_val; size_val]
+        |> List.concat_map ~f:(fun astate' -> Domain.add_pc ~is_branch:true astate' minus_cond)
+      in
+      let plus_states =
+        let plus_cond = SymDom.PathCond.make_le_pred Val.zero size_val in
+        let this_loc = Domain.eval_lv astate node instr this_exp in
+        let value_field_loc = Domain.Loc.append_field this_loc ~fn:valueField in
+        let astate, str_value = read_value astate node instr (Exp.Const (Cstr "")) in
+        let astate = Domain.store_loc astate value_field_loc str_value in
+        Domain.add_pc ~is_branch:true astate plus_cond
+      in
+      minus_states @ plus_states
+    in
+    (is_model, exec)
+
+
   let equals : model =
     let is_model callee instr =
       match (callee, instr) with
@@ -595,7 +629,11 @@ module String = struct
           let length_value = Val.of_intlit (IntLit.of_int (String.length str)) in
           [Domain.store_reg astate ret_id length_value]
       | _ ->
-          Domain.bind_extern_value astate (Node.of_pnode node instr) (ret_id, ret_typ) callee [str_value]
+          let instr_node = Node.of_pnode node instr in
+          let length_val = Val.make_extern instr_node ret_typ in
+          let length_cond = SymDom.PathCond.make_le_pred Val.zero length_val in
+          let astate' = Domain.store_reg astate ret_id length_val in
+          Domain.add_pc astate' length_cond
     in
     (is_model, exec)
 
@@ -632,7 +670,7 @@ module String = struct
     (is_model, exec)
 
 
-  let models = [init; isEmpty; length; equals; append]
+  let models = [init; isEmpty; length; equals; append; init_size]
 end
 
 let models : model list =

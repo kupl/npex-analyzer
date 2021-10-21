@@ -704,6 +704,20 @@ let rec eval ?(pos = 0) astate node instr exp =
       L.(die InternalError) "%a is not assigned any value" Ident.pp id
   | Exp.UnOp (unop, e, _) ->
       eval_uop unop (eval astate node instr e ~pos)
+  | Exp.BinOp (Binop.PlusA io, e1, e2) ->
+      let v1 = eval astate node instr e1 in
+      let v2 = eval astate node instr e2 in
+      if Val.is_constant v1 && Val.is_true (Val.lte Val.zero v1) then (
+        let nonneg_cond = PathCond.make_le_pred Val.zero v2 in
+        let pos_cond = PathCond.make_lt_pred Val.zero v2 in
+        if PC.is_valid nonneg_cond astate.pc || PC.is_valid pos_cond astate.pc then v2
+        else eval_binop (Binop.PlusA io) v1 v2 )
+      else if Val.is_constant v2 then
+        let nonneg_cond = PathCond.make_le_pred Val.zero v1 in
+        let pos_cond = PathCond.make_lt_pred Val.zero v1 in
+        if PC.is_valid nonneg_cond astate.pc || PC.is_valid pos_cond astate.pc then v1
+        else eval_binop (Binop.PlusA io) v1 v2
+      else eval_binop (Binop.PlusA io) v1 v2
   | Exp.BinOp (binop, e1, e2) ->
       let v1 = eval astate node instr e1 ~pos in
       let v2 = eval astate node instr e2 ~pos in
