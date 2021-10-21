@@ -13,13 +13,12 @@ from pprint import pprint
 from typing import List, Dict
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 
-INFER_PATH = os.getenv("INFER_NPEX")
-NPEX_DIR = os.getenv("NPEX_DIR")
-MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true -DskipTests=true -DskipITs=true -Dtest=None -DfailIfNoTests=false"
 ROOT_DIR = os.getcwd()
+INFER_DIR = os.getenv("INFER_DIR")
+NPEX_DIR = os.getenv("NPEX_DIR")
 
-# TODO: replace hard-coded path by environment
-DEP_JAR_PATH = "/media/4tb/npex/NPEX_DATA/vfix_benchmarks/deps"
+INFER_PATH = f"{INFER_DIR}/infer/bin/infer" # os.getenv("INFER_NPEX")
+MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true -DskipTests=true -DskipITs=true -Dtest=None -DfailIfNoTests=false"
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
 
@@ -84,7 +83,7 @@ class Bug:
             self.class_path = None
         else:
             self.build_type = "javac"
-            jar_path = ':'.join(glob.glob(f"{DEP_JAR_PATH}/*.jar"))
+            jar_path = ':'.join(glob.glob(f"{self.project_root_dir}/../../deps/*.jar"))
             self.class_path = f"{jar_path}:{self.project_root_dir}:{self.project_root_dir}/../target/classes"
         self.time_to_inference = 0.0
         self.time_to_capture_original = 0.0
@@ -226,7 +225,7 @@ class Bug:
     def capture_incremental(self, patch_dir, recap):
         if recap:
             cached_captures = glob.glob(
-                f"{self.project_root_dir}/**/infer-out*", recursive=True)
+                f"{patch_dir}/infer-out", recursive=True)
             print(f"re-capture {cached_captures}")
             for cached in cached_captures:
                 shutil.rmtree(cached)
@@ -245,19 +244,19 @@ class Bug:
                 filepath = npe_json["filepath"]
                 first_module = filepath.split('/')[0]
                 filename = os.path.basename(filepath).rstrip(".java")
-            if first_module != "src":
-                print(f"found module: {first_module}")
-                # if self.is_pl_able(first_module, filename):
-                if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
-                    target_classes = glob.glob(
-                        f"{self.project_root_dir}/**/{filename}.class",
-                        recursive=True)
-                    for target_class_file in target_classes:
-                        os.remove(target_class_file)
-                    build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
-                else:
-                    build_cmd = f"mvn package {MVN_OPT}"
-            else:
+            # if first_module != "src":
+            #     print(f"found module: {first_module}")
+            #     # if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
+            #     if self.is_pl_able(first_module, filename):
+            #         target_classes = glob.glob(
+            #             f"{self.project_root_dir}/**/{filename}.class",
+            #             recursive=True)
+            #         for target_class_file in target_classes:
+            #             os.remove(target_class_file)
+            #         build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
+            #     else:
+            #         build_cmd = f"mvn package {MVN_OPT}"
+            # else:
                 build_cmd = f"mvn package {MVN_OPT}"
         else:
             with open(f"{patch_dir}/patch.json", "r") as f:
@@ -440,7 +439,7 @@ if __name__ == '__main__':
                         action='store_true',
                         help="generate model.json")
     parser.add_argument("--classifiers",
-                        default=None,
+                        default="/media/4tb/june/learning/models_output/tablesaw_65596d8.classifier",
                         help="classifiers to extract model")
     parser.add_argument("--manual_model",
                         default=False,
