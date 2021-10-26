@@ -17,7 +17,7 @@ ROOT_DIR = os.getcwd()
 INFER_DIR = os.getenv("INFER_DIR")
 NPEX_DIR = os.getenv("NPEX_DIR")
 
-INFER_PATH = f"{INFER_DIR}/infer/bin/infer" # os.getenv("INFER_NPEX")
+INFER_PATH = f"{INFER_DIR}/infer/bin/infer"
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true -DskipTests=true -DskipITs=true -Dtest=None -DfailIfNoTests=false"
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
@@ -76,8 +76,7 @@ class Bug:
 
     def __init__(self, project_root_dir, error_reports):
         self.project_root_dir = project_root_dir
-        self.error_reports_arg = " ".join(
-            [f"--error-report {npe_path}" for npe_path in error_reports])
+        self.error_reports_arg = " ".join([f"--error-report {npe_path}" for npe_path in error_reports])
         if os.path.isfile(f"{project_root_dir}/pom.xml"):
             self.build_type = "mvn"
             self.class_path = None
@@ -90,15 +89,12 @@ class Bug:
         self.time_to_capture_patches = 0.0
 
     def checkout(self):
-        if os.path.isfile(
-                "/media/4tb/npex/NPEX_DATA/vfix_benchmarks/.git/index.lock"):
+        if os.path.isfile("/media/4tb/npex/NPEX_DATA/vfix_benchmarks/.git/index.lock"):
             backoff = random.uniform(0.1, 2.0)
             time.sleep(backoff)
             self.checkout()
 
-        ret = subprocess.run(f"git checkout -- {self.project_root_dir}",
-                             shell=True,
-                             cwd=self.project_root_dir)
+        ret = subprocess.run(f"git checkout -- {self.project_root_dir}", shell=True, cwd=self.project_root_dir)
         if ret.returncode == 128:
             backoff = random.uniform(0.1, 2.0)
             time.sleep(backoff)
@@ -109,17 +105,13 @@ class Bug:
             exit(-1)
 
     def is_pl_able(self, module, filename):
-        target_classes = glob.glob(
-            f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
         for target_class_file in target_classes:
             os.remove(target_class_file)
 
-        is_compiled = subprocess.run(
-            f"mvn package {MVN_OPT} -pl {module} -amd",
-            shell=True,
-            cwd=self.project_root_dir).returncode == 0
-        target_classes = glob.glob(
-            f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+        is_compiled = subprocess.run(f"mvn package {MVN_OPT} -pl {module} -amd", shell=True,
+                                     cwd=self.project_root_dir).returncode == 0
+        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
         if is_compiled:
             if target_classes != []:
                 print(f"found target class compiled: {target_classes}")
@@ -135,9 +127,7 @@ class Bug:
             if os.path.isdir(f"{self.project_root_dir}/infer-out"):
                 shutil.rmtree(f"{self.project_root_dir}/infer-out")
             shutil.copytree(cached_dir, f"{self.project_root_dir}/infer-out")
-            if subprocess.run(f"{INFER_PATH} npex",
-                              shell=True,
-                              cwd=self.project_root_dir).returncode == 0:
+            if subprocess.run(f"{INFER_PATH} npex", shell=True, cwd=self.project_root_dir).returncode == 0:
                 return True
             else:
                 # Retry!
@@ -150,8 +140,7 @@ class Bug:
         self.checkout()
 
         if recap:
-            cached_captures = glob.glob(
-                f"{self.project_root_dir}/**/infer-out*", recursive=True)
+            cached_captures = glob.glob(f"{self.project_root_dir}/**/infer-out*", recursive=True)
             print(f"re-capture {cached_captures}")
             for cached in cached_captures:
                 shutil.rmtree(cached)
@@ -166,26 +155,20 @@ class Bug:
                 first_module = filepath.split('/')[0]
             if first_module != "src":
                 print(f"found module: {first_module}")
-                if self.is_pl_able(first_module,
-                                   os.path.basename(filepath).rstrip(".java")):
+                if self.is_pl_able(first_module, os.path.basename(filepath).rstrip(".java")):
                     build_cmd = f"mvn clean package {MVN_OPT} -pl {first_module} -amd"
-                    subprocess.run(f"touch {self.project_root_dir}/.pl_able",
-                                   shell=True,
-                                   cwd=self.project_root_dir)
+                    subprocess.run(f"touch {self.project_root_dir}/.pl_able", shell=True, cwd=self.project_root_dir)
                 else:
                     build_cmd = f"mvn clean package {MVN_OPT}"
             else:
                 build_cmd = f"mvn clean package {MVN_OPT}"
         else:
-            subprocess.run(
-                f"javac -cp {self.class_path} {self.project_root_dir}/Main.java",
-                shell=True,
-                cwd=self.project_root_dir)
-            java_files = glob.glob(f"{self.project_root_dir}/**/*.java",
-                                   recursive=True)
+            subprocess.run(f"javac -cp {self.class_path} {self.project_root_dir}/Main.java",
+                           shell=True,
+                           cwd=self.project_root_dir)
+            java_files = glob.glob(f"{self.project_root_dir}/**/*.java", recursive=True)
             java_files_to_compile = [
-                java_file for java_file in java_files
-                if os.path.isfile(java_file.rstrip("java") + "class")
+                java_file for java_file in java_files if os.path.isfile(java_file.rstrip("java") + "class")
             ]
             with open(f"{self.project_root_dir}/java_files", 'w') as f:
                 java_files_str = "\n".join(java_files_to_compile)
@@ -194,8 +177,7 @@ class Bug:
             print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
         subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
-        shutil.copytree(f"{self.project_root_dir}/infer-out",
-                        f"{self.project_root_dir}/infer-out-cached")
+        shutil.copytree(f"{self.project_root_dir}/infer-out", f"{self.project_root_dir}/infer-out-cached")
         self.time_to_capture_original = time.time() - start_time
 
     def inference(self, manual_model, debug, cpu_pool):
@@ -211,9 +193,7 @@ class Bug:
         else:
             spec_inference_cmd = f"{INFER_PATH} npex {inference_option}"
 
-        ret = subprocess.run(spec_inference_cmd,
-                             shell=True,
-                             cwd=self.project_root_dir)
+        ret = subprocess.run(spec_inference_cmd, shell=True, cwd=self.project_root_dir)
         if ret.returncode == 1:
             print(f"[FAIL] spec inference")
             exit(-1)
@@ -224,8 +204,7 @@ class Bug:
 
     def capture_incremental(self, patch_dir, recap):
         if recap:
-            cached_captures = glob.glob(
-                f"{patch_dir}/infer-out", recursive=True)
+            cached_captures = glob.glob(f"{patch_dir}/infer-out", recursive=True)
             print(f"re-capture {cached_captures}")
             for cached in cached_captures:
                 shutil.rmtree(cached)
@@ -233,8 +212,7 @@ class Bug:
         if os.path.isdir(f"{patch_dir}/infer-out"):
             if os.path.isdir(f"{self.project_root_dir}/infer-out"):
                 shutil.rmtree(f"{self.project_root_dir}/infer-out")
-            shutil.copytree(f"{patch_dir}/infer-out",
-                            f"{self.project_root_dir}/infer-out")
+            shutil.copytree(f"{patch_dir}/infer-out", f"{self.project_root_dir}/infer-out")
             return
 
         start_time = time.time()
@@ -244,19 +222,19 @@ class Bug:
                 filepath = npe_json["filepath"]
                 first_module = filepath.split('/')[0]
                 filename = os.path.basename(filepath).rstrip(".java")
-            # if first_module != "src":
-            #     print(f"found module: {first_module}")
-            #     # if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
-            #     if self.is_pl_able(first_module, filename):
-            #         target_classes = glob.glob(
-            #             f"{self.project_root_dir}/**/{filename}.class",
-            #             recursive=True)
-            #         for target_class_file in target_classes:
-            #             os.remove(target_class_file)
-            #         build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
-            #     else:
-            #         build_cmd = f"mvn package {MVN_OPT}"
-            # else:
+                # if first_module != "src":
+                #     print(f"found module: {first_module}")
+                #     # if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
+                #     if self.is_pl_able(first_module, filename):
+                #         target_classes = glob.glob(
+                #             f"{self.project_root_dir}/**/{filename}.class",
+                #             recursive=True)
+                #         for target_class_file in target_classes:
+                #             os.remove(target_class_file)
+                #         build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
+                #     else:
+                #         build_cmd = f"mvn package {MVN_OPT}"
+                # else:
                 build_cmd = f"mvn package {MVN_OPT}"
         else:
             with open(f"{patch_dir}/patch.json", "r") as f:
@@ -266,11 +244,8 @@ class Bug:
 
         print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
-        ret = subprocess.run(capture_cmd,
-                             shell=True,
-                             cwd=self.project_root_dir)
-        shutil.copytree(f"{self.project_root_dir}/infer-out",
-                        f"{patch_dir}/infer-out")
+        ret = subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
+        shutil.copytree(f"{self.project_root_dir}/infer-out", f"{patch_dir}/infer-out")
         self.time_to_capture_patches += time.time() - start_time
 
     def verify(self, patch_dir, cpu_pool, recap):
@@ -286,9 +261,7 @@ class Bug:
             launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --scheduler callgraph -j 4 --patch-id {patch_id} --cpu-pool {cpu_pool}"
 
         print(f" - npex-verifier command: {launch_spec_veri_cmd}")
-        return (subprocess.run(launch_spec_veri_cmd,
-                               shell=True,
-                               cwd=self.project_root_dir)).returncode
+        return (subprocess.run(launch_spec_veri_cmd, shell=True, cwd=self.project_root_dir)).returncode
 
     def verify_all(self, cpu_pool, recap):
         start_time = time.time()
@@ -311,26 +284,19 @@ class Bug:
         result.time_to_inference = self.time_to_inference
         result.time_to_capture_original = self.time_to_capture_original
         result.time_to_capture_patches = self.time_to_capture_patches
-        if any([
-                result.results[patch_id] == "SynEquiv"
-                for patch_id in result.results
-        ]):
+        if any([result.results[patch_id] == "SynEquiv" for patch_id in result.results]):
             result.verified_patches = [
-                patch_id for patch_id in result.results
-                if result.results[patch_id] == "SynEquiv"
+                patch_id for patch_id in result.results if result.results[patch_id] == "SynEquiv"
             ]
             result.rejected_patches = [
-                patch_id for patch_id in result.results
-                if result.results[patch_id] != "SynEquiv"
+                patch_id for patch_id in result.results if result.results[patch_id] != "SynEquiv"
             ]
         else:
             result.verified_patches = [
-                patch_id for patch_id in result.results
-                if result.results[patch_id] == "SemEquiv"
+                patch_id for patch_id in result.results if result.results[patch_id] == "SemEquiv"
             ]
             result.rejected_patches = [
-                patch_id for patch_id in result.results
-                if result.results[patch_id] != "SemEquiv"
+                patch_id for patch_id in result.results if result.results[patch_id] != "SemEquiv"
             ]
         # if result:
         #     self.verified_patches.append(patch)
@@ -343,21 +309,17 @@ class Bug:
         print(f'time to verify patches: {time.time() - start_time}')
 
     def patch(self):
-        subprocess.run(f"{NPEX_CMD} patch {self.project_root_dir}",
-                       shell=True,
-                       cwd=self.project_root_dir)
+        subprocess.run(f"{NPEX_CMD} patch {self.project_root_dir}", shell=True, cwd=self.project_root_dir)
 
     def validate_patch_by_tc(self, patch_dir, testcase):
-        print(
-            f"[Progress]: validate patch by testcase in directory {patch_dir}")
+        print(f"[Progress]: validate patch by testcase in directory {patch_dir}")
 
         self.checkout()
         apply_patch(self.project_root_dir, patch_dir)
 
         cmd = f"mvn test -Dtest={testcase} -DfailIfNoTests=false {MVN_OPT}"
         print(f" - npex-verifier command: {cmd}")
-        return (subprocess.run(cmd, shell=True,
-                               cwd=self.project_root_dir)).returncode
+        return (subprocess.run(cmd, shell=True, cwd=self.project_root_dir)).returncode
 
     def validate_by_testcase(self, testcase):
         start_time = time.time()
@@ -390,16 +352,14 @@ class Bug:
         # if os.path.isfile (f"{self.project_root_dir}/invo-ctx.npex.json") is False:
         #     print(f"extracting invocation-context info...")
         #     subprocess.run(extract_cmd, shell=True, cwd=self.project_root_dir)
-        if os.path.isfile(
-                f"{self.project_root_dir}/invo-ctx.npex.json") is False:
+        if os.path.isfile(f"{self.project_root_dir}/invo-ctx.npex.json") is False:
             print("FAILED to extract invo-context")
             exit(1)
 
         print(f"predicting model_value and probability for each invocation...")
-        subprocess.run(
-            f"{NPEX_SCRIPT} predict {self.project_root_dir} {classifiers} model.json",
-            shell=True,
-            cwd=self.project_root_dir)
+        subprocess.run(f"{NPEX_SCRIPT} predict {self.project_root_dir} {classifiers} model.json",
+                       shell=True,
+                       cwd=self.project_root_dir)
         if os.path.isfile(f"{self.project_root_dir}/model.json") is False:
             print("FAILED to predict model.json")
             exit(1)
@@ -409,52 +369,23 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--error_reports", help="error reports")
     parser.add_argument("--patch_id", help="patch_id")
-    parser.add_argument("--recap",
-                        default=False,
-                        action="store_true",
-                        help="re capture")
-    parser.add_argument("--debug",
-                        default=False,
-                        action='store_true',
-                        help="debug option")
-    parser.add_argument("--apply_patch",
-                        default=False,
-                        action='store_true',
-                        help="patch_id")
-    parser.add_argument("--capture",
-                        default=False,
-                        action='store_true',
-                        help="patch_id")
-    parser.add_argument("--inference",
-                        default=False,
-                        action='store_true',
-                        help="patch_id")
-    parser.add_argument("--verify",
-                        default=False,
-                        action='store_true',
-                        help="patch_id")
+    parser.add_argument("--recap", default=False, action="store_true", help="re capture")
+    parser.add_argument("--debug", default=False, action='store_true', help="debug option")
+    parser.add_argument("--apply_patch", default=False, action='store_true', help="patch_id")
+    parser.add_argument("--capture", default=False, action='store_true', help="patch_id")
+    parser.add_argument("--inference", default=False, action='store_true', help="patch_id")
+    parser.add_argument("--verify", default=False, action='store_true', help="patch_id")
     parser.add_argument("--testcase", help="testclass#testmethod")
-    parser.add_argument("--predict",
-                        default=False,
-                        action='store_true',
-                        help="generate model.json")
-    parser.add_argument("--classifiers",
-                        default="/media/4tb/june/learning/models_output/tablesaw_65596d8.classifier",
-                        help="classifiers to extract model")
-    parser.add_argument("--manual_model",
-                        default=False,
-                        action='store_true',
-                        help="classifiers to extract model")
+    parser.add_argument("--predict", default=False, action='store_true', help="generate model.json")
+    parser.add_argument("--classifiers", help="classifiers to extract model")
+    parser.add_argument("--manual_model", default=False, action='store_true', help="classifiers to extract model")
     parser.add_argument("--cpu-pool", default=-1, help="cpu pool")
     args = parser.parse_args()
 
-    error_reports = glob.glob(
-        "npe*.json") if args.error_reports == None else glob.glob(
-            args.error_reports)
+    error_reports = glob.glob("npe*.json") if args.error_reports == None else glob.glob(args.error_reports)
     bug = Bug(ROOT_DIR, error_reports)
 
-    if os.path.isfile(f"{ROOT_DIR}/pom.xml") is False and os.path.isfile(
-            f"{ROOT_DIR}/Main.java") is False:
+    if os.path.isfile(f"{ROOT_DIR}/pom.xml") is False and os.path.isfile(f"{ROOT_DIR}/Main.java") is False:
         print(f"[ERROR]: invalid project; no pom.xml or no Main.java")
         exit(1)
 
