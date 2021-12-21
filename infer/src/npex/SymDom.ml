@@ -211,7 +211,7 @@ module SymHeap = struct
   let get_class_name_opt = function
     | Allocsite (node, _, _) -> (
       match Node.get_instr node with
-      | Sil.Call (_, Exp.Const (Const.Cfun procname), [(Exp.Sizeof {typ}, _)], _, _) when Models.is_new procname
+      | Sil.Call (_, Exp.Const (Const.Cfun procname), [(Exp.Sizeof {typ}, _)], _, _) when is_new procname
         -> (
         match typ.desc with Tstruct name -> Some name | _ -> None )
       | _ ->

@@ -348,3 +348,5 @@ let builtin_procs =
 let is_builtin_proc callee = List.mem builtin_procs callee ~equal:Procname.equal
 
 let is_lambda = function Procname.Java mthd -> Procname.Java.is_lambda mthd | _ -> false
+
+let is_new pid = Procname.equal pid BuiltinDecl.__new || Procname.equal pid BuiltinDecl.__new_array

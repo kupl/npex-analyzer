@@ -360,7 +360,7 @@ let is_undef_proc program pid =
     let pdesc = pdesc_of program pid in
     (* NOTE: undefined procedures (e.g., extern) may have a procdesc in Infer IR. *)
     let ProcAttributes.{is_defined} = Procdesc.get_attributes pdesc in
-    (not is_defined) || Models.is_model pid
+    (not is_defined) || is_builtin_proc pid
   with Caml.Not_found -> true
 
 

@@ -533,7 +533,7 @@ module DisjReady = struct
           List.map non_null_states ~f:(fun non_null_state -> Domain.store_loc non_null_state loc value)
         in
         null_states @ non_null_states
-    | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when Models.is_new proc ->
+    | Sil.Call ((ret_id, _), Const (Cfun proc), _, _, _) when is_new proc ->
         (* allocation instruction *)
         let value = Domain.Val.make_allocsite instr_node in
         [Domain.store_reg astate ret_id value]
