@@ -30,5 +30,5 @@ To infer an specification for a given NPE, we need to prepare the following inpu
 See [INSTALL.md](./INSTALL.md).
 
 ## License
-Infer is MIT-licensed.
-Note: Enabling Java support may require you to download and install components licensed under the GPL.
+NPEX Anlayzer is MIT-licensed.
+Note: Installation may download and install components licensed under the GPL.
