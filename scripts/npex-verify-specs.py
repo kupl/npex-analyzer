@@ -14,7 +14,7 @@ from typing import List, Dict
 from dataclasses import asdict, dataclass, field, fields, is_dataclass
 
 ROOT_DIR = os.getcwd()
-INFER_DIR = os.getenv("INFER_DIR")
+INFER_DIR = f'{os.path.dirname(os.path.realpath(__file__))}/..'
 NPEX_DIR = os.getenv("NPEX_DIR")
 
 INFER_PATH = f"{INFER_DIR}/infer/bin/infer"
