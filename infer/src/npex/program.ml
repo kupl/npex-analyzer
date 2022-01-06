@@ -683,3 +683,59 @@ let slice_procs_except {callgraph} procs =
       callgraph Procname.Set.empty
   in
   Procname.Set.iter (CallGraph.remove_vertex callgraph) to_remove
+
+
+let prepare_incremental_db () =
+  let main_db = ResultsDatabase.get_database () in
+
+  SqliteUtils.exec main_db
+    ~stmt:"ATTACH ':memory:' AS memdb"
+    ~log:"attaching memdb" ;
+  ResultsDatabase.create_tables ~prefix:"memdb." main_db ;
+
+  let db_file = ResultsDirEntryName.get_path ~results_dir:Config.npex_cached_results_dir CaptureDB in
+  SqliteUtils.exec main_db
+    ~stmt:(Printf.sprintf "ATTACH '%s' AS attached" db_file)
+    ~log:(Printf.sprintf "attaching database '%s'" db_file) ;
+
+  let merge_procedures () = 
+    SqliteUtils.exec main_db
+      ~log:(Printf.sprintf "copying procedures of database %s into memdb" db_file )
+      ~stmt:
+        {| 
+            INSERT OR REPLACE INTO memdb.procedures
+            SELECT * 
+            FROM attached.procedures
+        |}; 
+    SqliteUtils.exec main_db
+      ~log:(Printf.sprintf "copying current procedures into memdb")
+      ~stmt:
+        {| 
+            INSERT OR REPLACE INTO memdb.procedures
+            SELECT *
+            FROM procedures
+        |}
+  in
+
+  let merge_source_files () =
+    SqliteUtils.exec main_db 
+         ~log:(Printf.sprintf "copying source_files of database '%s' into memdb" db_file)
+         ~stmt:
+           {|
+              INSERT OR REPLACE INTO memdb.source_files
+              SELECT source_file, type_environment, integer_type_widths, procedure_names, 1
+              FROM attached.source_files
+            |}
+  in
+
+  merge_procedures ();
+  merge_source_files();
+
+  SqliteUtils.exec main_db ~log:"Copying procedures into main db"
+    ~stmt:"INSERT OR REPLACE INTO procedures SELECT * FROM memdb.procedures" ;
+  SqliteUtils.exec main_db ~log:"Copying source_files into main db"
+    ~stmt:"INSERT OR REPLACE INTO source_files SELECT * FROM memdb.source_files" ;
+
+  SqliteUtils.exec main_db ~stmt:"DETACH attached" ~log:(Printf.sprintf "detaching database '%s'" db_file) ;
+  SqliteUtils.exec main_db ~stmt:"DETACH memdb" ~log:"detaching memdb"
+

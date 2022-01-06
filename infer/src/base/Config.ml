@@ -176,6 +176,8 @@ let npex_localizer_result = "localizer_result.json"
 
 let npex_model_json = "model.json"
 
+let npex_cached_results_dir = "infer-out-cached"
+
 let npex_summary_dir = "npex-summaries"
 
 let npex_result_dir = "npex-results"
@@ -3256,6 +3258,8 @@ and npex_launch_spec_inference = !npex_launch_spec_inference
 and npex_manual_model = !npex_manual_model
 
 and npex_launch_spec_verifier = !npex_launch_spec_verifier
+
+and npex_capture_incremental = !npex_capture_incremental
 
 and test_filtering = !test_filtering
 

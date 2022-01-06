@@ -595,6 +595,8 @@ val npex_localizer_result : string
 
 val npex_model_json : string
 
+val npex_cached_results_dir : string
+
 val npex_test_method : string option
 
 val npex_patch_id : string option

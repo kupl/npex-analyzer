@@ -106,3 +106,5 @@ val slice_procs_except : t -> Procname.Set.t -> unit
 val resolve_method : Typ.Name.t -> Procname.t -> Procname.t option
 
 val is_final_field_exp : Exp.t -> bool
+
+val prepare_incremental_db : unit -> unit
