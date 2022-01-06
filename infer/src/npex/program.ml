@@ -403,7 +403,8 @@ let original_mpath = Filename.concat Config.npex_summary_dir "program.data"
 let _executed_procs = ref []
 
 let is_executed procname =
-  ( if List.is_empty !_executed_procs then
+  ( if List.is_empty !_executed_procs && (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier)
+  then
     let json = read_json_file_exn Config.npex_localizer_result in
     let open Yojson.Basic.Util in
     let executed_proc_jsons = json |> member "procs" |> to_list in
