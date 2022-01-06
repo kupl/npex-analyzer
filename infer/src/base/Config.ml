@@ -3259,7 +3259,6 @@ and npex_manual_model = !npex_manual_model
 
 and npex_launch_spec_verifier = !npex_launch_spec_verifier
 
-and npex_capture_incremental = !npex_capture_incremental
 
 and test_filtering = !test_filtering
 

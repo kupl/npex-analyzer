@@ -27,6 +27,7 @@ NPEX_CMD = f"{JAVA_15} --enable-preview -cp {NPEX_JAR} npex.driver.Main"
 NPEX_SCRIPT = f"{NPEX_DIR}/scripts/main.py"
 
 
+
 @dataclass
 class Result:
     number_of_patches: int
@@ -104,14 +105,21 @@ class Bug:
             print(f"[FAIL] git checkout")
             exit(-1)
 
-    def is_pl_able(self, module, filename):
-        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+    def get_compiled(self, filepath):
+        filename = os.path.basename(filepath).rstrip(".java")
+        return glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+
+    def is_pl_able(self, module, filepath):
+        if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
+            return True
+
+        target_classes = self.get_compiled(filepath)
         for target_class_file in target_classes:
             os.remove(target_class_file)
 
         is_compiled = subprocess.run(f"mvn package {MVN_OPT} -pl {module} -amd", shell=True,
                                      cwd=self.project_root_dir).returncode == 0
-        target_classes = glob.glob(f"{self.project_root_dir}/**/{filename}.class", recursive=True)
+        target_classes = self.get_compiled(filepath)
         if is_compiled:
             if target_classes != []:
                 print(f"found target class compiled: {target_classes}")
@@ -155,7 +163,7 @@ class Bug:
                 first_module = filepath.split('/')[0]
             if first_module != "src":
                 print(f"found module: {first_module}")
-                if self.is_pl_able(first_module, os.path.basename(filepath).rstrip(".java")):
+                if self.is_pl_able(first_module, filepath):
                     build_cmd = f"mvn clean package {MVN_OPT} -pl {first_module} -amd"
                     subprocess.run(f"touch {self.project_root_dir}/.pl_able", shell=True, cwd=self.project_root_dir)
                 else:
@@ -222,20 +230,16 @@ class Bug:
                 filepath = npe_json["filepath"]
                 first_module = filepath.split('/')[0]
                 filename = os.path.basename(filepath).rstrip(".java")
-                # if first_module != "src":
-                #     print(f"found module: {first_module}")
-                #     # if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
-                #     if self.is_pl_able(first_module, filename):
-                #         target_classes = glob.glob(
-                #             f"{self.project_root_dir}/**/{filename}.class",
-                #             recursive=True)
-                #         for target_class_file in target_classes:
-                #             os.remove(target_class_file)
-                #         build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
-                #     else:
-                #         build_cmd = f"mvn package {MVN_OPT}"
-                # else:
-                build_cmd = f"mvn package {MVN_OPT}"
+                if first_module != "src":
+                    if self.is_pl_able(first_module, filename):
+                        target_classes = self.get_compiled(filepath)
+                        for target_class_file in target_classes:
+                            os.remove(target_class_file)
+                        build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
+                    else:
+                        build_cmd = f"mvn package {MVN_OPT}"
+                else:
+                    build_cmd = f"mvn package {MVN_OPT}"
         else:
             with open(f"{patch_dir}/patch.json", "r") as f:
                 patch_json = json.load(f)
