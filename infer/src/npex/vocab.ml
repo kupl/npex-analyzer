@@ -188,7 +188,7 @@ let find_node_with_location ~file ~line =
       | Some pdesc ->
           List.filter (Procdesc.get_nodes pdesc) ~f:(fun n -> Int.( = ) (get_node_loc_line n) line)
       | None ->
-          [])
+          [] )
 
 
 let read_json_file_exn filepath =
@@ -207,7 +207,7 @@ let source_file_from_string files filename =
     | None ->
         raise
           (Unexpected
-             (F.asprintf "Could not find %s from captured files@. - %a@." filename (Pp.seq SourceFile.pp) files))
+             (F.asprintf "Could not find %s from captured files@. - %a@." filename (Pp.seq SourceFile.pp) files) )
   in
   if Char.equal filename.[0] '/' then
     find_or_raise files ~f:(fun source_file -> String.(filename = SourceFile.to_abs_path source_file))
@@ -250,7 +250,8 @@ let proc_to_json_opt proc =
             [ ("name", `String procname)
             ; ("class", `String classname)
             ; ("line", `Int line)
-            ; ("filepath", `String filepath) ])
+            ; ("filepath", `String filepath)
+            ; ("proc_uid", `String (Procname.to_unique_id proc)) ] )
     | None ->
         None
   in
@@ -268,13 +269,13 @@ let debug_time process_name ~f ~arg =
       | Some (num_iter, time') ->
           Some (num_iter + 1, time +. time')
       | None ->
-          Some (1, time)) ;
+          Some (1, time) ) ;
   result
 
 
 let debug_time_finalize () =
   String.Map.iteri !time_debugger ~f:(fun ~key ~data:(num_iter, time) ->
-      L.(debug Analysis Quiet) " - %s : %d, %f@." key num_iter time) ;
+      L.(debug Analysis Quiet) " - %s : %d, %f@." key num_iter time ) ;
   time_debugger := String.Map.empty
 
 

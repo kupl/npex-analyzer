@@ -188,6 +188,24 @@ class Bug:
         shutil.copytree(f"{self.project_root_dir}/infer-out", f"{self.project_root_dir}/infer-out-cached")
         self.time_to_capture_original = time.time() - start_time
 
+    def localize(self, debug):
+        start_time = time.time()
+        debug_opt = "-g" if debug else ""
+        inference_option = f"--localize -j 40 --scheduler callgraph {debug_opt}"
+
+        localize_cmd = f"{INFER_PATH} npex {inference_option}"
+
+        ret = subprocess.run(localize_cmd, shell=True, cwd=self.project_root_dir)
+        if ret.returncode == 1:
+            print(f"[FAIL] localize")
+            exit(-1)
+        elif ret.returncode != 0:
+            print(f"[FAIL] localize")
+            exit(ret.returncode)
+
+        # TODO: DB Diet            
+        self.time_to_inference = time.time() - start_time
+
     def inference(self, manual_model, debug, cpu_pool):
         start_time = time.time()
         debug_opt = "-g" if debug else ""
@@ -396,6 +414,9 @@ if __name__ == '__main__':
     if args.testcase:
         print("validate patches by testcases")
         bug.validate_by_testcase(args.testcase)
+    elif args.localize:
+        bug.capture_all(args.recap)
+        bug.localize(args.debug)
     elif args.apply_patch:
         patch_dir = f"{ROOT_DIR}/patches/{args.patch_id}"
         apply_patch(ROOT_DIR, patch_dir)
