@@ -72,7 +72,7 @@ module DisjReady = struct
                    Domain.{astate with pc= Domain.PC.replace_value astate.pc ~src:nullvalue ~dst:null}
                  in *)
               List.fold existing_nullvalues ~init:astate ~f:(fun astate_acc existing_nullvalue ->
-                  Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null)
+                  Domain.replace_value astate_acc ~src:existing_nullvalue ~dst:null )
             in
             let nullcond = Domain.PathCond.make_physical_equals Binop.Eq nullvalue null in
             let null_state =
@@ -114,7 +114,7 @@ module DisjReady = struct
                   if Domain.is_unknown_loc acc field_loc then
                     let instr_node = InstrNode.of_pnode node instr in
                     Domain.store_loc acc field_loc (Domain.Val.get_default_by_typ instr_node fn_typ)
-                  else acc)
+                  else acc )
           | None ->
               astate )
         | None ->
@@ -393,7 +393,7 @@ module DisjReady = struct
             let null_states, non_null_states = check_null astate analysis_data node instr this_exp in
             let non_null_states =
               List.concat_map non_null_states ~f:(fun astate ->
-                  exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee)
+                  exec_interproc_call astate analysis_data node instr ret_typ arg_typs callee )
             in
             null_states @ non_null_states
         | _ ->
@@ -574,7 +574,7 @@ module DisjReady = struct
                 Domain.Loc.of_pvar pv |> Domain.Loc.is_temp (* Pvar.is_frontend_tmp pv *)
             | Var.ProgramVar _ ->
                 (* In Java7, some temp variables ares unsoundly translated. So do not remove it *)
-                false)
+                false )
         in
         [Domain.remove_temps astate ~line:(get_line node) real_temps]
     | Sil.Metadata (Nullify (pv, _)) when Domain.Loc.of_pvar pv |> Domain.Loc.is_temp ->
@@ -701,57 +701,6 @@ let compute_summary : Procdesc.t -> CFG.t -> Analyzer.invariant_map -> SpecCheck
       Summary.empty
 
 
-let _executed_procs = ref []
-
-let is_executed procname =
-  ( if List.is_empty !_executed_procs then
-    let json = read_json_file_exn Config.npex_localizer_result in
-    let open Yojson.Basic.Util in
-    let executed_proc_jsons = json |> member "procs" |> to_list in
-    _executed_procs :=
-      List.map executed_proc_jsons ~f:(fun proc_json ->
-          (* let filepath = proc_json |> member "filepath" |> to_string in
-             let line = proc_json |> member "line" |> to_int in *)
-          let name = proc_json |> member "name" |> to_string in
-          let class_name = proc_json |> member "class" |> to_string in
-          (name, class_name)) ) ;
-  (* if List.is_empty !_executed_procs then
-     let program = Program.from_marshal () in
-     let null_procs = NullPoint.get_nullpoint_list program |> List.map ~f:NullPoint.get_procname in
-     _executed_procs :=
-       List.map null_procs ~f:(fun procname ->
-           match Procname.get_class_name procname with
-           | Some class_name ->
-               (Procname.get_method procname, class_name)
-           | None ->
-               (Procname.get_method procname, "")) ) ; *)
-  let name = Procname.get_method procname in
-  match Procname.get_class_name procname with
-  | _ when List.is_empty !_executed_procs ->
-      true
-  | Some class_name ->
-      List.exists !_executed_procs ~f:(fun (name', class_name') ->
-          (* L.progress "[Method] %s and %s : %b@." name name' (String.equal name name') ;
-             L.progress "[Class] %s and %s : %b@." class_name class_name' (String.equal class_name class_name') ; *)
-          String.equal name name' && String.equal class_name class_name')
-  | None ->
-      L.(debug Analysis Medium) "[WARNING]: %a has no classname" Procname.pp procname ;
-      List.exists !_executed_procs ~f:(fun (name', _) -> String.equal name name')
-
-
-(* Procname.Set.find_first_opt
-   (fun proc ->
-     match Procname.get_class_name proc with
-     | Some class_name_of_proc ->
-         L.progress "compare %s and %s: %b@." (Procname.get_method proc) name
-           (String.equal (Procname.get_method proc) name) ;
-         L.progress "compare_class %s and %s : %b@." class_name_of_proc class_name
-           (String.equal class_name_of_proc class_name) ;
-         String.equal (Procname.get_method proc) name && String.equal class_name_of_proc class_name
-     | _ ->
-         false)
-   procs *)
-
 let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
   let analysis_data = DisjReady.analysis_data interproc in
   let formals = Procdesc.get_pvar_formals proc_desc |> List.map ~f:fst in
@@ -763,7 +712,8 @@ let checker ({InterproceduralAnalysis.proc_desc} as interproc) =
   else if Config.npex_launch_localize && Procname.is_java_class_initializer procname then
     (* HEURISTICS: ignore class initializer which may be called at main procedure. *)
     None
-  else if (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier) && not (is_executed procname)
+  else if
+    (Config.npex_launch_spec_inference || Config.npex_launch_spec_verifier) && not (Program.is_executed procname)
   then None (* && is_all_target_funs_analyzed analysis_data then None *)
   else
     let inv_map = cached_compute_invariant_map analysis_data in

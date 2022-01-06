@@ -35,7 +35,7 @@ module IntraCfg = struct
     G.iter_vertex
       (fun v ->
         G.add_vertex graph v ;
-        List.iter (dom_tree v) ~f:(G.add_edge graph v))
+        List.iter (dom_tree v) ~f:(G.add_edge graph v) )
       cfg ;
     (graph, Path.create graph)
 
@@ -65,7 +65,7 @@ module IntraCfg = struct
         insert_skip_instr_to_empty_node node ;
         (* print_node node ; *)
         List.iter (Procdesc.Node.get_succs node) ~f:(fun succ ->
-            G.add_edge_e g (Node.of_pnode node, Node.of_pnode succ)))
+            G.add_edge_e g (Node.of_pnode node, Node.of_pnode succ) ) )
       pdesc ;
     let Location.{file} = Procdesc.get_loc pdesc in
     {pdesc; file; graph= g; instr_graph= None; cfg_path_checker= None; cfg_dom_tree= None; cfg_pdom_tree= None}
@@ -149,13 +149,14 @@ module IntraCfg = struct
 end
 
 module CallGraph = struct
-  include Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
-            (struct
-              include Procname
+  include
+    Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
+      (struct
+        include Procname
 
-              let hash x = Hashtbl.hash (Procname.hashable_name x)
-            end)
-            (InstrNode)
+        let hash x = Hashtbl.hash (Procname.hashable_name x)
+      end)
+      (InstrNode)
 
   let find_reachable_nodes_of ?(forward = true) ?(reflexive = true) (graph : t) (init : Procname.Set.t) :
       Procname.Set.t =
@@ -242,7 +243,7 @@ let print_callgraph program dotname =
 let callers_of_instr_node {callgraph} instr_node =
   let preds = try CallGraph.pred_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
   List.filter_map preds ~f:(fun (pred, instr_node', _) ->
-      if InstrNode.equal instr_node instr_node' then Some pred else None)
+      if InstrNode.equal instr_node instr_node' then Some pred else None )
 
 
 let callees_of_instr_node {callgraph} instr_node =
@@ -250,7 +251,7 @@ let callees_of_instr_node {callgraph} instr_node =
   | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
       let succs = try CallGraph.succ_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
       List.filter_map succs ~f:(fun (_, instr_node', succ) ->
-          if InstrNode.equal instr_node instr_node' then Some succ else None)
+          if InstrNode.equal instr_node instr_node' then Some succ else None )
   | Sil.Call (_, Const (Cfun procname), _, _, _) ->
       [procname]
   | _ ->
@@ -373,31 +374,55 @@ let pred_instr_node program x = IntraCfg.pred_instr_node (cfgof program (InstrNo
 let succ_instr_node program x = IntraCfg.succ_instr_node (cfgof program (InstrNode.get_proc_name x)) x
 
 (* let get_blocks cfgs init =
-  if NSet.is_empty init then NSet.empty
-  else
-    let pid = Node.get_proc_name (NSet.choose init) in
-    let init = NSet.filter (fun n -> Procname.equal (Node.get_proc_name n) pid) init in
-    let is_single_pred n = Int.equal (List.length (pred cfgs n)) 1 in
-    let is_single_succ n = Int.equal (List.length (succ cfgs n)) 1 in
-    let rec do_worklist acc worklist =
-      if NSet.is_empty worklist then acc
-      else
-        let work = NSet.choose worklist in
-        let rest = NSet.remove work worklist in
-        let nexts =
-          let preds = List.filter (pred cfgs work) ~f:is_single_succ in
-          let succs = List.filter (succ cfgs work) ~f:is_single_pred in
-          NSet.diff (NSet.of_list (preds @ succs)) acc
-        in
-        do_worklist (NSet.add work acc) (NSet.union rest nexts)
-    in
-    do_worklist init init *)
+   if NSet.is_empty init then NSet.empty
+   else
+     let pid = Node.get_proc_name (NSet.choose init) in
+     let init = NSet.filter (fun n -> Procname.equal (Node.get_proc_name n) pid) init in
+     let is_single_pred n = Int.equal (List.length (pred cfgs n)) 1 in
+     let is_single_succ n = Int.equal (List.length (succ cfgs n)) 1 in
+     let rec do_worklist acc worklist =
+       if NSet.is_empty worklist then acc
+       else
+         let work = NSet.choose worklist in
+         let rest = NSet.remove work worklist in
+         let nexts =
+           let preds = List.filter (pred cfgs work) ~f:is_single_succ in
+           let succs = List.filter (succ cfgs work) ~f:is_single_pred in
+           NSet.diff (NSet.of_list (preds @ succs)) acc
+         in
+         do_worklist (NSet.add work acc) (NSet.union rest nexts)
+     in
+     do_worklist init init *)
 
 let _tenv = ref (Tenv.create ())
 
 let tenv () = !_tenv
 
 let original_mpath = Filename.concat Config.npex_summary_dir "program.data"
+
+let _executed_procs = ref []
+
+let is_executed procname =
+  ( if List.is_empty !_executed_procs then
+    let json = read_json_file_exn Config.npex_localizer_result in
+    let open Yojson.Basic.Util in
+    let executed_proc_jsons = json |> member "procs" |> to_list in
+    _executed_procs :=
+      List.map executed_proc_jsons ~f:(fun proc_json ->
+          let name = proc_json |> member "name" |> to_string in
+          let class_name = proc_json |> member "class" |> to_string in
+          (name, class_name) ) ) ;
+  let name = Procname.get_method procname in
+  match Procname.get_class_name procname with
+  | _ when List.is_empty !_executed_procs ->
+      true
+  | Some class_name ->
+      List.exists !_executed_procs ~f:(fun (name', class_name') ->
+          String.equal name name' && String.equal class_name class_name' )
+  | None ->
+      L.(debug Analysis Medium) "[WARNING]: %a has no classname" Procname.pp procname ;
+      List.exists !_executed_procs ~f:(fun (name', _) -> String.equal name name')
+
 
 let build () : t =
   let tenv, cfgs =
@@ -412,17 +437,19 @@ let build () : t =
               try Tenv.FileLocal (Option.value_exn (Tenv.load file))
               with _ -> L.(die ExternalError "Failed to load tenv file: %a@." SourceFile.pp file)
             in
-            Tenv.merge_per_file ~src:tenv_local ~dst:acc)
+            Tenv.merge_per_file ~src:tenv_local ~dst:acc )
       in
       match tenv' with Global -> L.(die InternalError "Global Tenv Found") | FileLocal t -> t
     in
     let cfgs =
       List.fold procnames ~init:Procname.Map.empty ~f:(fun acc procname ->
           match Procdesc.load procname with
+          | _ when not (is_executed procname) ->
+              acc
           | Some pdesc ->
               Procname.Map.add procname (IntraCfg.from_pdesc pdesc) acc
           | None ->
-              acc)
+              acc )
     in
     if Config.npex_launch_spec_verifier then
       let original_program : t = Utils.with_file_in original_mpath ~f:Marshal.from_channel in
@@ -430,7 +457,7 @@ let build () : t =
       let cfgs =
         Procname.Map.merge
           (fun _ cfg cfg_org ->
-            match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None)
+            match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None )
           cfgs original_program.cfgs
       in
       (tenv, cfgs)
@@ -455,36 +482,38 @@ let build () : t =
           in
           List.iter superclasses ~f:(fun supercls -> ClassHierachy.add_edge program.classes class_type supercls)
       | _ ->
-          ())
+          () )
     cfgs ;
   let library_calls =
     Procname.Map.fold
       (fun _ IntraCfg.{pdesc} acc ->
-        let instr_nodes = Procdesc.get_nodes pdesc |> List.concat_map ~f:InstrNode.list_of_pnode in
-        List.fold instr_nodes ~init:acc ~f:(fun acc instr_node ->
-            let callees =
-              match InstrNode.get_instr instr_node with
-              | Sil.Call (_, Const (Cfun (Procname.Java mthd)), _, _, {cf_virtual}) when cf_virtual ->
-                  let init = Procname.Java.get_class_type_name mthd |> Typ.Name.Set.singleton in
-                  let classes_candidates =
-                    ClassHierachy.find_reachable_nodes_of program.classes ~forward:false ~reflexive:true init
-                    |> Typ.Name.Set.elements
-                  in
-                  let method_exists proc procs = List.mem procs proc ~equal:Procname.equal in
-                  List.filter_map classes_candidates ~f:(fun class_name ->
-                      Tenv.resolve_method ~method_exists tenv class_name (Procname.Java mthd))
-                  |> Procname.Set.of_list
-                  |> Procname.Set.elements
-              | Sil.Call (_, Const (Cfun callee), _, _, _) ->
-                  [callee]
-              | _ ->
-                  []
-            in
-            (* TODO: why only defined?  *)
-            let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
-            List.iter callees_defed ~f:(add_call_edge program instr_node) ;
-            if (not (List.is_empty callees_defed)) && List.is_empty callees_undefed then acc
-            else InstrNode.Set.add instr_node acc))
+        let pnodes = Procdesc.get_nodes pdesc |> List.filter ~f:is_callnode in
+        List.fold pnodes ~init:acc ~f:(fun acc pnode ->
+            Instrs.fold (Procdesc.Node.get_instrs pnode) ~init:acc ~f:(fun acc instr ->
+                let instr_node = InstrNode.of_pnode pnode instr in
+                let callees =
+                  match InstrNode.get_instr instr_node with
+                  | Sil.Call (_, Const (Cfun (Procname.Java mthd)), _, _, {cf_virtual}) when cf_virtual ->
+                      let init = Procname.Java.get_class_type_name mthd |> Typ.Name.Set.singleton in
+                      let classes_candidates =
+                        ClassHierachy.find_reachable_nodes_of program.classes ~forward:false ~reflexive:true init
+                        |> Typ.Name.Set.elements
+                      in
+                      let method_exists proc procs = List.mem procs proc ~equal:Procname.equal in
+                      List.filter_map classes_candidates ~f:(fun class_name ->
+                          Tenv.resolve_method ~method_exists tenv class_name (Procname.Java mthd) )
+                      |> Procname.Set.of_list
+                      |> Procname.Set.elements
+                  | Sil.Call (_, Const (Cfun callee), _, _, _) ->
+                      [callee]
+                  | _ ->
+                      []
+                in
+                (* TODO: why only defined?  *)
+                let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
+                List.iter callees_defed ~f:(add_call_edge program instr_node) ;
+                if (not (List.is_empty callees_defed)) && List.is_empty callees_undefed then acc
+                else InstrNode.Set.add instr_node acc ) ) )
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;
@@ -651,7 +680,7 @@ let slice_virtual_calls program executed_procs trace_procs =
   let reachable_callees = cg_reachables_of program ~forward:true ~reflexive:true executed_procs in
   Procname.Set.iter
     (fun proc ->
-      if not (Procname.Set.mem proc reachable_callees) then CallGraph.remove_vertex program.callgraph proc)
+      if not (Procname.Set.mem proc reachable_callees) then CallGraph.remove_vertex program.callgraph proc )
     reachable_callees ;
   Procname.Set.iter
     (fun proc ->
@@ -670,9 +699,9 @@ let slice_virtual_calls program executed_procs trace_procs =
                     ()
                 | _ ->
                     List.iter callees ~f:(fun callee ->
-                        CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
+                        CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee) ) )
       | None ->
-          ())
+          () )
     executed_procs
 
 
@@ -687,26 +716,21 @@ let slice_procs_except {callgraph} procs =
 
 let prepare_incremental_db () =
   let main_db = ResultsDatabase.get_database () in
-
-  SqliteUtils.exec main_db
-    ~stmt:"ATTACH ':memory:' AS memdb"
-    ~log:"attaching memdb" ;
+  SqliteUtils.exec main_db ~stmt:"ATTACH ':memory:' AS memdb" ~log:"attaching memdb" ;
   ResultsDatabase.create_tables ~prefix:"memdb." main_db ;
-
   let db_file = ResultsDirEntryName.get_path ~results_dir:Config.npex_cached_results_dir CaptureDB in
   SqliteUtils.exec main_db
     ~stmt:(Printf.sprintf "ATTACH '%s' AS attached" db_file)
     ~log:(Printf.sprintf "attaching database '%s'" db_file) ;
-
-  let merge_procedures () = 
+  let merge_procedures () =
     SqliteUtils.exec main_db
-      ~log:(Printf.sprintf "copying procedures of database %s into memdb" db_file )
+      ~log:(Printf.sprintf "copying procedures of database %s into memdb" db_file)
       ~stmt:
         {| 
             INSERT OR REPLACE INTO memdb.procedures
             SELECT * 
             FROM attached.procedures
-        |}; 
+        |} ;
     SqliteUtils.exec main_db
       ~log:(Printf.sprintf "copying current procedures into memdb")
       ~stmt:
@@ -716,26 +740,21 @@ let prepare_incremental_db () =
             FROM procedures
         |}
   in
-
   let merge_source_files () =
-    SqliteUtils.exec main_db 
-         ~log:(Printf.sprintf "copying source_files of database '%s' into memdb" db_file)
-         ~stmt:
-           {|
+    SqliteUtils.exec main_db
+      ~log:(Printf.sprintf "copying source_files of database '%s' into memdb" db_file)
+      ~stmt:
+        {|
               INSERT OR REPLACE INTO memdb.source_files
               SELECT source_file, type_environment, integer_type_widths, procedure_names, 1
               FROM attached.source_files
             |}
   in
-
-  merge_procedures ();
-  merge_source_files();
-
+  merge_procedures () ;
+  merge_source_files () ;
   SqliteUtils.exec main_db ~log:"Copying procedures into main db"
     ~stmt:"INSERT OR REPLACE INTO procedures SELECT * FROM memdb.procedures" ;
   SqliteUtils.exec main_db ~log:"Copying source_files into main db"
     ~stmt:"INSERT OR REPLACE INTO source_files SELECT * FROM memdb.source_files" ;
-
   SqliteUtils.exec main_db ~stmt:"DETACH attached" ~log:(Printf.sprintf "detaching database '%s'" db_file) ;
   SqliteUtils.exec main_db ~stmt:"DETACH memdb" ~log:"detaching memdb"
-

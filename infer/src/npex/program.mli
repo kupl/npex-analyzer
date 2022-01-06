@@ -13,6 +13,8 @@ end
 
 type t
 
+val is_executed : Procname.t -> bool
+
 val build : unit -> t
 
 val tenv : unit -> Tenv.t

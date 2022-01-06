@@ -249,7 +249,7 @@ class Bug:
                 first_module = filepath.split('/')[0]
                 filename = os.path.basename(filepath).rstrip(".java")
                 if first_module != "src":
-                    if self.is_pl_able(first_module, filename):
+                    if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
                         target_classes = self.get_compiled(filepath)
                         for target_class_file in target_classes:
                             os.remove(target_class_file)
@@ -397,6 +397,7 @@ if __name__ == '__main__':
     parser.add_argument("--capture", default=False, action='store_true', help="patch_id")
     parser.add_argument("--inference", default=False, action='store_true', help="patch_id")
     parser.add_argument("--verify", default=False, action='store_true', help="patch_id")
+    parser.add_argument("--localize", default=False, action='store_true', help="localize")
     parser.add_argument("--testcase", help="testclass#testmethod")
     parser.add_argument("--predict", default=False, action='store_true', help="generate model.json")
     parser.add_argument("--classifiers", help="classifiers to extract model")
