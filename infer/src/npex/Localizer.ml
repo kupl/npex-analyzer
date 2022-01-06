@@ -325,6 +325,40 @@ let filter_faults program faults =
     faults
 
 
+let remove_irrelevant_procs_from_db program relevant_procs =
+  let db = ResultsDatabase.get_database () in
+  let irrelevant_procs = Procname.Set.diff (Program.all_procs program) relevant_procs in
+  let proc_uids =
+    Procname.Set.fold (fun procname acc -> Procname.to_unique_id procname :: acc) irrelevant_procs []
+  in
+  List.iter proc_uids ~f:(fun uid -> L.progress "proc_uids: %s@." uid) ;
+  let irrelevant_source_files =
+    let all_sources = SourceFiles.get_all () ~filter:(fun _ -> true) |> SourceFile.Set.of_list in
+    let relevant_sources =
+      Procname.Set.fold
+        (fun procname acc ->
+          match Procdesc.load procname with
+          | Some pdesc ->
+              SourceFile.Set.add Location.((pdesc |> Procdesc.get_loc).file) acc
+          | _ ->
+              acc)
+        relevant_procs SourceFile.Set.empty
+    in
+    SourceFile.Set.diff all_sources relevant_sources
+  in
+  List.iter proc_uids ~f:(fun uid ->
+      SqliteUtils.exec db ~log:"remove uid from ..."
+        ~stmt:(Printf.sprintf {| DELETE FROM procedures WHERE proc_uid = "%s" |} uid)) ;
+
+  SourceFile.Set.iter
+    (fun source_file ->
+      SqliteUtils.exec db ~log:"remove source_file from ..."
+        ~stmt:
+          (Printf.sprintf {| DELETE FROM source_files WHERE source_file = "%s" |}
+             (SourceFile.SQLite.serialize source_file |> Sqlite3.Data.to_string_exn)))
+    irrelevant_source_files
+
+
 let localize ~get_summary ~time program trace_procs =
   let nullpoint = NullPoint.get_nullpoint_list program |> List.hd_exn in
   let npe_fault =
@@ -347,8 +381,9 @@ let localize ~get_summary ~time program trace_procs =
     |> filter_faults program
   in
   L.progress "@.Faults: %a@." Faults.pp faults ;
-  if Procname.Set.is_empty executed_procs then
-    let executed_procs = Program.cg_reachables_of program trace_procs in
-    result_to_json ~time ~target_procs:executed_procs ~executed_procs
-  else result_to_json ~time ~target_procs:executed_procs ~executed_procs ;
+  let executed_procs =
+    if Procname.Set.is_empty executed_procs then Program.cg_reachables_of program trace_procs else executed_procs
+  in
+  result_to_json ~time ~target_procs:executed_procs ~executed_procs ;
+  remove_irrelevant_procs_from_db program executed_procs ;
   generate_npe_list faults
