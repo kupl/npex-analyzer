@@ -35,7 +35,7 @@ module IntraCfg = struct
     G.iter_vertex
       (fun v ->
         G.add_vertex graph v ;
-        List.iter (dom_tree v) ~f:(G.add_edge graph v) )
+        List.iter (dom_tree v) ~f:(G.add_edge graph v))
       cfg ;
     (graph, Path.create graph)
 
@@ -65,7 +65,7 @@ module IntraCfg = struct
         insert_skip_instr_to_empty_node node ;
         (* print_node node ; *)
         List.iter (Procdesc.Node.get_succs node) ~f:(fun succ ->
-            G.add_edge_e g (Node.of_pnode node, Node.of_pnode succ) ) )
+            G.add_edge_e g (Node.of_pnode node, Node.of_pnode succ)))
       pdesc ;
     let Location.{file} = Procdesc.get_loc pdesc in
     {pdesc; file; graph= g; instr_graph= None; cfg_path_checker= None; cfg_dom_tree= None; cfg_pdom_tree= None}
@@ -149,14 +149,13 @@ module IntraCfg = struct
 end
 
 module CallGraph = struct
-  include
-    Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
-      (struct
-        include Procname
+  include Graph.Imperative.Digraph.ConcreteBidirectionalLabeled
+            (struct
+              include Procname
 
-        let hash x = Hashtbl.hash (Procname.hashable_name x)
-      end)
-      (InstrNode)
+              let hash x = Hashtbl.hash (Procname.hashable_name x)
+            end)
+            (InstrNode)
 
   let find_reachable_nodes_of ?(forward = true) ?(reflexive = true) (graph : t) (init : Procname.Set.t) :
       Procname.Set.t =
@@ -243,7 +242,7 @@ let print_callgraph program dotname =
 let callers_of_instr_node {callgraph} instr_node =
   let preds = try CallGraph.pred_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
   List.filter_map preds ~f:(fun (pred, instr_node', _) ->
-      if InstrNode.equal instr_node instr_node' then Some pred else None )
+      if InstrNode.equal instr_node instr_node' then Some pred else None)
 
 
 let callees_of_instr_node {callgraph} instr_node =
@@ -251,7 +250,7 @@ let callees_of_instr_node {callgraph} instr_node =
   | Sil.Call (_, _, _, _, {cf_virtual}) when cf_virtual ->
       let succs = try CallGraph.succ_e callgraph (InstrNode.get_proc_name instr_node) with _ -> [] in
       List.filter_map succs ~f:(fun (_, instr_node', succ) ->
-          if InstrNode.equal instr_node instr_node' then Some succ else None )
+          if InstrNode.equal instr_node instr_node' then Some succ else None)
   | Sil.Call (_, Const (Cfun procname), _, _, _) ->
       [procname]
   | _ ->
@@ -412,14 +411,14 @@ let is_executed procname =
       List.map executed_proc_jsons ~f:(fun proc_json ->
           let name = proc_json |> member "name" |> to_string in
           let class_name = proc_json |> member "class" |> to_string in
-          (name, class_name) ) ) ;
+          (name, class_name)) ) ;
   let name = Procname.get_method procname in
   match Procname.get_class_name procname with
   | _ when List.is_empty !_executed_procs ->
       true
   | Some class_name ->
       List.exists !_executed_procs ~f:(fun (name', class_name') ->
-          String.equal name name' && String.equal class_name class_name' )
+          String.equal name name' && String.equal class_name class_name')
   | None ->
       L.(debug Analysis Medium) "[WARNING]: %a has no classname" Procname.pp procname ;
       List.exists !_executed_procs ~f:(fun (name', _) -> String.equal name name')
@@ -438,19 +437,17 @@ let build () : t =
               try Tenv.FileLocal (Option.value_exn (Tenv.load file))
               with _ -> L.(die ExternalError "Failed to load tenv file: %a@." SourceFile.pp file)
             in
-            Tenv.merge_per_file ~src:tenv_local ~dst:acc )
+            Tenv.merge_per_file ~src:tenv_local ~dst:acc)
       in
       match tenv' with Global -> L.(die InternalError "Global Tenv Found") | FileLocal t -> t
     in
     let cfgs =
       List.fold procnames ~init:Procname.Map.empty ~f:(fun acc procname ->
           match Procdesc.load procname with
-          | _ when not (is_executed procname) ->
-              acc
           | Some pdesc ->
               Procname.Map.add procname (IntraCfg.from_pdesc pdesc) acc
           | None ->
-              acc )
+              acc)
     in
     if Config.npex_launch_spec_verifier then
       let original_program : t = Utils.with_file_in original_mpath ~f:Marshal.from_channel in
@@ -458,7 +455,15 @@ let build () : t =
       let cfgs =
         Procname.Map.merge
           (fun _ cfg cfg_org ->
-            match (cfg, cfg_org) with Some cfg, _ -> Some cfg | None, Some cfg_org -> Some cfg_org | _ -> None )
+            match (cfg, cfg_org) with
+            | Some cfg, _ ->
+                Some cfg
+            | None, Some cfg_org when is_executed (Procdesc.get_proc_name IntraCfg.(cfg_org.pdesc)) ->
+                (* L.progress "%a is executed, but not in DB@." Procname.pp
+                   (Procdesc.get_proc_name IntraCfg.(cfg_org.pdesc)) ; *)
+                Some cfg_org
+            | _ ->
+                None)
           cfgs original_program.cfgs
       in
       (tenv, cfgs)
@@ -483,7 +488,7 @@ let build () : t =
           in
           List.iter superclasses ~f:(fun supercls -> ClassHierachy.add_edge program.classes class_type supercls)
       | _ ->
-          () )
+          ())
     cfgs ;
   let library_calls =
     Procname.Map.fold
@@ -502,7 +507,7 @@ let build () : t =
                       in
                       let method_exists proc procs = List.mem procs proc ~equal:Procname.equal in
                       List.filter_map classes_candidates ~f:(fun class_name ->
-                          Tenv.resolve_method ~method_exists tenv class_name (Procname.Java mthd) )
+                          Tenv.resolve_method ~method_exists tenv class_name (Procname.Java mthd))
                       |> Procname.Set.of_list
                       |> Procname.Set.elements
                   | Sil.Call (_, Const (Cfun callee), _, _, _) ->
@@ -514,7 +519,7 @@ let build () : t =
                 let callees_undefed, callees_defed = List.partition_tf callees ~f:(is_undef_proc program) in
                 List.iter callees_defed ~f:(add_call_edge program instr_node) ;
                 if (not (List.is_empty callees_defed)) && List.is_empty callees_undefed then acc
-                else InstrNode.Set.add instr_node acc ) ) )
+                else InstrNode.Set.add instr_node acc)))
       cfgs InstrNode.Set.empty
   in
   print_callgraph program "callgraph.dot" ;
@@ -681,7 +686,7 @@ let slice_virtual_calls program executed_procs trace_procs =
   let reachable_callees = cg_reachables_of program ~forward:true ~reflexive:true executed_procs in
   Procname.Set.iter
     (fun proc ->
-      if not (Procname.Set.mem proc reachable_callees) then CallGraph.remove_vertex program.callgraph proc )
+      if not (Procname.Set.mem proc reachable_callees) then CallGraph.remove_vertex program.callgraph proc)
     reachable_callees ;
   Procname.Set.iter
     (fun proc ->
@@ -700,9 +705,9 @@ let slice_virtual_calls program executed_procs trace_procs =
                     ()
                 | _ ->
                     List.iter callees ~f:(fun callee ->
-                        CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee) ) )
+                        CallGraph.remove_edge_e program.callgraph (proc, instr_node, callee)))
       | None ->
-          () )
+          ())
     executed_procs
 
 

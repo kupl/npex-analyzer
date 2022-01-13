@@ -301,7 +301,7 @@ let () =
           ~report_txt:(ResultsDir.get_path ReportText) ~selected:Config.select
           ~show_source_context:Config.source_preview ~max_nested_level:Config.max_nesting
   | NPEX ->
-      if Config.npex_launch_spec_verifier then
+      if Config.npex_launch_spec_verifier || Config.npex_launch_spec_inference then
         Program.prepare_incremental_db () ;
       let program = Program.from_marshal () in
       let is_capture_failed program =

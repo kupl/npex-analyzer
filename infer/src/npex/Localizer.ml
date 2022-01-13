@@ -331,7 +331,6 @@ let remove_irrelevant_procs_from_db program relevant_procs =
   let proc_uids =
     Procname.Set.fold (fun procname acc -> Procname.to_unique_id procname :: acc) irrelevant_procs []
   in
-  List.iter proc_uids ~f:(fun uid -> L.progress "proc_uids: %s@." uid) ;
   let irrelevant_source_files =
     let all_sources = SourceFiles.get_all () ~filter:(fun _ -> true) |> SourceFile.Set.of_list in
     let relevant_sources =
@@ -349,14 +348,15 @@ let remove_irrelevant_procs_from_db program relevant_procs =
   List.iter proc_uids ~f:(fun uid ->
       SqliteUtils.exec db ~log:"remove uid from ..."
         ~stmt:(Printf.sprintf {| DELETE FROM procedures WHERE proc_uid = "%s" |} uid)) ;
-
   SourceFile.Set.iter
     (fun source_file ->
       SqliteUtils.exec db ~log:"remove source_file from ..."
         ~stmt:
           (Printf.sprintf {| DELETE FROM source_files WHERE source_file = "%s" |}
              (SourceFile.SQLite.serialize source_file |> Sqlite3.Data.to_string_exn)))
-    irrelevant_source_files
+    irrelevant_source_files ;
+  SqliteUtils.exec db ~log:"drop specs" ~stmt:{| DROP TABLE specs |} ;
+  SqliteUtils.exec db ~log:"Vacuum" ~stmt:"VACUUM"
 
 
 let localize ~get_summary ~time program trace_procs =

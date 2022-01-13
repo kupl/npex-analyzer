@@ -394,7 +394,7 @@ let has_caller_npe program get_summary target_proc =
 
 
 let launch ~get_summary ~get_original_summary =
-  let program = Program.build () in
+  let program = Program.from_marshal () in
   let patch = Patch.create program ~patch_json_path:Config.npex_patch_json_name in
   let target_proc = Patch.get_method patch in
   (* TODO: verify on most caller
