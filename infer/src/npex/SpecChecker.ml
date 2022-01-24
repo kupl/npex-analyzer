@@ -308,9 +308,6 @@ module DisjReady = struct
   let exec_interproc_call astate
       ({interproc= InterproceduralAnalysis.{analyze_dependency; proc_desc}; program} as analysis_data) node instr
       (ret_id, ret_typ) arg_typs callee =
-    (* TODO: refactoring *)
-    (* L.progress "method name of %a: %s@. (%b) (%d)" Procname.pp callee (Procname.get_method callee)
-       (Procname.is_java callee) (List.length arg_typs) ; *)
     if SpecCheckerModels.is_model callee instr then (
       L.d_printfln "execute model function" ;
       SpecCheckerModels.exec_model astate proc_desc node instr callee (ret_id, ret_typ) arg_typs )
@@ -340,18 +337,6 @@ module DisjReady = struct
           | _ ->
               exec_unknown_method astate node instr (ret_id, ret_typ) arg_typs callee )
 
-
-  (* let null_states, non_null_states =
-       List.fold arg_typs
-         ~init:([], [astate])
-         ~f:(fun (acc_nulls, acc_non_nulls) (arg_exp, _) ->
-           List.fold acc_non_nulls ~init:(acc_nulls, []) ~f:(fun (acc_nulls', acc_non_nulls') astate' ->
-               let null_states, non_null_states = check_null astate' analysis_data node instr arg_exp in
-               (acc_nulls' @ null_states, acc_non_nulls' @ non_null_states)))
-     in
-     null_states
-     @ List.concat_map non_null_states ~f:(fun non_null_state ->
-           exec_unknown_method non_null_state node instr (ret_id, ret_typ) arg_typs callee) *)
 
   let exec_null_model ~is_library ~must astate
       {interproc= InterproceduralAnalysis.{proc_desc}; null_model; program} node instr (ret_id, ret_typ) arg_typs
@@ -402,7 +387,7 @@ module DisjReady = struct
       List.concat_map posts ~f:apply_no_model
     in
     let inferenced_states =
-      if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then (
+      if Config.npex_launch_spec_inference && Domain.is_npe_alternative astate then
         (* Apply null model for foo if
            1. NPE occurs by null arguments (e.g., foo(NULL) -> NPE)
            2. NPE occurs by dereferencing base variable (e.g., NULL.foo())
@@ -429,24 +414,19 @@ module DisjReady = struct
           let is_model = SpecCheckerModels.is_model callee instr in
           let has_summary = Option.is_some summary_opt in
           not (is_model || has_summary)
-          (* || Program.is_library_call analysis_data.program (Node.of_pnode node instr) *)
         in
-        L.progress "Is library : %b (%a)@." is_library Node.pp (Node.of_pnode node instr) ;
-        (* L.progress "Callees: %a@." (Pp.seq Procname.pp) Program.callees_of_instr_node program
-           Node.of_pnode node instr ; *)
         if
           List.is_empty normal_states (* this != null, but call by null = this *)
           || (List.exists normal_states ~f:Domain.has_uncaught_model_npes && not has_inferred_summary)
-        then (
-          (* only apply model if NPE occurs in callee *)
-          L.progress
-            "Execute %a by model since NPE occurs in \
-             callee@.%a@.=================================================@."
-            Procname.pp callee (Pp.seq Domain.pp)
-            (List.filter normal_states ~f:Domain.has_uncaught_model_npes) ;
+        then
+          (* L.progress
+             "Execute %a by model since NPE occurs in \
+              callee@.%a@.=================================================@."
+             Procname.pp callee (Pp.seq Domain.pp)
+             (List.filter normal_states ~f:Domain.has_uncaught_model_npes) ; *)
           (* In some case, virtual flag is not annotated. *)
-          exec_null_model ~is_library ~must:true astate analysis_data node instr ret_typ arg_typs callee )
-        else exec_null_model ~is_library ~must:false astate analysis_data node instr ret_typ arg_typs callee )
+          exec_null_model ~is_library ~must:true astate analysis_data node instr ret_typ arg_typs callee
+        else exec_null_model ~is_library ~must:false astate analysis_data node instr ret_typ arg_typs callee
       else []
     in
     normal_states @ inferenced_states
@@ -458,12 +438,6 @@ module DisjReady = struct
     | Sil.Load {id} when Ident.is_none id ->
         (* Ignore empty dereference and null-check on virtual invocation *)
         [astate]
-    (* | Sil.Load {id; e= Exp.Lvar pv} when Pvar.is_frontend_tmp pv && not (is_catch_var pv) ->
-        (* CatchVar could be undefined if there is no catch statement *)
-        let loc = Domain.Loc.of_pvar pv ~line:(get_line node) in
-        if Domain.is_unknown_loc astate loc then L.(die InternalError) "%a is unknown@." Domain.Loc.pp loc ;
-        let value = Domain.read_loc astate loc in
-        [Domain.store_reg astate id value] *)
     | Sil.Load {id; e; typ} when Program.is_final_field_exp e && Typ.is_pointer typ ->
         (* ASSUMPTION: final static field is not null! *)
         let loc = Domain.eval_lv astate node instr e in
@@ -537,8 +511,6 @@ module DisjReady = struct
         (* allocation instruction *)
         let value = Domain.Val.make_allocsite instr_node in
         [Domain.store_reg astate ret_id value]
-    (* | Sil.Call (ret_typ, Const (Cfun (Java mthd)), arg_typs, _, _) when Procname.Java.is_constructor mthd ->
-        exec_interproc_call astate analysis_data node instr ret_typ arg_typs (Procname.Java mthd) *)
     | Sil.Call (ret_typ, Const (Cfun proc), arg_typs, _, {cf_virtual}) when not cf_virtual ->
         (* static call *)
         exec_interproc_call astate analysis_data node instr ret_typ arg_typs proc
@@ -561,10 +533,6 @@ module DisjReady = struct
         exec_unknown_call astate node instr ret_typ arg_typs
     | Sil.Prune (bexp, _, _, _) ->
         exec_prune astate node instr bexp
-        (* | Sil.Metadata (ExitScope (vars, _)) ->
-              [Domain.remove_temps astate vars]
-           | Sil.Metadata (Nullify (pv, _)) ->
-              [Domain.remove_pvar astate ~pv] *)
     | Sil.Metadata (ExitScope (vars, _)) ->
         let real_temps =
           List.filter vars ~f:(function
@@ -598,23 +566,6 @@ module DisjReady = struct
         [astate]
 
 
-  let check_debug node instr astate =
-    (* Domain.Mem.iter
-       (fun l v ->
-         let l_str = F.asprintf "%a" Domain.Loc.pp l in
-         if String.equal l_str "(Pvar) r" then
-           if List.exists (Domain.equal_values astate v) ~f:Domain.Val.is_null then
-             let null_cond = Domain.PathCond.make_physical_equals Binop.Eq v Domain.Val.default_null in
-             if Domain.PC.PCSet.mem null_cond Domain.(astate.pc.branches) then
-               L.(debug Analysis Quiet)
-                 "%a is in branch cond at %a@." Domain.Val.pp v Node.pp (Node.of_pnode node instr)
-             else
-               L.(debug Analysis Quiet)
-                 "%a is NOT in branch cond at %a@." Domain.Val.pp v Node.pp (Node.of_pnode node instr))
-       Domain.(astate.mem) ; *)
-    astate
-
-
   let exec_instr astate analysis_data cfg_node instr =
     let node = CFG.Node.underlying_node cfg_node in
     let is_exn_handler =
@@ -629,7 +580,6 @@ module DisjReady = struct
         List.concat_map pre_states ~f:(fun astate -> compute_posts astate analysis_data node instr)
       in
       List.concat_map post_states ~f:(check_npe_alternative analysis_data node instr)
-      |> List.map ~f:(check_debug node instr)
 
 
   let exec_instr astate analysis_data node instr =

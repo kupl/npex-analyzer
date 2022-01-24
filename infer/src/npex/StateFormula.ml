@@ -43,7 +43,7 @@ module ValToAP = struct
               List.map args ~f:(fun arg_value ->
                   (* this recursive is ok because function value does not contain function value *)
                   let arg_aps = resolve arg_value in
-                  APSet.filter (not <<< AccessExpr.contains_method_access) arg_aps |> APSet.elements)
+                  APSet.filter (not <<< AccessExpr.contains_method_access) arg_aps |> APSet.elements )
             in
             let arg_aps_list =
               (* [v1, v2]: args
@@ -51,7 +51,7 @@ module ValToAP = struct
                * [ap11, ap21], [ap11, ap22], [ap12, ap21], [ap12, ap22]: arg_aps_list *)
               List.fold aps_args_list ~init:[[]]
                 ~f:(fun (acc : AccessExpr.t list list) (aps : AccessExpr.t list) : AccessExpr.t list list ->
-                  List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])))
+                  List.concat_map acc ~f:(fun arg_list -> List.map aps ~f:(fun ap -> arg_list @ [ap])) )
               (* [ap11], [ap12] 
                * [ap11, ap21], [ap11, ap21] | [ap12, ap21], [ap12, ap22] *)
             in
@@ -84,7 +84,7 @@ module ValToAP = struct
         let index_aps = find (Val.Vint index) t in
         APSet.fold
           (fun index_ap ->
-            AccessExpr.append_access (AccessExpr.of_pvar pv) (AccessExpr.ArrayAccess index_ap) |> APSet.add)
+            AccessExpr.append_access (AccessExpr.of_pvar pv) (AccessExpr.ArrayAccess index_ap) |> APSet.add )
           index_aps APSet.empty
     | Loc.Index (Loc.SymHeap sh, index) ->
         let base_aps = find (Val.Vheap sh) t in
@@ -143,7 +143,7 @@ let pp_local_output fmt {local_output} = F.fprintf fmt "@[<v 2> - Local output:@
 let do_work Domain.{mem; pc= Domain.PC.{const_map; pc_set}} val_to_ap : ValToAP.t =
   Domain.Mem.fold
     (fun l v ->
-      if Val.is_abstract v then function x -> x else ValToAP.weak_update v (ValToAP.find_loc l val_to_ap))
+      if Val.is_abstract v then function x -> x else ValToAP.weak_update v (ValToAP.find_loc l val_to_ap) )
     mem val_to_ap
   |> Domain.PC.ConstMap.fold (fun v c -> ValToAP.weak_update v (ValToAP.find c val_to_ap)) const_map
   |> Domain.PC.PCSet.fold
@@ -152,7 +152,7 @@ let do_work Domain.{mem; pc= Domain.PC.{const_map; pc_set}} val_to_ap : ValToAP.
              ValToAP.weak_update v1 (ValToAP.find v2 val_to_ap)
              <<< ValToAP.weak_update v2 (ValToAP.find v1 val_to_ap)
          | _ -> (
-             function x -> x ))
+             function x -> x ) )
        pc_set
 
 
@@ -170,7 +170,7 @@ let exception_cond proc_desc is_exceptional =
 let make_formula binop ap_set1 ap_set2 =
   let ap_pairs = List.cartesian_product (APSet.elements ap_set1) (APSet.elements ap_set2) in
   List.fold ~init:Formula.empty ap_pairs ~f:(fun acc (ap1, ap2) ->
-      Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc)
+      Formula.add (Predicate.make_physical_equals binop ap1 ap2) acc )
 
 
 let encoding_memory ~is_local val_to_ap astate =
@@ -186,7 +186,7 @@ let encoding_memory ~is_local val_to_ap astate =
                   * e.g., local-variable = param just instroduces param = $param *)
                  not (AccessExpr.equal_wo_formal v1 v2)
              | _ ->
-                 true)
+                 true )
       in
       let inequal_formula =
         let init =
@@ -195,10 +195,10 @@ let encoding_memory ~is_local val_to_ap astate =
         in
         List.fold (Domain.inequal_values astate v) ~init ~f:(fun acc v' ->
             let aps_val' = ValToAP.find v' val_to_ap in
-            make_formula Binop.Ne aps_loc aps_val' |> Formula.join acc)
+            make_formula Binop.Ne aps_loc aps_val' |> Formula.join acc )
       in
       (* L.debug_dev "Formula: %a@." Formula.pp_set formula ; *)
-      if is_local then Formula.join formula inequal_formula |> Formula.join else Formula.join formula)
+      if is_local then Formula.join formula inequal_formula |> Formula.join else Formula.join formula )
     Domain.(astate.mem)
     Formula.empty
 
@@ -213,7 +213,7 @@ let from_state proc_desc (astate_local : Domain.t) : t =
         | Loc.Var pv ->
             Domain.remove_pvar ~pv ~line:0 acc
         | _ ->
-            acc)
+            acc )
   in
   let val_to_ap_public = do_worklist astate_public ValToAP.empty in
   let val_to_ap_local = do_worklist astate_local ValToAP.empty in
@@ -262,10 +262,7 @@ let from_state proc_desc (astate_local : Domain.t) : t =
   let executed_calls =
     let executed_call_values = Domain.(astate_local.executed_calls) in
     ExecutedCalls.fold
-      (fun (ret, fexp) ->
-        (* let ret_aps = ValToAP.find ret val_to_ap_local in
-           let fexps = ValToAP.find fexp val_to_ap_local in *)
-        (* APSet.fold (fun ret_ap -> APSet.fold (fun f_ap -> ExecutedCallExps.add (ret_ap, f_ap)) fexps) ret_aps) *)
+      (fun (_, fexp) ->
         match fexp with
         | Val.Vextern (callee, _) ->
             let method_call_access = AccessExpr.MethodCallAccess (callee, []) in
@@ -273,7 +270,7 @@ let from_state proc_desc (astate_local : Domain.t) : t =
             let ret_ap = AccessExpr.dummy in
             ExecutedCallExps.add (ret_ap, f_ap)
         | _ ->
-            fun x -> x)
+            fun x -> x )
       executed_call_values ExecutedCallExps.empty
     (* (ValToAP.find v val_to_ap |> APSet.union) executed_call_values APSet.empty *)
   in
@@ -291,13 +288,6 @@ let from_state proc_desc (astate_local : Domain.t) : t =
   ; executed_calls
   ; local_output
   ; defined_aps }
-
-
-let check_sat ?(print_unsat = false) (infered : t) (patched : t) =
-  (* let pc_sat = Formula.check_sat ~print_unsat infered.pc patched.pc in
-     let uncaught_sat = Bool.equal (APSet.is_empty infered.uncaught_npes) (APSet.is_empty patched.uncaught_npes) in *)
-  (* pc_sat && uncaught_sat *)
-  true
 
 
 let filter_by_defined_aps ~is_local defined_aps formula =
@@ -359,8 +349,6 @@ let join lhs rhs =
   ; local_output
   ; defined_aps= APSet.inter lhs.defined_aps rhs.defined_aps }
 
-
-let joinable lhs rhs = check_sat lhs rhs
 
 let is_exceptional {is_exceptional} = is_exceptional
 
