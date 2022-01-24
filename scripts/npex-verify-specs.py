@@ -183,19 +183,6 @@ class Bug:
             else:
                 build_cmd = f"mvn clean package {MVN_OPT}"
         else:
-            subprocess.run(
-                f"javac -cp {self.class_path} {self.project_root_dir}/Main.java",
-                shell=True,
-                cwd=self.project_root_dir)
-            java_files = glob.glob(f"{self.project_root_dir}/**/*.java",
-                                   recursive=True)
-            java_files_to_compile = [
-                java_file for java_file in java_files
-                if os.path.isfile(java_file.rstrip("java") + "class")
-            ]
-            with open(f"{self.project_root_dir}/java_files", 'w') as f:
-                java_files_str = "\n".join(java_files_to_compile)
-                f.writelines(java_files_str)
             build_cmd = f"javac -cp {self.class_path} @{self.project_root_dir}/java_files"
             print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
