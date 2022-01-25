@@ -22,7 +22,7 @@ MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=tr
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
 
-NPEX_JAR = f"{NPEX_DIR}/driver/target/driver-1.0-SNAPSHOT.jar"
+NPEX_JAR = f"{NPEX_DIR}/npex-driver/target/driver-1.0-SNAPSHOT.jar"
 NPEX_CMD = f"{JAVA_15} --enable-preview -cp {NPEX_JAR} npex.driver.Main"
 NPEX_SCRIPT = f"{NPEX_DIR}/scripts/main.py"
 
@@ -187,16 +187,7 @@ class Bug:
                 f"javac -cp {self.class_path} {self.project_root_dir}/Main.java",
                 shell=True,
                 cwd=self.project_root_dir)
-            java_files = glob.glob(f"{self.project_root_dir}/**/*.java",
-                                   recursive=True)
-            java_files_to_compile = [
-                java_file for java_file in java_files
-                if os.path.isfile(java_file.rstrip("java") + "class")
-            ]
-            with open(f"{self.project_root_dir}/java_files", 'w') as f:
-                java_files_str = "\n".join(java_files_to_compile)
-                f.writelines(java_files_str)
-            build_cmd = f"javac -cp {self.class_path} @{self.project_root_dir}/java_files"
+            build_cmd = f"javac -encoding utf-8 -cp {self.class_path} @{self.project_root_dir}/java_files"
             print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
         subprocess.run(capture_cmd, shell=True, cwd=self.project_root_dir)
@@ -207,7 +198,7 @@ class Bug:
     def localize(self, debug):
         start_time = time.time()
         debug_opt = "-g" if debug else ""
-        inference_option = f"--localize -j 40 --scheduler callgraph {debug_opt}"
+        inference_option = f"--localize --scheduler callgraph {debug_opt}"
 
         localize_cmd = f"{INFER_PATH} npex {inference_option}"
 
@@ -234,9 +225,9 @@ class Bug:
         start_time = time.time()
         debug_opt = "-g" if debug else ""
         if cpu_pool == -1:
-            inference_option = f"--spec-checker-only --spec-inference {self.error_reports_arg} -j 40 --scheduler callgraph {debug_opt}"
+            inference_option = f"--spec-checker-only --spec-inference {self.error_reports_arg} --scheduler callgraph {debug_opt}"
         else:
-            inference_option = f"--spec-checker-only --spec-inference {self.error_reports_arg} -j 4 --scheduler callgraph {debug_opt} --cpu-pool {cpu_pool}"
+            inference_option = f"--spec-checker-only --spec-inference {self.error_reports_arg} --scheduler callgraph {debug_opt} --cpu-pool {cpu_pool}"
 
         if manual_model:
             spec_inference_cmd = f"{INFER_PATH} npex {inference_option} --manual-model "
@@ -290,7 +281,7 @@ class Bug:
             with open(f"{patch_dir}/patch.json", "r") as f:
                 patch_json = json.load(f)
             patched_file = f"{self.project_root_dir}/{patch_json['original_filepath']}"
-            build_cmd = f"javac -cp {self.class_path} {patched_file}"
+            build_cmd = f"javac -encoding utf-8 -cp {self.class_path} {patched_file}"
 
         print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"
@@ -308,11 +299,13 @@ class Bug:
 
         apply_patch(self.project_root_dir, patch_dir)
         self.capture_incremental(patch_dir, recap)
-        shutil.copyfile(f"{self.project_root_dir}/infer-out-reduced/.global.tenv", f"{self.project_root_dir}/infer-out/.global.tenv")
+        shutil.copyfile(
+            f"{self.project_root_dir}/infer-out-reduced/.global.tenv",
+            f"{self.project_root_dir}/infer-out/.global.tenv")
         if cpu_pool == -1:
-            launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} -j 40 --patch-id {patch_id}"
+            launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --patch-id {patch_id}"
         else:
-            launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} -j 4 --patch-id {patch_id} --cpu-pool {cpu_pool}"
+            launch_spec_veri_cmd = f"{INFER_PATH} npex --spec-verifier --spec-checker-only {self.error_reports_arg} --patch-id {patch_id} --cpu-pool {cpu_pool}"
 
         print(f" - npex-verifier command: {launch_spec_veri_cmd}")
         return (subprocess.run(launch_spec_veri_cmd,
