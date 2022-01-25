@@ -95,44 +95,7 @@ let from_error_report ~debug program filepath : t list =
   let deref_field = json |> member "deref_field" |> to_string in
   find_npe ~debug program deref_location deref_field
 
-
-let from_alarm_report program filepath : t list =
-  let source_files = SourceFiles.get_all ~filter:(fun _ -> true) () in
-  let open Yojson.Basic.Util in
-  let json = read_json_file_exn filepath |> to_list |> List.hd_exn in
-  let deref_location =
-    let line = json |> member "line" |> to_int in
-    let file = json |> member "file" |> to_string |> source_file_from_string source_files in
-    Location.{line; file; col= -1}
-  in
-  let deref_field =
-    let msg_description = json |> member "qualifier" |> to_string in
-    let null_expression = List.nth_exn (String.split msg_description ~on:'`') 1 in
-    (* let msg_null_pointer = String.chop_suffix_exn ~suffix:"could be null" msg_description in
-       let null_expression = List.nth_exn (String.split msg_null_pointer ~on:'`') 1 in *)
-    let last_expression = List.hd_exn (List.rev (String.split null_expression ~on:'.')) in
-    List.hd_exn (String.split last_expression ~on:'(')
-  in
-  find_npe ~debug:false program deref_location deref_field
-
-
 let nullpoint_list = ref []
-
-let parse_npe_methods program =
-  (* for patch validation, we will use most caller to validate patch *)
-  let all_procs = Program.all_procs program in
-  List.filter_map Config.error_report_json ~f:(fun filepath ->
-      let json = read_json_file_exn filepath in
-      let open Yojson.Basic.Util in
-      let class_name = json |> member "npe_class" |> to_string in
-      let method_name = json |> member "npe_method" |> to_string in
-      Procname.Set.find_first_opt
-        (function
-          | Procname.Java mthd when String.equal (Procname.Java.get_simple_class_name mthd) class_name ->
-              String.equal (Procname.Java.get_method mthd) method_name
-          | _ ->
-              false)
-        all_procs)
 
 
 let get_nullpoint_list ?(debug = false) program : t list =

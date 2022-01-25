@@ -16,12 +16,11 @@ module ExecutedCall = SymDom.ExecutedCall
 module ExecutedCalls = SymDom.ExecutedCalls
 module Vars = PrettyPrintable.MakePPSet (Var)
 
-(* TODO: add counter for each state *)
 type t =
-  { reg: Reg.t
-  ; mem: Mem.t
-  ; pc: PC.t
-  ; is_npe_alternative: bool
+  { reg: Reg.t (* register: id -> val *)
+  ; mem: Mem.t (* memory: loc -> val *)
+  ; pc: PC.t (* path condition: ({=, !=} * val * val) list *)
+  ; is_npe_alternative: bool (* Is state inferenced by null handling model *)
   ; is_exceptional: bool
   ; applied_models: NullModel.t
   ; probability: float
@@ -29,7 +28,7 @@ type t =
   ; nullptrs: Val.Set.t
   ; executed_procs: Procname.Set.t (* For optimization of inference and verification *)
   ; uncaught_npes: Val.t list
-  ; temps_to_remove: Vars.t
+  ; temps_to_remove: Vars.t (* For localization, we keep temp variables to remove *)
   ; current_proc: Procname.t
   ; executed_calls: ExecutedCalls.t (* For weak syntatic equivalence *) }
 
@@ -154,7 +153,7 @@ let all_values {reg; pc; mem; nullptrs; uncaught_npes; executed_calls} =
         | Loc.Field (Loc.SymHeap sh, _) | Loc.Index (Loc.SymHeap sh, _) ->
             Val.Set.add v <<< Val.Set.add (Val.Vheap sh)
         | _ ->
-            Val.Set.add v)
+            Val.Set.add v )
       mem Val.Set.empty
   in
   reg_values
@@ -187,7 +186,7 @@ let all_symbols astate =
         | _ ->
             L.(die InternalError) "%a is non-symbolic values" Val.pp v
       in
-      List.map (Symbol.sub_symbols s) ~f:(fun s -> Val.Vheap (Symbol s)) |> Val.Set.of_list |> Val.Set.union)
+      List.map (Symbol.sub_symbols s) ~f:(fun s -> Val.Vheap (Symbol s)) |> Val.Set.of_list |> Val.Set.union )
     symvals_appered symvals_appered
 
 
@@ -226,7 +225,7 @@ let remove_temps astate ~line vars =
             | Var.LogicalVar id ->
                 remove_id astate' id
             | Var.ProgramVar pv ->
-                remove_pvar astate' ~line ~pv)
+                remove_pvar astate' ~line ~pv )
           astate.temps_to_remove astate
       in
       (* For some case, Nullify(bcvar1); ExitScope([bcvar1]) *)
@@ -252,7 +251,7 @@ let replace_value astate ~(src : Val.t) ~(dst : Val.t) =
               (fun l v -> Mem.strong_update (Loc.replace_heap l ~src:a ~dst:b) (Val.replace_sub v ~src ~dst))
               mem Mem.empty
         | _ ->
-            Mem.map (Val.replace_sub ~src ~dst) mem)
+            Mem.map (Val.replace_sub ~src ~dst) mem )
       ~arg:mem
   in
   let pc' = pc_replace_value astate.pc ~src ~dst in
@@ -297,7 +296,7 @@ let add_pc ?(is_branch = false) astate pathcond : t list =
             if Val.is_const_extern x then replace_value astate_acc ~src:y ~dst:x
             else replace_value astate_acc ~src:x ~dst:y
         | _ ->
-            astate_acc)
+            astate_acc )
       pc_set astate
   in
   let pathcond_to_add = PathCond.normalize pathcond in
@@ -320,7 +319,7 @@ let set_uncaught_npes astate nullptrs =
   { astate with
     uncaught_npes=
       List.fold nullptrs ~init:astate.uncaught_npes ~f:(fun acc v ->
-          if List.mem astate.uncaught_npes v ~equal:Val.equal_up_to_source then acc else v :: acc) }
+          if List.mem astate.uncaught_npes v ~equal:Val.equal_up_to_source then acc else v :: acc ) }
 
 
 let get_nullptrs astate = astate.nullptrs
@@ -355,7 +354,7 @@ let bind_exn_extern astate instr_node ret_var callee arg_values =
   let value = Val.make_extern instr_node Typ.void_star |> Val.to_exn in
   let arg_values =
     List.map arg_values ~f:(fun v ->
-        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v)
+        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v )
   in
   let call_value = Val.Vextern (callee, arg_values) in
   let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
@@ -370,7 +369,7 @@ let bind_extern_value astate instr_node ret_typ_id callee arg_values =
   let value = Val.make_extern instr_node ret_typ in
   let arg_values =
     List.map arg_values ~f:(fun v ->
-        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v)
+        match List.find (equal_values astate v) ~f:Val.is_constant with Some v' -> v' | None -> v )
   in
   let call_value = Val.Vextern (callee, arg_values) in
   let call_cond = PathCond.make_physical_equals Binop.Eq value call_value in
@@ -462,7 +461,6 @@ module SymResolvedMap = struct
     | SymHeap.Extern _ as sheap ->
         Val.Vheap sheap
     | SymHeap.Unknown as s ->
-        (* TODO: some extern values are required at caller *)
         Val.Vheap s
 
 
@@ -487,7 +485,6 @@ module SymResolvedMap = struct
     | SymExp.Extern _ as symexp ->
         Val.Vint symexp
     | _ as x ->
-        (* TODO: s1 + s2 -> resolve(s1) + resolve(s2) *)
         Val.Vint x
 
 
@@ -542,11 +539,10 @@ module SymResolvedMap = struct
             let index = SymExp.of_intlit index in
             update_resolved_loc (base, accesses) typ (Loc.append_index base_loc ~index) acc
         | Symbol.Global (_, _), _ ->
-            L.(die InternalError) "Invalid symbol: %a@." Symbol.pp (base, accesses))
+            L.(die InternalError) "Invalid symbol: %a@." Symbol.pp (base, accesses) )
 
 
   let replace_mem sym_resolved_map mem_to_resolve mem_to_update =
-    (* replace memory l |-> v by resolved_map (s |-> v) *)
     Mem.fold
       (fun l v -> Mem.strong_update (resolve_loc sym_resolved_map l) (resolve_val sym_resolved_map v))
       mem_to_resolve mem_to_update
@@ -565,14 +561,14 @@ module SymResolvedMap = struct
   let resolve_uncaught_npes sym_resolved_map nullptrs_to_resolve nullptrs_to_update =
     List.fold nullptrs_to_resolve ~init:nullptrs_to_update ~f:(fun acc v ->
         let resolved = resolve_val sym_resolved_map v in
-        if List.mem acc resolved ~equal:Val.equal_up_to_source then acc else resolved :: acc)
+        if List.mem acc resolved ~equal:Val.equal_up_to_source then acc else resolved :: acc )
 
 
   let resolve_executed_calls sym_resolved_map to_resolve to_update =
     ExecutedCalls.fold
       (fun (ret_value, fexp) ->
         let resolved = (resolve_val sym_resolved_map ret_value, resolve_val sym_resolved_map fexp) in
-        ExecutedCalls.add resolved)
+        ExecutedCalls.add resolved )
       to_resolve to_update
 end
 
@@ -580,7 +576,7 @@ let resolve_summary astate ~actual_values ~formals callee_summary =
   let init_sym_resolved_map =
     List.fold2_exn formals actual_values ~init:SymResolvedMap.empty ~f:(fun sym_resolved_map (fv, typ) v ->
         if Typ.is_pointer typ || Typ.is_int typ then SymResolvedMap.add (Symbol.of_pvar fv) v sym_resolved_map
-        else sym_resolved_map)
+        else sym_resolved_map )
   in
   (* L.progress "[DEBUG]: init sym_resolved_map: %a@." SymResolvedMap.pp init_sym_resolved_map ; *)
   let sym_resolved_map =
@@ -707,11 +703,11 @@ let rec eval ?(pos = 0) astate node instr exp =
   | Exp.BinOp (Binop.PlusA io, e1, e2) ->
       let v1 = eval astate node instr e1 in
       let v2 = eval astate node instr e2 in
-      if Val.is_constant v1 && Val.is_true (Val.lte Val.zero v1) then (
+      if Val.is_constant v1 && Val.is_true (Val.lte Val.zero v1) then
         let nonneg_cond = PathCond.make_le_pred Val.zero v2 in
         let pos_cond = PathCond.make_lt_pred Val.zero v2 in
         if PC.is_valid nonneg_cond astate.pc || PC.is_valid pos_cond astate.pc then v2
-        else eval_binop (Binop.PlusA io) v1 v2 )
+        else eval_binop (Binop.PlusA io) v1 v2
       else if Val.is_constant v2 then
         let nonneg_cond = PathCond.make_le_pred Val.zero v1 in
         let pos_cond = PathCond.make_lt_pred Val.zero v1 in
@@ -799,7 +795,7 @@ let compute_reachables_from ({mem} as astate) =
         | _ when Val.is_symbolic v ->
             Val.Set.add v acc
         | _ ->
-            acc)
+            acc )
       mem Val.Set.empty
   in
   Val.Set.elements pointsto_val
@@ -838,7 +834,7 @@ let remove_unreachables ({mem; pc} as astate) =
           | None, _ when Val.is_top v ->
               false
           | _ ->
-              true)
+              true )
       mem
   in
   let pc' =
@@ -874,7 +870,7 @@ let unify lhs rhs : t * t =
               (resolve_unknown_loc lhs_acc Typ.int l, rhs_acc)
           | _ ->
               (lhs_acc, rhs_acc)
-        else (lhs_acc, rhs_acc))
+        else (lhs_acc, rhs_acc) )
   in
   let extern_locs, concrete_locs =
     List.partition_tf all_locs ~f:(fun l -> Loc.is_extern l || Loc.is_allocsite l)
@@ -956,7 +952,7 @@ let unify lhs rhs : t * t =
     (* TODO: fix scalability issues *)
     let next_vals, next_lhs, next_rhs, next_introduced =
       List.fold worklist ~init:(Val.Set.empty, lhs, rhs, introduced) ~f:(fun acc l ->
-          debug_time "loop_f" ~f:(f acc) ~arg:l)
+          debug_time "loop_f" ~f:(f acc) ~arg:l )
     in
     let partition_tf lst ~f = debug_time "partition" ~f:(List.partition_tf ~f) ~arg:lst in
     let next_worklist, next_rest =
@@ -979,7 +975,7 @@ let get_null_locs astate =
     (fun l v acc ->
       if (Loc.is_var l || Val.is_symbolic v) && List.exists (equal_values astate v) ~f:Val.is_null then
         Loc.Set.add l acc
-      else acc)
+      else acc )
     astate.mem Loc.Set.empty
 
 
@@ -991,7 +987,7 @@ let collect_summary_symbols astate =
       | (Loc.Field _, Val.Vint (Symbol s) | Loc.Index _, Val.Vint (Symbol s)) when Symbol.is_pvar s ->
           Val.Set.add v acc
       | _ ->
-          acc)
+          acc )
     astate.mem Val.Set.empty
 
 
@@ -1026,7 +1022,7 @@ let joinable lhs rhs =
             | None ->
                 false )
           | None ->
-              false ))
+              false ) )
       lhs.mem
   in
   let has_no_significant_diff lhs rhs =
@@ -1054,21 +1050,6 @@ let joinable lhs rhs =
 
 let joinable lhs rhs = debug_time "Joinable" ~f:(joinable lhs) ~arg:rhs
 
-(* FOR DEBUG *)
-let check_debug astate =
-  (* Mem.iter
-     (fun l v ->
-       let l_str = F.asprintf "%a" Loc.pp l in
-       if String.equal l_str "(Pvar) r" then
-         if List.exists (equal_values astate v) ~f:Val.is_null then
-           let null_cond = PathCond.make_physical_equals Binop.Eq v Val.default_null in
-           if PC.PCSet.mem null_cond astate.pc.branches then
-             L.(debug Analysis Quiet) "%a is in branch cond@." Val.pp v
-           else L.(debug Analysis Quiet) "%a is NOT in branch cond@." Val.pp v)
-     astate.mem *)
-  ()
-
-
 let weak_join lhs rhs : t =
   (* Assumption: lhs and rhs are joinable *)
   if phys_equal lhs rhs then (
@@ -1094,7 +1075,7 @@ let weak_join lhs rhs : t =
     let executed_procs = Procname.Set.union lhs.executed_procs rhs.executed_procs in
     let uncaught_npes =
       List.fold rhs.uncaught_npes ~init:lhs.uncaught_npes ~f:(fun acc null ->
-          if List.mem acc ~equal:Val.equal_up_to_source null then acc else null :: acc)
+          if List.mem acc ~equal:Val.equal_up_to_source null then acc else null :: acc )
     in
     let temps_to_remove = Vars.union lhs.temps_to_remove rhs.temps_to_remove in
     let executed_calls = ExecutedCalls.inter lhs.executed_calls rhs.executed_calls in
@@ -1115,9 +1096,6 @@ let weak_join lhs rhs : t =
       ; executed_calls }
     in
     L.d_printfln " - Joined - @.%a@." pp joined ;
-    check_debug lhs ;
-    check_debug rhs ;
-    check_debug joined ;
     joined )
 
 

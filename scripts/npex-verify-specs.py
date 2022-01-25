@@ -183,10 +183,6 @@ class Bug:
             else:
                 build_cmd = f"mvn clean package {MVN_OPT}"
         else:
-            subprocess.run(
-                f"javac -cp {self.class_path} {self.project_root_dir}/Main.java",
-                shell=True,
-                cwd=self.project_root_dir)
             build_cmd = f"javac -encoding utf-8 -cp {self.class_path} @{self.project_root_dir}/java_files"
             print(build_cmd)
         capture_cmd = f"{INFER_PATH} capture -- {build_cmd}"

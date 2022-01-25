@@ -31,7 +31,7 @@ let implements classes typename = List.exists classes ~f:(seql (Typ.Name.name ty
 
 let implements_interfaces interfaces typename =
   List.exists interfaces ~f:(fun interface ->
-      PatternMatch.Java.implements interface (Program.tenv ()) (Typ.Name.name typename))
+      PatternMatch.Java.implements interface (Program.tenv ()) (Typ.Name.name typename) )
 
 
 (** Builtin model functions *)
@@ -39,11 +39,8 @@ module BuiltIn = struct
   let cast : model =
     let is_model callee _ = String.equal "__cast" (Procname.get_method callee) in
     let exec astate _ node instr _ (ret_id, _) arg_typs =
-      (* ret_typ of__cast is Boolean, but is actually pointer type *)
       let arg_exp, _ = List.hd_exn arg_typs in
-      (* TODO: check the logic is correct *)
       let value = Domain.eval astate node instr arg_exp in
-      (* let value = Domain.Val.make_extern instr_node Typ.void_star in *)
       [Domain.store_reg astate ret_id value]
     in
     (is_model, exec)
@@ -59,17 +56,14 @@ module BuiltIn = struct
         when implements_interfaces exception_classes name ->
           (* Exception catch *)
           let arg_value = Domain.eval astate node instr arg_exp in
-          if Val.equal arg_value (Val.npe |> Val.unwrap_exn) then
-            (* HEURISTIC 1: uncaught NPE will never catched
-               FIXME: this is not desirable *)
-            [Domain.store_reg astate ret_id Val.zero]
+          if Val.equal arg_value (Val.npe |> Val.unwrap_exn) then [Domain.store_reg astate ret_id Val.zero]
           else
-            (* HEURISTIC 2: ignore exception type  *)
+            (* HEURISTIC: ignore exception type  *)
             let null = Domain.Val.make_null instr_node in
             let typ_value = Domain.Val.exn in
             Domain.add_pc astate (Domain.PathCond.make_physical_equals Binop.Ne arg_value null)
             |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value] )
       | [(arg_exp, _); (Exp.Sizeof {typ}, _)] ->
           let arg_value = Domain.eval astate node instr arg_exp in
           let typ_value = Typ.to_string typ |> Domain.Val.make_string in
@@ -81,7 +75,7 @@ module BuiltIn = struct
           let non_null_states =
             Domain.add_pc astate (null_cond Binop.Ne)
             |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value] )
           in
           null_states @ non_null_states
       | [(arg_exp, _); (typ_exp, _)] ->
@@ -96,7 +90,7 @@ module BuiltIn = struct
           let non_null_states =
             Domain.add_pc astate (null_cond Binop.Ne)
             |> List.concat_map ~f:(fun astate' ->
-                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value])
+                   Domain.bind_extern_value astate' instr_node (ret_id, Typ.int) callee [arg_value; typ_value] )
           in
           null_states @ non_null_states
       | _ ->
@@ -449,7 +443,7 @@ module Primitives = struct
             if String.equal deref_field "FALSE" then Domain.Val.zero
             else if String.equal deref_field "TRUE" then Domain.Val.one
             else Val.make_extern (Node.of_pnode node instr) Typ.int
-        | _ as v ->
+        | _ ->
             Val.make_extern (Node.of_pnode node instr) Typ.int
       in
       [Domain.store_reg astate ret_id value]
@@ -688,26 +682,3 @@ let exec_model : exec =
       exec astate proc_desc node instr callee (ret_id, ret_typ) arg_typs
   | None ->
       []
-
-(* let cast = snd cast
-
-let instanceof = snd instanceof
-
-let unwrap_exception = snd unwrap_exception
-
-let invoke = snd invoke
-
-let getter_matcher _ callee_name = 
-
-module Call = struct
-  let dispatch : (Tenv.t, exec, unit) ProcnameDispatcher.Call.dispatcher =
-    let open ProcnameDispatcher.Call in
-    let match_builtin builtin _ s = String.equal s (Procname.get_method builtin) in
-    make_dispatcher
-      [ +match_builtin BuiltinDecl.__cast <>--> cast
-      ; +match_builtin BuiltinDecl.__instanceof <>--> instanceof
-      ; +match_builtin BuiltinDecl.__unwrap_exception <>--> unwrap_exception
-      ; +PatternMatch.Java.implements "java.lang.reflect.Method" &:: "invoke" <>--> invoke 
-      ; +PatternMatch.Java.implements "java.lang.reflect.Method" &:: "invoke" <>--> invoke 
-      ]
-end *)
