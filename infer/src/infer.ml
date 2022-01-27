@@ -386,7 +386,7 @@ let () =
         in
         if is_analyzed then L.exit 0
         else (
-          L.progress "[FAIL]: to analyze error proc@." ;
+          L.progress "[FAIL]: to analyze find meaninigful specification with the given model@." ;
           L.exit 1 ) )
       else if Config.npex_launch_spec_verifier then (
         InferAnalyze.main ~changed_files:None ;
