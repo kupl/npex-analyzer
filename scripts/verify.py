@@ -22,7 +22,7 @@ MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=tr
 JDK_15 = "/usr/lib/jvm/jdk-15.0.1"
 JAVA_15 = f"{JDK_15}/bin/java"
 
-NPEX_JAR = f"{NPEX_DIR}/npex-driver/target/driver-1.0-SNAPSHOT.jar"
+NPEX_JAR = f"{NPEX_DIR}/npex-driver/target/npex-driver-1.0-SNAPSHOT.jar"
 NPEX_CMD = f"{JAVA_15} --enable-preview -cp {NPEX_JAR} npex.driver.Main"
 NPEX_SCRIPT = f"{NPEX_DIR}/scripts/main.py"
 
@@ -291,7 +291,6 @@ class Bug:
     def verify(self, patch_dir, cpu_pool, recap):
         patch_id = os.path.basename(patch_dir)
         print(f"[Progress]: Verifying patch in directory {patch_dir}")
-        print(f" - NPE-lists: {error_reports}")
 
         apply_patch(self.project_root_dir, patch_dir)
         self.capture_incremental(patch_dir, recap)
@@ -402,12 +401,8 @@ class Bug:
 
     def generate_model(self, classifiers):
         self.checkout()
-        # extract_cmd = f"{NPEX_CMD} extract-invo-context --cached {self.project_root_dir}"
-        extract_cmd = f"{NPEX_CMD} extract-invo-context {self.project_root_dir} -t {self.project_root_dir}/localizer_result.json"
+        extract_cmd = f"{NPEX_CMD} extract-invo-context --cached {self.project_root_dir} -t {self.project_root_dir}/localizer_result.json"
         subprocess.run(extract_cmd, shell=True, cwd=self.project_root_dir)
-        # if os.path.isfile (f"{self.project_root_dir}/invo-ctx.npex.json") is False:
-        #     print(f"extracting invocation-context info...")
-        #     subprocess.run(extract_cmd, shell=True, cwd=self.project_root_dir)
         if os.path.isfile(
                 f"{self.project_root_dir}/invo-ctx.npex.json") is False:
             print("FAILED to extract invo-context")
