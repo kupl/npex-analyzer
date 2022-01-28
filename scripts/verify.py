@@ -403,10 +403,12 @@ class Bug:
         self.checkout()
         extract_cmd = f"{NPEX_CMD} extract-invo-context --cached {self.project_root_dir} -t {self.project_root_dir}/localizer_result.json"
         subprocess.run(extract_cmd, shell=True, cwd=self.project_root_dir)
-        if os.path.isfile(
-                f"{self.project_root_dir}/invo-ctx.npex.json") is False:
-            print("FAILED to extract invo-context")
-            exit(1)
+        if os.path.isfile(f"{self.project_root_dir}/invo-ctx.npex.json") is False:
+            extract_cmd = f"{NPEX_CMD} extract-invo-context {self.project_root_dir} -t {self.project_root_dir}/localizer_result.json"
+            subprocess.run(extract_cmd, shell=True, cwd=self.project_root_dir)
+            if os.path.isfile(f"{self.project_root_dir}/invo-ctx.npex.json") is False:
+                print("FAILED to extract invo-context")
+                exit(1)
 
         print(f"predicting model_value and probability for each invocation...")
         subprocess.run(
