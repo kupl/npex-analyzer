@@ -15,7 +15,7 @@ from dataclasses import asdict, dataclass, field, fields, is_dataclass
 
 ROOT_DIR = os.getcwd()
 INFER_DIR = f'{os.path.dirname(os.path.realpath(__file__))}/..'
-NPEX_DIR = os.getenv("NPEX_DIR")
+NPEX_DIR = f'{INFER_DIR}/..'
 
 INFER_PATH = f"{INFER_DIR}/infer/bin/infer"
 MVN_OPT = "-V -B -Denforcer.skip=true -Dcheckstyle.skip=true -Dcobertura.skip=true -Drat.skip=true -Dlicense.skip=true -Dfindbugs.skip=true -Dgpg.skip=true -Dskip.npm=true -Dskip.gulp=true -Dskip.bower=true -DskipTests=true -DskipITs=true -Dtest=None -DfailIfNoTests=false -Dpmd.skip=true"
