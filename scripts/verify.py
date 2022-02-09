@@ -85,7 +85,7 @@ class Bug:
             self.build_type = "javac"
             jar_path = ':'.join(
                 glob.glob(f"{self.project_root_dir}/../../deps/*.jar"))
-            self.class_path = f"{jar_path}:{self.project_root_dir}:{self.project_root_dir}/../target/classes"
+            self.class_path = f"{jar_path}:{self.project_root_dir}/../target/classes:{self.project_root_dir}"
         self.time_to_inference = 0.0
         self.time_to_capture_original = 0.0
         self.time_to_capture_patches = 0.0
