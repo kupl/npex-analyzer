@@ -264,10 +264,10 @@ class Bug:
                 first_module = filepath.split('/')[0]
                 filename = os.path.basename(filepath).rstrip(".java")
                 if first_module != "src":
+                    target_classes = self.get_compiled(filepath)
+                    for target_class_file in target_classes:
+                        os.remove(target_class_file)
                     if os.path.isfile(f"{self.project_root_dir}/.pl_able"):
-                        target_classes = self.get_compiled(filepath)
-                        for target_class_file in target_classes:
-                            os.remove(target_class_file)
                         build_cmd = f"mvn package {MVN_OPT} -pl {first_module} -amd"
                     else:
                         build_cmd = f"mvn package {MVN_OPT}"
